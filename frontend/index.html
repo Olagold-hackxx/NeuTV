@@ -5,9 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>NEU TV — The New Economy, On Screen.</title>
 
-  <!-- Tailwind CSS CDN -->
-  <script src="https://cdn.tailwindcss.com"></script>
-
   <!-- Lucide Icons CDN -->
   <script src="https://unpkg.com/lucide@latest"></script>
 
@@ -15,7 +12,13 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js" crossorigin></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js" crossorigin></script>
 
-  <!-- App stylesheet & animations -->
+  <!-- Tailwind, compiled ahead of time by the CLI (npm run build:css).
+       This replaced cdn.tailwindcss.com, which shipped ~400KB of JavaScript to
+       compile the stylesheet in the browser on every page load. -->
+  <link rel="stylesheet" href="./src/app.build.css?v=2.0">
+
+  <!-- Custom animations and glassmorphic surfaces. Loaded after Tailwind so
+       these rules win. -->
   <link rel="stylesheet" href="./src/styles.css?v=2.0">
 </head>
 <body class="bg-[#060A12] text-white antialiased selection:bg-[#00F6A7] selection:text-black min-h-screen">
@@ -40,6 +43,7 @@
        source the backend seed is generated from; hydrate() replaces it below
        when the API is reachable. -->
   <script src="./src/data.js?v=2.0"></script>
+  <script src="./src/catalog.js?v=2.0"></script>
   <script src="./src/app.js?v=2.0"></script>
 
   <!-- NEU TV backend client (contract v2) -->

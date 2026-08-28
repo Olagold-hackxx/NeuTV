@@ -297,3 +297,33 @@ html, body {
   animation: auth-float-pop 3.2s cubic-bezier(0.2, 0.8, 0.4, 1) forwards;
   z-index: 55;
 }
+
+/* ---------------------------------------------------------------------------
+   Card entrance animations.
+
+   app.js applies .animate-fadeIn to every feed card and .animate-scaleUp to
+   modals, but neither was ever defined here and neither exists in Tailwind
+   core (which ships only spin, ping, pulse and bounce). Both classes have been
+   inert since they were written; these are the definitions they expected.
+   --------------------------------------------------------------------------- */
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes scaleUp {
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+.animate-fadeIn  { animation: fadeIn 0.45s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.animate-scaleUp { animation: scaleUp 0.28s cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+/* Anyone who has asked the OS not to animate things should be believed. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-fadeIn,
+  .animate-scaleUp,
+  .animate-marquee,
+  .animate-live { animation: none !important; }
+}

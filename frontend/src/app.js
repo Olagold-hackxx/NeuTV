@@ -1,42 +1,26 @@
 (function() {
-  const data = window.CentralData || {};
-  const FALLBACK_PRODUCTS = [
-    { id: 'worldstreet', name: 'WorldStreet', tag: '24/7 Stock Leverage', logo: './assets/logos/ark_logo.png' },
-    { id: 'market', name: 'mARKet', tag: 'P2P Commerce', logo: './assets/logos/chat_cube_logo.png' },
-    { id: 'linkpay', name: 'KashPlus', tag: 'Instant Payments', logo: './assets/logos/kashplus_logo.png' },
-    { id: 'ark', name: 'ARK', tag: 'Yield Vaults', logo: './assets/logos/ark_logo.png' },
-    { id: 'tsioncars', name: 'Tsion Cars', tag: 'Vehicle Hub', logo: './assets/logos/ark_logo.png' }
-  ];
-  const PRODUCTS = (data.PRODUCTS && data.PRODUCTS.length > 0) ? data.PRODUCTS : FALLBACK_PRODUCTS;
-  const PRODUCT_COMMUNITY_HUBS = data.PRODUCT_COMMUNITY_HUBS || {};
-  const INITIAL_CENTRAL_TV = data.INITIAL_CENTRAL_TV || {};
-  const SAMPLE_LIVE_COMMENTS = data.SAMPLE_LIVE_COMMENTS || [];
-  const INITIAL_MEDIA_ROWS = data.INITIAL_MEDIA_ROWS || [];
-  const INITIAL_POSTS = data.INITIAL_POSTS || [];
-  const TRENDING_TOPICS = data.TRENDING_TOPICS || [];
-  const PLATFORMS = data.PLATFORMS || [];
-  const SCHEDULE_ITEMS = data.SCHEDULE_ITEMS || [];
-  const VOD_LIBRARY = data.VOD_LIBRARY || [];
-  const CREATOR_SPOTLIGHTS = data.CREATOR_SPOTLIGHTS || [];
+  // Catalog constants come from catalog.js and are read during render, not at
+  // script load: hydrate() replaces window.CentralData after this file has
+  // already executed, so anything captured up here would be the stale bundled
+  // copy. See src/catalog.js.
+  const CATALOG = window.NeuTVCatalog;
+  const { EMOJIS, GIFTS } = CATALOG;
 
   const ReactObj = window.React || {};
   const { useState, useEffect, useMemo, useRef, createElement: h } = ReactObj;
 
-  const EMOJIS = ['❤️', '🔥', '👏', '🎉', '🚀', '⭐', '💖', '💎'];
 
-  const GIFTS = [
-    { id: 'giftbox', name: 'Luxury Gift Box', emoji: '🎁', cost: 1000, label: '1,000 Coins' },
-    { id: 'crown', name: 'Royal Crown', emoji: '👑', cost: 500, label: '500 Coins' },
-    { id: 'diamond', name: 'Diamond Gem', emoji: '💎', cost: 250, label: '250 Coins' },
-    { id: 'rocket', name: 'Rocket Booster', emoji: '🚀', cost: 100, label: '100 Coins' },
-    { id: 'flame', name: 'Super Flame', emoji: '🔥', cost: 50, label: '50 Coins' },
-    { id: 'trophy', name: 'Golden Trophy', emoji: '🏆', cost: 75, label: '75 Coins' },
-    { id: 'car', name: 'Supercar Key', emoji: '🏎️', cost: 350, label: '350 Coins' },
-    { id: 'spike', name: 'Kash Spike', emoji: '⚡', cost: 25, label: '25 Coins' },
-    { id: 'applause', name: 'Applause', emoji: '👏', cost: 10, label: '10 Coins' }
-  ];
 
   function App() {
+    // Read the catalog now, during render. By this point hydrate() has run, so
+    // these are the live values when the API is reachable and the bundled
+    // fallback when it is not.
+    const {
+      PRODUCTS, PRODUCT_COMMUNITY_HUBS, INITIAL_CENTRAL_TV, SAMPLE_LIVE_COMMENTS,
+      INITIAL_MEDIA_ROWS, INITIAL_POSTS, TRENDING_TOPICS, PLATFORMS,
+      SCHEDULE_ITEMS, VOD_LIBRARY, CREATOR_SPOTLIGHTS,
+    } = CATALOG.read();
+
     // Refresh Lucide icons on every state change
     useEffect(() => {
       if (window.lucide && typeof window.lucide.createIcons === 'function') {
@@ -138,6 +122,7 @@
     const [likedPosts, setLikedPosts] = useState({ 'post-neu-1': true, 'post-ws-1': true });
     const [savedPosts, setSavedPosts] = useState({ 'post-ws-1': true });
     const [openCommentSections, setOpenCommentSections] = useState({ 'post-neu-1': true });
+    const [highlightedPostId, setHighlightedPostId] = useState(null);
     const [postCommentInputs, setPostCommentInputs] = useState({});
     const [toastMessage, setToastMessage] = useState(null);
 
@@ -231,8 +216,11 @@
 
     const handleSharePost = (post) => {
       setPosts(prev => prev.map(p => p.id === post.id ? { ...p, shares: (p.shares || 0) + 1 } : p));
+      // origin alone drops the pathname, so the link broke on any deployment
+      // that is not at the domain root.
+      const link = window.location.origin + window.location.pathname + '?post=' + post.id;
       if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(window.location.origin + '?post=' + post.id);
+        navigator.clipboard.writeText(link);
       }
       showToast('Link copied to clipboard! 📋');
     };
@@ -261,6 +249,40 @@
 
       window.addEventListener('scroll', handleScroll, { passive: true });
       return () => window.removeEventListener('scroll', handleScroll);
+    }, []);
+
+    // Open a shared post link.
+    //
+    // The share button has always written "?post=<id>" to the clipboard, but
+    // nothing ever read it back, so every link a creator shared opened the
+    // homepage. This resolves it: clear anything filtering the post out of the
+    // feed, open its comments, scroll to it and mark it briefly so the reader
+    // can see which post the link meant.
+    useEffect(() => {
+      const params = new URLSearchParams(window.location.search);
+      const postId = params.get('post');
+      if (!postId) return;
+
+      if (!posts.some(p => p.id === postId)) {
+        showToast('That post is no longer available.');
+        return;
+      }
+
+      setActiveMainTab('tv');
+      setActiveProductId('all');
+      setSearchQuery('');
+      setOpenCommentSections(prev => ({ ...prev, [postId]: true }));
+      setHighlightedPostId(postId);
+
+      // Two frames: one for the state above to render, one for layout to settle
+      // before measuring the scroll target.
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        const el = document.getElementById('post-' + postId);
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }));
+
+      const clear = setTimeout(() => setHighlightedPostId(null), 2800);
+      return () => clearTimeout(clear);
     }, []);
 
     // Flying Hearts Spawner
@@ -1609,9 +1631,16 @@
             const isFollowing = followingUsers[post.handle];
             const commentsList = post.comments || [];
 
+            const isDeepLinked = highlightedPostId === post.id;
+
             return h('article', {
               key: post.id,
-              className: 'max-w-4xl mx-auto w-full rounded-3xl bg-[#0B1220]/95 border border-white/15 overflow-hidden shadow-2xl space-y-4 p-5 md:p-7 backdrop-blur-xl transition-all duration-300 hover:border-[#00F6A7]/40 hover:shadow-[0_20px_50px_rgba(0,246,167,0.12)] hover:-translate-y-1 animate-fadeIn'
+              // Addressable so a shared "?post=<id>" link can scroll to it.
+              id: 'post-' + post.id,
+              className: 'max-w-4xl mx-auto w-full rounded-3xl bg-[#0B1220]/95 border overflow-hidden shadow-2xl space-y-4 p-5 md:p-7 backdrop-blur-xl transition-all duration-300 hover:border-[#00F6A7]/40 hover:shadow-[0_20px_50px_rgba(0,246,167,0.12)] hover:-translate-y-1 animate-fadeIn '
+                + (isDeepLinked
+                    ? 'border-[#00F6A7]/70 shadow-[0_0_0_2px_rgba(0,246,167,0.35),0_20px_60px_rgba(0,246,167,0.20)]'
+                    : 'border-white/15')
             },
               
               // 1. TOP PROFILE HEADER (INSTAGRAM STYLE)
