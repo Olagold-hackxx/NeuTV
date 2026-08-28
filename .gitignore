@@ -4,6 +4,11 @@ node_modules/
 .env.*
 .DS_Store
 
-# Per-service SQLite stores and uploaded video are runtime state, never committed.
-backend/services/*/data/
+# Runtime state, never committed: per-service SQLite stores and uploaded video.
+# Matched by suffix as well as by path, so a store written from an unexpected
+# working directory cannot slip in - which is exactly how it slipped in once.
+**/data/
+*.db
+*.db-wal
+*.db-shm
 /tmp/

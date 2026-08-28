@@ -8,6 +8,8 @@
 // No service imports another. Deleting a service from this file removes it from
 // the deployment without touching any other service's code.
 
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 import { realRuntime } from '../../platform/runtime.mjs';
 import { createHub } from '../../platform/sse.mjs';
 import { loopbackClient } from '../../contracts/client.mjs';
@@ -34,9 +36,14 @@ import { createModerationService } from '../moderation/service.mjs';
 import { createModerationRouter } from '../moderation/router.mjs';
 import { openModerationStore } from '../moderation/store.mjs';
 
+// Anchored to this file, not to process.cwd(). A CWD-relative default wrote
+// stores wherever a script happened to be run from, and one of those stray
+// directories got committed.
+const SERVICES_DIR = join(dirname(fileURLToPath(import.meta.url)), '..');
+
 export function compose({
   runtime = realRuntime(),
-  dataDir = './services',
+  dataDir = SERVICES_DIR,
   memory = false,                 // tests build the whole graph in memory
   adminEmails = [],
   passwordCost = PROD_COST,
