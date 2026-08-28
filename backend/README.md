@@ -67,9 +67,17 @@ broadcast. `scope: 'viewer'` (the default) changes only that viewer's stage;
 ## Admin / CRM
 
 ```bash
-export NEUTV_ADMIN_EMAILS=you@example.com   # roles come from deployment, not signup
+cp .env.example .env      # then edit NEUTV_ADMIN_EMAILS
 npm start
 ```
+
+`npm start` loads `.env` through Node's own `--env-file-if-exists`, so there is
+no dotenv dependency and a checkout without a `.env` still starts. Exported
+shell variables still work and take precedence.
+
+Roles come from deployment, never from self-service: an email in
+`NEUTV_ADMIN_EMAILS` gets the admin role when that account signs up. SSO cannot
+mint an admin, and neither can signing up with any other address.
 
 ```bash
 # register, upload, and put it on air
@@ -132,6 +140,8 @@ Two lanes, on purpose.
   test.
 
 ## Configuration
+
+Set these in `backend/.env` (see `.env.example`) or export them.
 
 | Variable | Default | Meaning |
 | --- | --- | --- |

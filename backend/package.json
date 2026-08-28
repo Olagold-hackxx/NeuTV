@@ -4,9 +4,11 @@
   "private": true,
   "description": "NEU TV (Central Stream) backend. Zero-dependency Node, services-first.",
   "type": "module",
-  "engines": { "node": ">=22.5.0" },
+  "engines": {
+    "node": ">=22.5.0"
+  },
   "scripts": {
-    "start": "node --no-warnings=ExperimentalWarning services/gateway/server.mjs",
+    "start": "node --no-warnings=ExperimentalWarning --env-file-if-exists=.env services/gateway/server.mjs",
     "seed": "node --no-warnings=ExperimentalWarning scripts/extract-seed.mjs",
     "test": "node --no-warnings=ExperimentalWarning --test services/*/test/*.test.mjs",
     "test:catalog": "node --no-warnings=ExperimentalWarning --test services/catalog/test/*.test.mjs",
