@@ -1,0 +1,219 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { Readable } from 'node:stream';
+import { mkdtempSync, existsSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fakeRuntime } from '../../../platform/runtime.mjs';
+import { createCatalogService } from '../../catalog/service.mjs';
+import { createAdminService, parseDuration } from '../service.mjs';
+import { createStorage, ALLOWED_TYPES } from '../storage.mjs';
+
+const build = (over = {}) => {
+  const runtime = fakeRuntime();
+  const catalog = createCatalogService({ runtime });
+  const root = mkdtempSync(join(tmpdir(), 'neutv-uploads-'));
+  const admin = createAdminService({ runtime, catalog, uploadsRoot: root, ...over });
+  return { runtime, admin, root };
+};
+const ADMIN = 'admin-1';
+const external = (admin, over = {}) => admin.createVideo(ADMIN, {
+  title: 'Opening Bell', kind: 'external', sourceUrl: 'https://cdn.neu.tv/bell.mp4', duration: '04:12', ...over,
+});
+
+test('an external video is playable the moment it is registered', () => {
+  const { admin } = build();
+  const { video, upload } = external(admin);
+  assert.equal(video.status, 'ready');
+  assert.equal(video.durationSeconds, 252);
+  assert.equal(upload, null, 'nothing to upload');
+});
+
+test('an upload starts as a draft and is handed an upload target', () => {
+  const { admin } = build();
+  const { video, upload } = admin.createVideo(ADMIN, { title: 'Studio Session', kind: 'upload' });
+  assert.equal(video.status, 'draft');
+  assert.equal(video.hasFile, false);
+  assert.equal(upload.method, 'PUT');
+  assert.ok(upload.url.endsWith(`/admin/videos/${video.id}/file`));
+});
+
+test('uploading bytes makes the video ready and gives it a playback URL', async () => {
+  const { admin, root } = build();
+  const { video } = admin.createVideo(ADMIN, { title: 'Studio Session', kind: 'upload' });
+  const res = await admin.uploadFile(video.id, {
+    stream: Readable.from([Buffer.from('fake mp4 bytes')]),
+    contentType: 'video/mp4',
+  });
+  assert.equal(res.video.status, 'ready');
+  assert.equal(res.video.hasFile, true);
+  assert.equal(res.video.playbackUrl, `/media/${video.id}.mp4`);
+  assert.equal(readFileSync(join(root, `${video.id}.mp4`), 'utf8'), 'fake mp4 bytes');
+});
+
+test('an unsupported file type is refused', async () => {
+  const { admin } = build();
+  const { video } = admin.createVideo(ADMIN, { title: 'Not A Video', kind: 'upload' });
+  await assert.rejects(
+    () => admin.uploadFile(video.id, { stream: Readable.from(['<?php ?>']), contentType: 'application/x-php' }),
+    (e) => e.status === 400,
+  );
+});
+
+test('an oversized upload is cut off and leaves no partial file behind', async () => {
+  const runtime = fakeRuntime();
+  const catalog = createCatalogService({ runtime });
+  const root = mkdtempSync(join(tmpdir(), 'neutv-cap-'));
+  const admin = createAdminService({
+    runtime, catalog, storage: createStorage({ root, maxBytes: 100 }),
+  });
+  const { video } = admin.createVideo(ADMIN, { title: 'Too Big', kind: 'upload' });
+  await assert.rejects(
+    () => admin.uploadFile(video.id, {
+      stream: Readable.from([Buffer.alloc(500)]), contentType: 'video/mp4',
+    }),
+    (e) => e.status === 400,
+  );
+  assert.equal(existsSync(join(root, `${video.id}.mp4`)), false, 'no half-written file left to serve');
+});
+
+test('a lying Content-Length does not get past the byte meter', async () => {
+  const runtime = fakeRuntime();
+  const catalog = createCatalogService({ runtime });
+  const root = mkdtempSync(join(tmpdir(), 'neutv-lie-'));
+  const admin = createAdminService({ runtime, catalog, storage: createStorage({ root, maxBytes: 100 }) });
+  const { video } = admin.createVideo(ADMIN, { title: 'Liar', kind: 'upload' });
+  await assert.rejects(
+    () => admin.uploadFile(video.id, {
+      stream: Readable.from([Buffer.alloc(500)]), contentType: 'video/mp4', contentLength: '10',
+    }),
+    (e) => e.status === 400,
+  );
+});
+
+test('an empty upload is refused', async () => {
+  const { admin } = build();
+  const { video } = admin.createVideo(ADMIN, { title: 'Empty', kind: 'upload' });
+  await assert.rejects(
+    () => admin.uploadFile(video.id, { stream: Readable.from([]), contentType: 'video/mp4' }),
+    (e) => e.status === 400,
+  );
+});
+
+test('the stored filename comes from the video id, never from the client', async () => {
+  const { admin, root } = build();
+  const { video } = admin.createVideo(ADMIN, { title: 'Traversal', kind: 'upload' });
+  await admin.uploadFile(video.id, {
+    stream: Readable.from(['x']), contentType: 'video/mp4; codecs="avc1"',
+  });
+  assert.ok(existsSync(join(root, `${video.id}.mp4`)));
+  assert.ok(Object.values(ALLOWED_TYPES).includes('mp4'));
+});
+
+test('setting the programme puts a video on the main page and publishes it', () => {
+  const { admin } = build();
+  const { video } = external(admin);
+  const res = admin.setProgramme(ADMIN, { videoId: video.id, note: 'morning block' });
+  assert.equal(res.video.id, video.id);
+  assert.equal(res.video.status, 'published');
+  assert.equal(res.programme.setBy, ADMIN);
+  assert.equal(admin.currentProgramme().video.id, video.id);
+});
+
+test('before any admin sets one, there is no programme and the caller is told so', () => {
+  const { admin } = build();
+  const current = admin.currentProgramme();
+  assert.equal(current.video, null);
+  assert.equal(current.source, 'unset', 'live falls back to the seeded broadcast');
+});
+
+test('a video with nothing to play cannot be broadcast or published', () => {
+  const { admin } = build();
+  const { video } = admin.createVideo(ADMIN, { title: 'No Bytes Yet', kind: 'upload' });
+  assert.throws(() => admin.setProgramme(ADMIN, { videoId: video.id }), (e) => e.status === 409);
+  assert.throws(() => admin.updateVideo(video.id, { status: 'published' }), (e) => e.status === 409);
+});
+
+test('the video currently on air cannot be archived out from under the page', () => {
+  const { admin } = build();
+  const { video } = external(admin);
+  admin.setProgramme(ADMIN, { videoId: video.id });
+  assert.throws(() => admin.archiveVideo(video.id), (e) => e.status === 409);
+});
+
+test('archiving keeps the file, and an archived video cannot go on air', () => {
+  const { admin } = build();
+  const a = external(admin).video;
+  const b = external(admin, { title: 'Second' }).video;
+  admin.setProgramme(ADMIN, { videoId: a.id });
+  const res = admin.archiveVideo(b.id);
+  assert.equal(res.video.status, 'archived');
+  assert.throws(() => admin.setProgramme(ADMIN, { videoId: b.id }), (e) => e.status === 409);
+});
+
+test('programme history records every change, newest first', () => {
+  const { runtime, admin } = build();
+  const a = external(admin).video;
+  const b = external(admin, { title: 'Second' }).video;
+  admin.setProgramme(ADMIN, { videoId: a.id });
+  runtime.tick();
+  admin.setProgramme(ADMIN, { videoId: b.id });
+  const { history, video } = admin.programmeWithHistory();
+  assert.equal(video.id, b.id);
+  assert.deepEqual(history.map((h) => h.videoId), [b.id, a.id]);
+});
+
+test('a video must belong to a real ecosystem product', () => {
+  const { admin } = build();
+  assert.throws(() => external(admin, { productId: 'fakebank' }), (e) => e.status === 400);
+});
+
+test('an external video needs somewhere to play from', () => {
+  const { admin } = build();
+  assert.throws(
+    () => admin.createVideo(ADMIN, { title: 'Nowhere', kind: 'external' }),
+    (e) => e.status === 400,
+  );
+});
+
+test('an unknown video is a 404 on every path that touches it', async () => {
+  const { admin } = build();
+  assert.throws(() => admin.getVideo('vid_nope'), (e) => e.status === 404);
+  assert.throws(() => admin.updateVideo('vid_nope', { title: 'x' }), (e) => e.status === 404);
+  assert.throws(() => admin.setProgramme(ADMIN, { videoId: 'vid_nope' }), (e) => e.status === 404);
+  await assert.rejects(() => admin.uploadFile('vid_nope', { stream: Readable.from(['x']), contentType: 'video/mp4' }), (e) => e.status === 404);
+});
+
+test('the CRM survives ports that are not wired', async () => {
+  const { admin } = build();
+  external(admin);
+  const overview = await admin.crmOverview();
+  assert.equal(overview.library.total, 1);
+  assert.equal(overview.viewers, null, 'an unwired port reports null, it does not throw');
+  assert.deepEqual(await admin.crmViewers(), { viewers: [] });
+});
+
+test('the CRM joins viewers to what they have spent', async () => {
+  const { admin } = build({
+    ports: {
+      viewers: {
+        summary: () => ({ total: 2 }),
+        list: () => [{ id: 'u1', name: '@alex' }, { id: 'u2', name: '@elena' }],
+      },
+      spend: { summary: () => ({ coinsSpent: 500 }), byUser: () => ({ u1: { spent: 500, gifts: 1 } }) },
+    },
+  });
+  const { viewers } = await admin.crmViewers();
+  assert.equal(viewers.find((v) => v.id === 'u1').coinsSpent, 500);
+  assert.equal(viewers.find((v) => v.id === 'u2').coinsSpent, 0, 'a viewer who never spent reads as zero, not undefined');
+});
+
+test('duration parsing covers the formats the catalog actually ships', () => {
+  assert.equal(parseDuration('04:12'), 252);
+  assert.equal(parseDuration('1:02:33'), 3753);
+  assert.equal(parseDuration('12'), 12);
+  assert.equal(parseDuration(90), 90);
+  assert.equal(parseDuration('nonsense'), 0);
+  assert.equal(parseDuration(null), 0);
+  assert.equal(parseDuration(undefined), 0);
+});

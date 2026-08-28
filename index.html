@@ -3083,6 +3083,9 @@ window.CentralData = {
 
   </script>
 
+  <!-- NEU TV backend client (contract v1) -->
+  <script src="./src/neutv-api.js?v=1.0"></script>
+
   <!-- Mount Script -->
   <script>
     function initApp() {
@@ -3097,10 +3100,29 @@ window.CentralData = {
       }
     }
 
+    // Pull the live catalog before the first render. If the backend is not
+    // running, hydrate() resolves anyway and the bundled window.CentralData
+    // above renders exactly as it always has - the page never blocks on it.
+    function bootstrapApp() {
+      if (!window.NeuTV) return initApp();
+      window.NeuTV.hydrate()
+        .then(function (res) {
+          console.log(res.live
+            ? '[NEU TV] live catalog ' + res.checksum
+            : '[NEU TV] offline, using bundled catalog');
+        })
+        .catch(function () { /* hydrate never rejects, but never trust that */ })
+        .then(function () {
+          initApp();
+          // Keep this viewer inside the live count while the tab is open.
+          if (window.NEUTV_LIVE && window.NeuTV.live) window.NeuTV.live.startPresence();
+        });
+    }
+
     if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', initApp);
+      document.addEventListener('DOMContentLoaded', bootstrapApp);
     } else {
-      initApp();
+      bootstrapApp();
     }
 
     // Refresh Lucide icons dynamically
