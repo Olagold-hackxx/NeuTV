@@ -1,24 +1,15 @@
 {
-  "name": "neutv-backend",
-  "version": "1.0.0",
+  "name": "neutv",
+  "version": "2.0.0",
   "private": true,
-  "description": "NEU TV (Central Stream) backend. Zero-dependency Node, services-first.",
+  "description": "NEU TV (Central Stream). backend/ is the API, frontend/ is the app.",
   "type": "module",
   "engines": { "node": ">=22.5.0" },
   "scripts": {
-    "start": "node --no-warnings=ExperimentalWarning services/gateway/server.mjs",
-    "dev": "NEUTV_ENV=dev node --no-warnings=ExperimentalWarning services/gateway/server.mjs",
-    "seed": "node --no-warnings=ExperimentalWarning scripts/extract-seed.mjs",
-    "test": "node --no-warnings=ExperimentalWarning --test services/*/test/*.test.mjs",
-    "test:catalog": "node --no-warnings=ExperimentalWarning --test services/catalog/test/*.test.mjs",
-    "test:identity": "node --no-warnings=ExperimentalWarning --test services/identity/test/*.test.mjs",
-    "test:wallet": "node --no-warnings=ExperimentalWarning --test services/wallet/test/*.test.mjs",
-    "test:social": "node --no-warnings=ExperimentalWarning --test services/social/test/*.test.mjs",
-    "test:live": "node --no-warnings=ExperimentalWarning --test services/live/test/*.test.mjs",
-    "test:moderation": "node --no-warnings=ExperimentalWarning --test services/moderation/test/*.test.mjs",
-    "test:llm": "node --no-warnings=ExperimentalWarning --test services/llm/test/*.test.mjs",
-    "test:gateway": "node --no-warnings=ExperimentalWarning --test services/gateway/test/*.test.mjs",
-    "eval": "node --no-warnings=ExperimentalWarning scripts/run-evals.mjs",
-    "verify": "npm run seed && npm test"
+    "start": "npm start   --prefix backend",
+    "seed":  "npm run seed --prefix backend",
+    "test":  "npm test     --prefix backend",
+    "eval":  "npm run eval --prefix backend",
+    "verify": "npm run verify --prefix backend"
   }
 }
