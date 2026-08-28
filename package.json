@@ -4,12 +4,17 @@
   "private": true,
   "description": "NEU TV (Central Stream). backend/ is the API, frontend/ is the app.",
   "type": "module",
-  "engines": { "node": ">=22.5.0" },
+  "engines": {
+    "node": ">=22.5.0"
+  },
   "scripts": {
     "start": "npm start   --prefix backend",
-    "seed":  "npm run seed --prefix backend",
-    "test":  "npm test     --prefix backend",
-    "eval":  "npm run eval --prefix backend",
-    "verify": "npm run verify --prefix backend"
+    "seed": "npm run seed --prefix backend",
+    "test": "npm test     --prefix backend",
+    "eval": "npm run eval --prefix backend",
+    "verify": "npm run verify --prefix backend",
+    "admin": "npm run dev --prefix admin",
+    "admin:build": "npm run build --prefix admin",
+    "admin:start": "npm start --prefix admin"
   }
 }
