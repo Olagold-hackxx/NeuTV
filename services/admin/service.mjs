@@ -77,6 +77,14 @@ export function createAdminService({
 
     getVideo: (videoId) => ({ video: publicVideo(getRow(videoId), mediaBase) }),
 
+    // Public read. Only published videos, so a draft cannot be played by
+    // guessing its id, and archived content stops being reachable.
+    publishedVideo(videoId) {
+      const row = getRow(videoId);
+      if (row.status !== 'published') throw notFound(`No published video "${videoId}".`);
+      return { video: publicVideo(row, mediaBase) };
+    },
+
     createVideo(actorId, input) {
       const v = validate(input, {
         title: { type: 'string', required: true, min: 2, max: 160 },

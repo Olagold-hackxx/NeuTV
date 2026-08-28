@@ -58,6 +58,15 @@ imported:
 Exposing these as public routes would widen the API for one back-office screen.
 Letting admin open four databases would end the isolation entirely.
 
+**Loopback calls are trusted, so a service must not depend on a peer's
+admin-only route.** `dispatch()` does not enforce auth levels; the gateway does.
+That means an in-process call sails through a route the same call would be
+refused over HTTP. The live service originally resolved stage takeovers via
+`GET /admin/videos/:id` and worked perfectly in one process, while a split
+deployment would have 403'd. The fix was a public `GET /videos/:videoId` that
+serves published videos only. Any new cross-service read has to be reachable at
+the auth level the caller actually holds.
+
 ## Deterministic vs latent
 
 Split deliberately, in both directions:

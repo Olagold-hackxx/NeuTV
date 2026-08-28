@@ -145,3 +145,25 @@ test('hub chat stores and returns messages in order', async () => {
   const { messages } = live.chat('worldstreet', 'ws-c1');
   assert.deepEqual(messages.map((m) => m.text), ['first', 'second']);
 });
+
+test('the stage resolves an admin video through the public route, not the admin one', async () => {
+  // Pinning the deployment-mode bug: resolving through /admin/videos worked
+  // in-process because loopback skips the gateway's auth gate, and would 403
+  // once the services were split across hosts.
+  const calls = [];
+  const programmeClient = {
+    call: async (service, method, path) => {
+      calls.push(path);
+      if (path === '/programme/current') return { status: 200, body: { video: null } };
+      if (path === '/videos/vid-1') {
+        return { status: 200, body: { video: { id: 'vid-1', title: 'Uploaded Clip', durationSeconds: 60, playbackUrl: '/media/vid-1.mp4' } } };
+      }
+      return { status: 404, body: null };
+    },
+  };
+  const { live } = build({ programmeClient });
+  const stage = await live.takeStage(null, { videoId: 'vid-1', viewerId: VIEWER });
+  assert.equal(stage.current.id, 'vid-1');
+  assert.ok(calls.includes('/videos/vid-1'), 'must use the public route');
+  assert.ok(!calls.some((p) => p.startsWith('/admin/')), 'must not depend on an admin-only route');
+});

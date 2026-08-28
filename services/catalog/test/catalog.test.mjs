@@ -5,6 +5,7 @@ import { createCatalogService, loadSeed } from '../service.mjs';
 import { resolveSchedule } from '../schedule.mjs';
 import { searchCatalog } from '../search.mjs';
 import { CONTRACT_VERSION } from '../../../contracts/version.mjs';
+import { readFileSync } from 'node:fs';
 
 const build = (over = {}) => createCatalogService({ runtime: fakeRuntime(), ...over });
 
@@ -32,6 +33,33 @@ test('the five product ids are exactly the ecosystem the PRD names', () => {
 test('logo paths point at real brand assets, not placeholders', () => {
   const withLogos = build().products().products.filter((p) => p.logo.startsWith('./assets/'));
   assert.ok(withLogos.length >= 3, 'the seed should carry the shipped brand logos');
+});
+
+test('every community hub id is either a product or a known standalone hub', () => {
+  // The seed ships a "tsion" hub (TSION General) that is NOT one of the five
+  // ecosystem products. The frontend used to default new posts to that id, so
+  // every post would have failed product validation the moment the UI was
+  // wired to the API. Hubs and products are different namespaces; this pins it.
+  const catalog = build();
+  const productIds = catalog.productIds();
+  const hubIds = Object.keys(catalog.hubs().hubs);
+  const standalone = hubIds.filter((h) => !productIds.includes(h));
+  assert.deepEqual(standalone, ['tsion'], 'a new standalone hub needs a decision, not a silent 400');
+  for (const id of productIds) {
+    assert.ok(hubIds.includes(id), `product ${id} has no community hub`);
+  }
+});
+
+test('the id the composer defaults to is a real ecosystem product', () => {
+  // Guards the seam: whatever the frontend composer defaults to must survive
+  // the backend's product validation.
+  const catalog = build();
+  const source = readFileSync(new URL('../../../src/app.js', import.meta.url), 'utf8');
+  const match = /useState\('([^']+)'\);\s*\n[^\n]*newPostMedia|newPostProduct, setNewPostProduct\] = useState\('([^']+)'\)/.exec(source);
+  const defaultId = match && (match[2] || match[1]);
+  assert.ok(defaultId, 'could not find the composer default in src/app.js');
+  assert.ok(catalog.productIds().includes(defaultId),
+    `the composer defaults to "${defaultId}", which the API rejects`);
 });
 
 test('an unknown hub is a 404, not an empty object', () => {

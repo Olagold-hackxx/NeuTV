@@ -123,7 +123,7 @@
 
     // Form State
     const [newPostText, setNewPostText] = useState('');
-    const [newPostProduct, setNewPostProduct] = useState('tsion');
+    const [newPostProduct, setNewPostProduct] = useState('worldstreet');
     const [newPostMedia, setNewPostMedia] = useState('');
     const [commentInputs, setCommentInputs] = useState({});
     const [followingUsers, setFollowingUsers] = useState({

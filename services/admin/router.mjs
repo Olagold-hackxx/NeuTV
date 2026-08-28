@@ -28,8 +28,9 @@ export function createAdminRouter(deps) {
   r.get('/admin/crm/viewers',    async (req) => ok(await service.crmViewers({ limit: Number(req.query.limit) || 50 })), { auth: 'admin' });
   r.get('/admin/crm/moderation', async (req) => ok(await service.crmModeration({ limit: Number(req.query.limit) || 50 })), { auth: 'admin' });
 
-  // Public: what the stage reverts to.
+  // Public: what the stage reverts to, and how the stage resolves a takeover.
   r.get('/programme/current', () => ok(service.currentProgramme()), { auth: 'none' });
+  r.get('/videos/:videoId',   (req) => ok(service.publishedVideo(req.params.videoId)), { auth: 'none' });
 
   return Object.assign(r, { service });
 }

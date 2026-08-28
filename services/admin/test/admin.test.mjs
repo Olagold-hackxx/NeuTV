@@ -217,3 +217,22 @@ test('duration parsing covers the formats the catalog actually ships', () => {
   assert.equal(parseDuration(null), 0);
   assert.equal(parseDuration(undefined), 0);
 });
+
+test('the public video route serves only published videos', () => {
+  const { admin } = build();
+  const { video } = external(admin);
+  // Ready but not on air: not publicly readable.
+  assert.throws(() => admin.publishedVideo(video.id), (e) => e.status === 404);
+  admin.setProgramme(ADMIN, { videoId: video.id });
+  assert.equal(admin.publishedVideo(video.id).video.id, video.id);
+});
+
+test('an archived video stops being publicly readable', () => {
+  const { admin } = build();
+  const a = external(admin).video;
+  const b = external(admin, { title: 'Second' }).video;
+  admin.setProgramme(ADMIN, { videoId: a.id });
+  admin.setProgramme(ADMIN, { videoId: b.id });
+  admin.archiveVideo(a.id);
+  assert.throws(() => admin.publishedVideo(a.id), (e) => e.status === 404);
+});

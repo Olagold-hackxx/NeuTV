@@ -18,7 +18,9 @@ export function createSocialRouter(deps) {
   r.get('/social/posts/:postId',           (req) => ok(service.post(req.auth, req.params.postId)), { auth: 'optional' });
   r.post('/social/posts/:postId/upvote',   (req) => ok(service.toggleUpvote(req.auth, req.params.postId)), { auth: 'required' });
   r.post('/social/posts/:postId/save',     (req) => ok(service.toggleSave(req.auth, req.params.postId)), { auth: 'required' });
-  r.post('/social/posts/:postId/share',    (req) => ok(service.share(req.auth, req.params.postId, { origin: req.body?.origin ?? '' })), { auth: 'optional' });
+  r.post('/social/posts/:postId/share',    (req) => ok(service.share(req.auth, req.params.postId, { origin: req.body?.origin ?? '' })), {
+    auth: 'optional', limit: { tokens: 30, windowMs: 60_000 },
+  });
   r.get('/social/posts/:postId/comments',  (req) => ok(service.comments(req.auth, req.params.postId, { limit: Number(req.query.limit) || 50 })), { auth: 'optional' });
   r.post('/social/posts/:postId/comments', async (req) => created(await service.comment(req.auth, req.params.postId, req.body)), {
     auth: 'required', limit: { tokens: 20, windowMs: 60_000 },
