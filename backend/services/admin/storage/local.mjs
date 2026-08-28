@@ -9,7 +9,7 @@ import { createWriteStream, mkdirSync, existsSync, statSync, unlinkSync } from '
 import { pipeline } from 'node:stream/promises';
 import { Transform } from 'node:stream';
 import { join, resolve } from 'node:path';
-import { badRequest } from '../../platform/errors.mjs';
+import { badRequest } from '../../../platform/errors.mjs';
 
 export const ALLOWED_TYPES = {
   'video/mp4': 'mp4',
@@ -24,6 +24,7 @@ export function createStorage({ root, maxBytes = DEFAULT_MAX_BYTES }) {
   mkdirSync(root, { recursive: true });
 
   return {
+    driver: 'local',
     root,
 
     // The stored name is derived entirely from the video id and the verified

@@ -18,7 +18,7 @@ let gateway; let base; let uploads;
 
 before(async () => {
   uploads = mkdtempSync(join(tmpdir(), 'neutv-gw-'));
-  gateway = createGateway({
+  gateway = await createGateway({
     runtime: fakeRuntime(), memory: true, passwordCost: TEST_COST,
     // Each test that needs an admin signs up its own account, so every one of
     // those emails has to be in the admin list.
@@ -28,7 +28,7 @@ before(async () => {
   base = `http://127.0.0.1:${gateway.server.address().port}`;
 });
 
-after(() => { gateway.server.close(); gateway.app.close(); });
+after(async () => { gateway.server.close(); await gateway.app.close(); });
 
 const call = async (path, opts = {}) => {
   const res = await fetch(base + path, opts);

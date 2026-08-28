@@ -8,25 +8,26 @@
 
 import { validate } from '../../platform/validate.mjs';
 import { notFound, badRequest, unauthorized } from '../../platform/errors.mjs';
-import { openSocialStore } from './store.mjs';
 
 const OFFICIAL = { author: 'NEU TV Official', handle: '@neutv', verified: 1 };
 
 export function createSocialService({
   runtime,
-  store = openSocialStore(':memory:'),
+  store,
   catalog,
   moderation = null,
-  seedOnStart = true,
 }) {
   // The seed is the designed feed. Loaded once; a restart must not duplicate it.
-  if (seedOnStart && store.get('SELECT COUNT(*) AS n FROM posts').n === 0) {
+  // Exposed rather than run in the constructor because it is async now, and a
+  // constructor that starts unawaited work is a race waiting to happen.
+  async function seed() {
+    if ((await store.get('SELECT COUNT(*) AS n FROM posts')).n > 0) return { seeded: false };
     const posts = catalog.seedPosts();
-    store.tx(() => {
-      posts.forEach((p, index) => {
+    await store.tx(async (t) => {
+      for (const [index, p] of posts.entries()) {
         // Seeded posts keep their designed order: newest first in the array.
         const createdAt = runtime.now() - index * 3_600_000;
-        store.run(
+        await t.run(
           `INSERT INTO posts (id, author_id, author, handle, avatar, verified, product_id, product_name,
                               category_tag, role, bio, followers, content, video_title, duration, views,
                               youtube_id, video_mp4, media_url, shares, seed_upvotes, created_at)
@@ -37,18 +38,23 @@ export function createSocialService({
           p.videoMp4 ?? null, p.mediaUrl ?? null, p.shares ?? 0, p.upvotes ?? 0, createdAt,
         );
         for (const c of p.comments ?? []) {
-          store.run(
+          await t.run(
             'INSERT INTO comments (id, post_id, author_id, author, handle, avatar, text, likes, created_at) VALUES (?,?,?,?,?,?,?,?,?)',
             c.id, p.id, null, c.author, c.handle, c.avatar ?? null, c.text, c.likes ?? 0, createdAt + 60_000,
           );
         }
-      });
+      }
     });
+    return { seeded: true, posts: posts.length };
   }
 
-  const upvoteCount = (postId) => store.get('SELECT COUNT(*) AS n FROM upvotes WHERE post_id = ?', postId).n;
+  const upvoteCount = async (postId) =>
+    (await store.get('SELECT COUNT(*) AS n FROM upvotes WHERE post_id = ?', postId)).n;
 
-  const shape = (row, auth) => ({
+  // Async because the per-post counters and the viewer's own state are reads.
+  // Callers map with Promise.all so a page of posts is one round of queries,
+  // not a sequential walk.
+  const shape = async (row, auth) => ({
     id: row.id,
     author: row.author,
     handle: row.handle,
@@ -70,19 +76,19 @@ export function createSocialService({
     shares: row.shares,
     // Designed count plus measured count, and both are visible so neither is
     // mistaken for the other.
-    upvotes: row.seed_upvotes + upvoteCount(row.id),
+    upvotes: row.seed_upvotes + await upvoteCount(row.id),
     seedUpvotes: row.seed_upvotes,
-    commentCount: store.get('SELECT COUNT(*) AS n FROM comments WHERE post_id = ?', row.id).n,
+    commentCount: (await store.get('SELECT COUNT(*) AS n FROM comments WHERE post_id = ?', row.id)).n,
     createdAt: row.created_at,
     flagged: Boolean(row.flagged),
     // Viewer-specific state, absent for guests.
-    isUpvoted: auth ? Boolean(store.get('SELECT 1 AS x FROM upvotes WHERE user_id = ? AND post_id = ?', auth.userId, row.id)) : false,
-    isSaved: auth ? Boolean(store.get('SELECT 1 AS x FROM saves WHERE user_id = ? AND post_id = ?', auth.userId, row.id)) : false,
-    isFollowing: auth ? Boolean(store.get('SELECT 1 AS x FROM follows WHERE user_id = ? AND handle = ?', auth.userId, row.handle)) : false,
+    isUpvoted: auth ? Boolean(await store.get('SELECT 1 AS x FROM upvotes WHERE user_id = ? AND post_id = ?', auth.userId, row.id)) : false,
+    isSaved: auth ? Boolean(await store.get('SELECT 1 AS x FROM saves WHERE user_id = ? AND post_id = ?', auth.userId, row.id)) : false,
+    isFollowing: auth ? Boolean(await store.get('SELECT 1 AS x FROM follows WHERE user_id = ? AND handle = ?', auth.userId, row.handle)) : false,
   });
 
-  const getRow = (postId) => {
-    const row = store.get('SELECT * FROM posts WHERE id = ?', postId);
+  const getRow = async (postId) => {
+    const row = await store.get('SELECT * FROM posts WHERE id = ?', postId);
     if (!row) throw notFound(`No post "${postId}".`);
     return row;
   };
@@ -97,24 +103,26 @@ export function createSocialService({
   };
 
   return {
-    feed(auth, { productId = null, limit = 20, cursor = null } = {}) {
+    seed,
+
+    async feed(auth, { productId = null, limit = 20, cursor = null } = {}) {
       const size = Math.min(Math.max(limit, 1), 50);
       // Keyset pagination on created_at: an offset shifts under you every time
       // someone posts while a reader is scrolling.
       const before = cursor ? Number(cursor) : Number.MAX_SAFE_INTEGER;
       const rows = productId && productId !== 'all'
-        ? store.all('SELECT * FROM posts WHERE product_id = ? AND created_at < ? ORDER BY created_at DESC LIMIT ?', productId, before, size + 1)
-        : store.all('SELECT * FROM posts WHERE created_at < ? ORDER BY created_at DESC LIMIT ?', before, size + 1);
+        ? await store.all('SELECT * FROM posts WHERE product_id = ? AND created_at < ? ORDER BY created_at DESC LIMIT ?', productId, before, size + 1)
+        : await store.all('SELECT * FROM posts WHERE created_at < ? ORDER BY created_at DESC LIMIT ?', before, size + 1);
 
       const page = rows.slice(0, size);
       return {
-        posts: page.map((r) => shape(r, auth)),
+        posts: await Promise.all(page.map((r) => shape(r, auth))),
         nextCursor: rows.length > size ? String(page[page.length - 1].created_at) : null,
         filter: productId ?? 'all',
       };
     },
 
-    post: (auth, postId) => ({ post: shape(getRow(postId), auth) }),
+    async post(auth, postId) { return { post: await shape(await getRow(postId), auth) }; },
 
     async create(auth, input) {
       if (!auth) throw unauthorized('Sign in to post.');
@@ -137,7 +145,7 @@ export function createSocialService({
       }
 
       const id = `post_${runtime.uuid()}`;
-      store.run(
+      await store.run(
         `INSERT INTO posts (id, author_id, author, handle, avatar, verified, product_id, product_name,
                             category_tag, content, media_url, video_mp4, youtube_id, video_title,
                             flagged, created_at)
@@ -147,40 +155,40 @@ export function createSocialService({
         v.content, v.mediaUrl ?? null, v.videoMp4 ?? null, v.youtubeId ?? null, v.videoTitle ?? null,
         decision.needsReview ? 1 : 0, runtime.now(),
       );
-      return { post: shape(getRow(id), auth), moderation: { verdict: decision.verdict, needsReview: decision.needsReview } };
+      return { post: await shape(await getRow(id), auth), moderation: { verdict: decision.verdict, needsReview: decision.needsReview } };
     },
 
-    toggleUpvote(auth, postId) {
+    async toggleUpvote(auth, postId) {
       if (!auth) throw unauthorized();
-      getRow(postId);
-      const existing = store.get('SELECT 1 AS x FROM upvotes WHERE user_id = ? AND post_id = ?', auth.userId, postId);
-      if (existing) store.run('DELETE FROM upvotes WHERE user_id = ? AND post_id = ?', auth.userId, postId);
-      else store.run('INSERT INTO upvotes (user_id, post_id, created_at) VALUES (?,?,?)', auth.userId, postId, runtime.now());
-      const row = getRow(postId);
-      return { postId, isUpvoted: !existing, upvotes: row.seed_upvotes + upvoteCount(postId) };
+      await getRow(postId);
+      const existing = await store.get('SELECT 1 AS x FROM upvotes WHERE user_id = ? AND post_id = ?', auth.userId, postId);
+      if (existing) await store.run('DELETE FROM upvotes WHERE user_id = ? AND post_id = ?', auth.userId, postId);
+      else await store.run('INSERT INTO upvotes (user_id, post_id, created_at) VALUES (?,?,?)', auth.userId, postId, runtime.now());
+      const row = await getRow(postId);
+      return { postId, isUpvoted: !existing, upvotes: row.seed_upvotes + await upvoteCount(postId) };
     },
 
-    toggleSave(auth, postId) {
+    async toggleSave(auth, postId) {
       if (!auth) throw unauthorized();
-      getRow(postId);
-      const existing = store.get('SELECT 1 AS x FROM saves WHERE user_id = ? AND post_id = ?', auth.userId, postId);
-      if (existing) store.run('DELETE FROM saves WHERE user_id = ? AND post_id = ?', auth.userId, postId);
-      else store.run('INSERT INTO saves (user_id, post_id, created_at) VALUES (?,?,?)', auth.userId, postId, runtime.now());
+      await getRow(postId);
+      const existing = await store.get('SELECT 1 AS x FROM saves WHERE user_id = ? AND post_id = ?', auth.userId, postId);
+      if (existing) await store.run('DELETE FROM saves WHERE user_id = ? AND post_id = ?', auth.userId, postId);
+      else await store.run('INSERT INTO saves (user_id, post_id, created_at) VALUES (?,?,?)', auth.userId, postId, runtime.now());
       return { postId, isSaved: !existing };
     },
 
-    share(auth, postId, { origin = '' } = {}) {
-      const row = getRow(postId);
-      store.run('UPDATE posts SET shares = shares + 1 WHERE id = ?', postId);
+    async share(auth, postId, { origin = '' } = {}) {
+      const row = await getRow(postId);
+      await store.run('UPDATE posts SET shares = shares + 1 WHERE id = ?', postId);
       return { postId, shares: row.shares + 1, url: `${origin}/?post=${postId}` };
     },
 
-    comments(auth, postId, { limit = 50 } = {}) {
-      getRow(postId);
+    async comments(auth, postId, { limit = 50 } = {}) {
+      await getRow(postId);
       return {
         postId,
-        comments: store.all(
-          'SELECT id, author, handle, avatar, text, likes, created_at AS createdAt, flagged FROM comments WHERE post_id = ? ORDER BY created_at ASC LIMIT ?',
+        comments: await store.all(
+          'SELECT id, author, handle, avatar, text, likes, created_at AS "createdAt", flagged FROM comments WHERE post_id = ? ORDER BY created_at ASC LIMIT ?',
           postId, Math.min(limit, 200),
         ),
       };
@@ -188,7 +196,7 @@ export function createSocialService({
 
     async comment(auth, postId, input) {
       if (!auth) throw unauthorized('Sign in to comment.');
-      getRow(postId);
+      await getRow(postId);
       const { text } = validate(input, { text: { type: 'string', required: true, min: 1, max: 1_000 } });
       const decision = await gate(text, 'comment', auth.userId);
       if (!decision.allowed) {
@@ -197,7 +205,7 @@ export function createSocialService({
         });
       }
       const id = `c_${runtime.uuid()}`;
-      store.run(
+      await store.run(
         'INSERT INTO comments (id, post_id, author_id, author, handle, avatar, text, flagged, created_at) VALUES (?,?,?,?,?,?,?,?,?)',
         id, postId, auth.userId, auth.user.name, auth.user.handle, auth.user.avatar, text,
         decision.needsReview ? 1 : 0, runtime.now(),
@@ -208,32 +216,35 @@ export function createSocialService({
       };
     },
 
-    toggleFollow(auth, handle) {
+    async toggleFollow(auth, handle) {
       if (!auth) throw unauthorized();
       const normalized = handle.startsWith('@') ? handle : `@${handle}`;
       if (normalized === auth.user.handle || normalized === auth.user.name) {
         throw badRequest('You cannot follow yourself.');
       }
-      const existing = store.get('SELECT 1 AS x FROM follows WHERE user_id = ? AND handle = ?', auth.userId, normalized);
-      if (existing) store.run('DELETE FROM follows WHERE user_id = ? AND handle = ?', auth.userId, normalized);
-      else store.run('INSERT INTO follows (user_id, handle, created_at) VALUES (?,?,?)', auth.userId, normalized, runtime.now());
+      const existing = await store.get('SELECT 1 AS x FROM follows WHERE user_id = ? AND handle = ?', auth.userId, normalized);
+      if (existing) await store.run('DELETE FROM follows WHERE user_id = ? AND handle = ?', auth.userId, normalized);
+      else await store.run('INSERT INTO follows (user_id, handle, created_at) VALUES (?,?,?)', auth.userId, normalized, runtime.now());
       return { handle: normalized, isFollowing: !existing };
     },
 
-    follows(auth) {
+    async follows(auth) {
       if (!auth) throw unauthorized();
       return {
-        handles: store.all('SELECT handle FROM follows WHERE user_id = ? ORDER BY created_at DESC', auth.userId).map((r) => r.handle),
+        handles: (await store.all('SELECT handle FROM follows WHERE user_id = ? ORDER BY created_at DESC', auth.userId)).map((r) => r.handle),
       };
     },
 
     // Read port for the admin CRM.
-    engagementSummary: () => ({
-      posts: store.get('SELECT COUNT(*) AS n FROM posts').n,
-      comments: store.get('SELECT COUNT(*) AS n FROM comments').n,
-      upvotes: store.get('SELECT COUNT(*) AS n FROM upvotes').n,
-      flagged: store.get("SELECT COUNT(*) AS n FROM posts WHERE flagged = 1").n,
-    }),
+    async engagementSummary() {
+      const [posts, comments, upvotes, flagged] = await Promise.all([
+        store.get('SELECT COUNT(*) AS n FROM posts'),
+        store.get('SELECT COUNT(*) AS n FROM comments'),
+        store.get('SELECT COUNT(*) AS n FROM upvotes'),
+        store.get('SELECT COUNT(*) AS n FROM posts WHERE flagged = 1'),
+      ]);
+      return { posts: posts.n, comments: comments.n, upvotes: upvotes.n, flagged: flagged.n };
+    },
 
     close: () => store.close(),
   };

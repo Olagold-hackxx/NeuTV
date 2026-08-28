@@ -20,6 +20,7 @@ import { realRuntime } from '../platform/runtime.mjs';
 import { createCatalogService } from '../services/catalog/service.mjs';
 import { createIdentityService } from '../services/identity/service.mjs';
 import { openIdentityStore } from '../services/identity/store.mjs';
+import { openServiceStore } from '../platform/db/index.mjs';
 
 const BACKEND_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -82,7 +83,11 @@ const identity = createIdentityService({
   runtime,
   catalog,
   adminEmails: allowed,
-  store: openIdentityStore(join(BACKEND_ROOT, 'services', 'identity', 'data', 'identity.db')),
+  // Same convention the gateway uses, from the same helper: with DATABASE_URL
+  // set this is the identity SCHEMA, not public.
+  store: await openServiceStore(openIdentityStore, 'identity', {
+    dataDir: join(BACKEND_ROOT, 'services'),
+  }),
 });
 
 try {
@@ -91,11 +96,11 @@ try {
   try {
     // signup() is the real code path, so this account is identical to one
     // created through the API - including how the admin role is assigned.
-    ({ user } = identity.signup({ email, password, platform: 'worldstreet' }));
+    ({ user } = await identity.signup({ email, password, platform: 'worldstreet' }));
     action = 'created';
   } catch (err) {
     if (err.status !== 409) throw err;
-    const reset = identity.resetPassword(email, password);
+    const reset = await identity.resetPassword(email, password);
     user = reset.user;
     action = `password reset (${reset.sessionsRevoked} session${reset.sessionsRevoked === 1 ? '' : 's'} revoked)`;
   }
@@ -112,5 +117,5 @@ ${generated ? `    password  ${password}\n\n  That password is shown once. Store
 } catch (err) {
   die(err.message);
 } finally {
-  identity.close();
+  await identity.close();
 }

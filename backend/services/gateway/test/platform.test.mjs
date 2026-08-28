@@ -6,7 +6,7 @@ import { validate } from '../../../platform/validate.mjs';
 import { createRouter, dispatch, parseJsonBody, parseQuery } from '../../../platform/http.mjs';
 import { createLimiter } from '../../../platform/ratelimit.mjs';
 import { createHub } from '../../../platform/sse.mjs';
-import { openStore } from '../../../platform/store.mjs';
+import { openStore } from '../../../platform/db/index.mjs';
 import { fakeRuntime } from '../../../platform/runtime.mjs';
 
 test('the validator trims, defaults, and reports every problem at once', () => {
@@ -115,18 +115,30 @@ test('an unsubscribe actually stops delivery', () => {
   assert.equal(seen.length, 1);
 });
 
-test('migrations run once and roll back as a unit on failure', () => {
-  const store = openStore(':memory:', { '001': 'CREATE TABLE t (id TEXT PRIMARY KEY)' });
-  store.run('INSERT INTO t VALUES (?)', 'a');
-  assert.equal(store.all('SELECT * FROM t').length, 1);
-  assert.throws(() => openStore(':memory:', { '001': 'CREATE TABLE ok (a)', '002': 'THIS IS NOT SQL' }), /Migration 002 failed/);
+test('migrations run once and roll back as a unit on failure', async () => {
+  const store = await openStore(':memory:', { '001': 'CREATE TABLE t (id TEXT PRIMARY KEY)' });
+  await store.run('INSERT INTO t VALUES (?)', 'a');
+  assert.equal((await store.all('SELECT * FROM t')).length, 1);
+  await assert.rejects(
+    () => openStore(':memory:', { '001': 'CREATE TABLE ok (a)', '002': 'THIS IS NOT SQL' }),
+    /Migration 002 failed/,
+  );
 });
 
-test('a failed transaction leaves nothing behind', () => {
-  const store = openStore(':memory:', { '001': 'CREATE TABLE t (id TEXT PRIMARY KEY)' });
-  assert.throws(() => store.tx(() => {
-    store.run('INSERT INTO t VALUES (?)', 'a');
+test('a failed transaction leaves nothing behind', async () => {
+  const store = await openStore(':memory:', { '001': 'CREATE TABLE t (id TEXT PRIMARY KEY)' });
+  await assert.rejects(() => store.tx(async (t) => {
+    await t.run('INSERT INTO t VALUES (?)', 'a');
     throw new Error('boom');
   }));
-  assert.equal(store.all('SELECT * FROM t').length, 0);
+  assert.equal((await store.all('SELECT * FROM t')).length, 0);
+});
+
+test('placeholders and integer coercion survive the round trip', async () => {
+  // The two things the Postgres adapter has to get right for services to stay
+  // engine-unaware.
+  const { toNumberedPlaceholders, coerceRow } = await import('../../../platform/db/sql.mjs');
+  assert.equal(toNumberedPlaceholders('SELECT ? , ?'), 'SELECT $1 , $2');
+  assert.equal(toNumberedPlaceholders("WHERE note = 'a? b' AND x = ?"), "WHERE note = 'a? b' AND x = $1");
+  assert.deepEqual(coerceRow({ n: '1756339200000', s: 'text' }), { n: 1756339200000, s: 'text' });
 });

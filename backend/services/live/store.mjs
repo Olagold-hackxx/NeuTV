@@ -1,4 +1,4 @@
-import { openStore } from '../../platform/store.mjs';
+import { openStore } from '../../platform/db/index.mjs';
 
 const MIGRATIONS = {
   '001_live': `
@@ -66,4 +66,4 @@ const MIGRATIONS = {
   `,
 };
 
-export const openLiveStore = (file) => openStore(file, MIGRATIONS);
+export const openLiveStore = (target, options) => openStore(target, MIGRATIONS, options);

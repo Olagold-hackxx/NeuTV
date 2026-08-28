@@ -1,4 +1,4 @@
-import { openStore } from '../../platform/store.mjs';
+import { openStore } from '../../platform/db/index.mjs';
 
 const MIGRATIONS = {
   '001_admin': `
@@ -44,4 +44,4 @@ const MIGRATIONS = {
   `,
 };
 
-export const openAdminStore = (file) => openStore(file, MIGRATIONS);
+export const openAdminStore = (target, options) => openStore(target, MIGRATIONS, options);

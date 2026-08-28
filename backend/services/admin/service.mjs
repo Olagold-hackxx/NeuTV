@@ -11,8 +11,7 @@
 
 import { validate } from '../../platform/validate.mjs';
 import { notFound, badRequest, conflict } from '../../platform/errors.mjs';
-import { openAdminStore } from './store.mjs';
-import { createStorage } from './storage.mjs';
+import { createStorage } from './storage/local.mjs';
 
 const STATUSES = ['draft', 'ready', 'published', 'archived'];
 
@@ -47,7 +46,7 @@ const publicVideo = (row, mediaBase) => ({
 
 export function createAdminService({
   runtime,
-  store = openAdminStore(':memory:'),
+  store,
   storage = null,
   uploadsRoot = null,
   mediaBase = '/media',
@@ -57,8 +56,8 @@ export function createAdminService({
 }) {
   const files = storage || createStorage({ root: uploadsRoot || './services/admin/data/uploads' });
 
-  const getRow = (videoId) => {
-    const row = store.get('SELECT * FROM videos WHERE id = ?', videoId);
+  const getRow = async (videoId) => {
+    const row = await store.get('SELECT * FROM videos WHERE id = ?', videoId);
     if (!row) throw notFound(`No video "${videoId}".`);
     return row;
   };
@@ -67,25 +66,25 @@ export function createAdminService({
     catalog.products().products.some((p) => p.id === productId);
 
   return {
-    listVideos({ status = null, productId = null, limit = 50 } = {}) {
+    async listVideos({ status = null, productId = null, limit = 50 } = {}) {
       const rows = status
-        ? store.all('SELECT * FROM videos WHERE status = ? ORDER BY created_at DESC LIMIT ?', status, Math.min(limit, 200))
-        : store.all('SELECT * FROM videos ORDER BY created_at DESC LIMIT ?', Math.min(limit, 200));
+        ? await store.all('SELECT * FROM videos WHERE status = ? ORDER BY created_at DESC LIMIT ?', status, Math.min(limit, 200))
+        : await store.all('SELECT * FROM videos ORDER BY created_at DESC LIMIT ?', Math.min(limit, 200));
       const filtered = productId ? rows.filter((r) => r.product_id === productId) : rows;
       return { videos: filtered.map((r) => publicVideo(r, mediaBase)), total: filtered.length };
     },
 
-    getVideo: (videoId) => ({ video: publicVideo(getRow(videoId), mediaBase) }),
+    async getVideo(videoId) { return { video: publicVideo(await getRow(videoId), mediaBase) }; },
 
     // Public read. Only published videos, so a draft cannot be played by
     // guessing its id, and archived content stops being reachable.
-    publishedVideo(videoId) {
-      const row = getRow(videoId);
+    async publishedVideo(videoId) {
+      const row = await getRow(videoId);
       if (row.status !== 'published') throw notFound(`No published video "${videoId}".`);
       return { video: publicVideo(row, mediaBase) };
     },
 
-    createVideo(actorId, input) {
+    async createVideo(actorId, input) {
       const v = validate(input, {
         title: { type: 'string', required: true, min: 2, max: 160 },
         description: { type: 'string', required: false, default: '', max: 2_000 },
@@ -105,7 +104,7 @@ export function createAdminService({
       const id = `vid_${runtime.uuid()}`;
       const now = runtime.now();
       const seconds = v.durationSeconds ?? parseDuration(v.duration);
-      store.run(
+      await store.run(
         `INSERT INTO videos (id, title, description, product_id, kind, status, source_url, youtube_id,
                              duration_secs, poster_url, created_by, created_at, updated_at)
          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
@@ -116,7 +115,7 @@ export function createAdminService({
         v.sourceUrl ?? null, v.youtubeId ?? null, seconds, v.posterUrl ?? null,
         actorId, now, now,
       );
-      const video = publicVideo(getRow(id), mediaBase);
+      const video = publicVideo(await getRow(id), mediaBase);
       return {
         video,
         upload: v.kind === 'upload'
@@ -126,19 +125,19 @@ export function createAdminService({
     },
 
     async uploadFile(videoId, { stream, contentType, contentLength }) {
-      const row = getRow(videoId);
+      const row = await getRow(videoId);
       if (row.kind !== 'upload') throw conflict('That video is external; it has no file to upload.');
       const saved = await files.save(videoId, contentType, stream, { declaredLength: contentLength });
-      store.run(
+      await store.run(
         `UPDATE videos SET file_path = ?, file_size = ?, content_type = ?, status = ?, updated_at = ?
          WHERE id = ?`,
         saved.path, saved.size, saved.contentType, row.status === 'draft' ? 'ready' : row.status, runtime.now(), videoId,
       );
-      return { video: publicVideo(getRow(videoId), mediaBase), uploaded: { size: saved.size, path: saved.path } };
+      return { video: publicVideo(await getRow(videoId), mediaBase), uploaded: { size: saved.size, path: saved.path } };
     },
 
-    updateVideo(videoId, input) {
-      const row = getRow(videoId);
+    async updateVideo(videoId, input) {
+      const row = await getRow(videoId);
       const v = validate(input, {
         title: { type: 'string', required: false, min: 2, max: 160 },
         description: { type: 'string', required: false, max: 2_000 },
@@ -165,69 +164,69 @@ export function createAdminService({
         poster_url: v.posterUrl ?? row.poster_url,
         duration_secs: v.durationSeconds ?? row.duration_secs,
       };
-      store.run(
+      await store.run(
         `UPDATE videos SET title=?, description=?, product_id=?, status=?, source_url=?, youtube_id=?,
                            poster_url=?, duration_secs=?, updated_at=? WHERE id=?`,
         next.title, next.description, next.product_id, next.status, next.source_url,
         next.youtube_id, next.poster_url, next.duration_secs, runtime.now(), videoId,
       );
-      return { video: publicVideo(getRow(videoId), mediaBase) };
+      return { video: publicVideo(await getRow(videoId), mediaBase) };
     },
 
-    archiveVideo(videoId) {
-      const row = getRow(videoId);
-      const current = store.get('SELECT video_id FROM programme WHERE id = 1');
+    async archiveVideo(videoId) {
+      const row = await getRow(videoId);
+      const current = await store.get('SELECT video_id FROM programme WHERE id = 1');
       // Archiving what is currently on air would leave the main page with
       // nothing to show.
       if (current && current.video_id === videoId) {
         throw conflict('That video is the main broadcast. Set another programme before archiving it.');
       }
-      store.run('UPDATE videos SET status = ?, updated_at = ? WHERE id = ?', 'archived', runtime.now(), videoId);
-      return { video: publicVideo(getRow(videoId), mediaBase), archived: true, fileRetained: Boolean(row.file_path) };
+      await store.run('UPDATE videos SET status = ?, updated_at = ? WHERE id = ?', 'archived', runtime.now(), videoId);
+      return { video: publicVideo(await getRow(videoId), mediaBase), archived: true, fileRetained: Boolean(row.file_path) };
     },
 
     // --- programming ------------------------------------------------------
 
-    setProgramme(actorId, input) {
+    async setProgramme(actorId, input) {
       const { videoId, note } = validate(input, {
         videoId: { type: 'string', required: true, max: 80 },
         note: { type: 'string', required: false, default: '', max: 200 },
       });
-      const row = getRow(videoId);
+      const row = await getRow(videoId);
       if (row.status === 'archived') throw conflict('Cannot broadcast an archived video.');
       if (!row.file_path && !row.source_url && !row.youtube_id) {
         throw conflict('That video has nothing to play yet.');
       }
 
       const now = runtime.now();
-      store.tx(() => {
-        store.run(
+      await store.tx(async (t) => {
+        await t.run(
           `INSERT INTO programme (id, video_id, set_by, set_at, note) VALUES (1,?,?,?,?)
            ON CONFLICT(id) DO UPDATE SET video_id=excluded.video_id, set_by=excluded.set_by,
                                          set_at=excluded.set_at, note=excluded.note`,
           videoId, actorId, now, note,
         );
-        store.run(
+        await t.run(
           'INSERT INTO programme_history (id, video_id, set_by, set_at, note) VALUES (?,?,?,?,?)',
           `ph_${runtime.uuid()}`, videoId, actorId, now, note,
         );
         // Putting a video on air publishes it.
         if (row.status !== 'published') {
-          store.run('UPDATE videos SET status = ?, updated_at = ? WHERE id = ?', 'published', now, videoId);
+          await t.run('UPDATE videos SET status = ?, updated_at = ? WHERE id = ?', 'published', now, videoId);
         }
       });
 
-      const programme = this.currentProgramme();
+      const programme = await this.currentProgramme();
       events.emit('programme', programme);
       return programme;
     },
 
     // The main broadcast. Null only before an admin has ever set one, in which
     // case the live service falls back to the seeded Central TV programme.
-    currentProgramme() {
-      const row = store.get('SELECT * FROM programme WHERE id = 1');
+    async currentProgramme() {
+      const row = await store.get('SELECT * FROM programme WHERE id = 1');
       if (!row) return { programme: null, video: null, source: 'unset' };
-      const video = store.get('SELECT * FROM videos WHERE id = ?', row.video_id);
+      const video = await store.get('SELECT * FROM videos WHERE id = ?', row.video_id);
       if (!video) return { programme: null, video: null, source: 'unset' };
       return {
         programme: { videoId: row.video_id, setBy: row.set_by, setAt: row.set_at, note: row.note },
@@ -236,11 +235,11 @@ export function createAdminService({
       };
     },
 
-    programmeWithHistory(limit = 20) {
+    async programmeWithHistory(limit = 20) {
       return {
-        ...this.currentProgramme(),
-        history: store.all(
-          'SELECT id, video_id AS videoId, set_by AS setBy, set_at AS setAt, note FROM programme_history ORDER BY set_at DESC LIMIT ?',
+        ...(await this.currentProgramme()),
+        history: await store.all(
+          'SELECT id, video_id AS "videoId", set_by AS "setBy", set_at AS "setAt", note FROM programme_history ORDER BY set_at DESC LIMIT ?',
           Math.min(limit, 100),
         ),
       };
@@ -249,12 +248,15 @@ export function createAdminService({
     // --- CRM --------------------------------------------------------------
 
     async crmOverview() {
-      const videos = store.get(
+      const videos = await store.get(
+        // CASE rather than SUM(status = '...'): SQLite treats a comparison as
+        // 1/0 and sums it happily, Postgres yields a boolean and refuses to.
+        // CASE is correct on both.
         `SELECT COUNT(*) AS total,
-                SUM(status = 'published') AS published,
-                SUM(status = 'draft') AS drafts,
-                SUM(status = 'archived') AS archived,
-                COALESCE(SUM(file_size), 0) AS storedBytes
+                SUM(CASE WHEN status = 'published' THEN 1 ELSE 0 END) AS published,
+                SUM(CASE WHEN status = 'draft' THEN 1 ELSE 0 END) AS drafts,
+                SUM(CASE WHEN status = 'archived' THEN 1 ELSE 0 END) AS archived,
+                COALESCE(SUM(file_size), 0) AS "storedBytes"
          FROM videos`,
       );
       const [viewers, spend, moderation, engagement] = await Promise.all([
@@ -270,7 +272,7 @@ export function createAdminService({
           drafts: videos.drafts ?? 0, archived: videos.archived ?? 0,
           storedBytes: videos.storedBytes,
         },
-        programme: this.currentProgramme(),
+        programme: await this.currentProgramme(),
         viewers, spend, moderation, engagement,
       };
     },

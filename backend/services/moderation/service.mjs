@@ -11,26 +11,21 @@
 
 import { validate } from '../../platform/validate.mjs';
 import { classify, RULESET_VERSION, BLOCK_THRESHOLD, REVIEW_THRESHOLD } from './rules.mjs';
-import { openModerationStore } from './store.mjs';
+
 
 const SURFACES = ['post', 'comment', 'live_comment', 'chat', 'profile'];
 
-export function createModerationService({
-  runtime,
-  store = openModerationStore(':memory:'),
-}) {
-  const record = (decision, surface, userId, text, matches) => {
-    store.run(
+export function createModerationService({ runtime, store }) {
+  const record = (decision, surface, userId, text, matches) => store.run(
       `INSERT INTO decisions (id, surface, user_id, verdict, score, rule_ids, excerpt, ruleset, decided_at)
        VALUES (?,?,?,?,?,?,?,?,?)`,
-      `mod_${runtime.uuid()}`, surface, userId ?? null, decision.verdict, decision.score,
-      JSON.stringify(matches.map((m) => m.id)),
-      String(text).slice(0, 280), RULESET_VERSION, runtime.now(),
-    );
-  };
+    `mod_${runtime.uuid()}`, surface, userId ?? null, decision.verdict, decision.score,
+    JSON.stringify(matches.map((m) => m.id)),
+    String(text).slice(0, 280), RULESET_VERSION, runtime.now(),
+  );
 
   return {
-    check(input, { userId = null } = {}) {
+    async check(input, { userId = null } = {}) {
       const { text, surface } = validate(input, {
         text: { type: 'string', required: true, min: 1, max: 5_000 },
         surface: { type: 'string', required: false, default: 'chat', enum: SURFACES },
@@ -53,12 +48,12 @@ export function createModerationService({
         decidedAt: runtime.now(),
       };
 
-      record(decision, surface, userId, text, rules.matches);
+      await record(decision, surface, userId, text, rules.matches);
       return decision;
     },
 
-    health() {
-      const counts = store.all('SELECT verdict, COUNT(*) AS n FROM decisions GROUP BY verdict');
+    async health() {
+      const counts = await store.all('SELECT verdict, COUNT(*) AS n FROM decisions GROUP BY verdict');
       return {
         rulesetVersion: RULESET_VERSION,
         thresholds: { block: BLOCK_THRESHOLD, review: REVIEW_THRESHOLD },
@@ -67,12 +62,12 @@ export function createModerationService({
       };
     },
 
-    recent: (limit = 50) => store.all('SELECT * FROM decisions ORDER BY decided_at DESC LIMIT ?', limit),
+    recent: async (limit = 50) => store.all('SELECT * FROM decisions ORDER BY decided_at DESC LIMIT ?', limit),
 
     // --- read ports for the admin CRM (see services/admin/ports.mjs) ------
 
-    summary() {
-      const rows = store.all('SELECT verdict, COUNT(*) AS n FROM decisions GROUP BY verdict');
+    async summary() {
+      const rows = await store.all('SELECT verdict, COUNT(*) AS n FROM decisions GROUP BY verdict');
       const counts = Object.fromEntries(rows.map((r) => [r.verdict, r.n]));
       return {
         allow: counts.allow ?? 0,
@@ -83,13 +78,13 @@ export function createModerationService({
     },
 
     // The queue the back office actually works: anything held for review.
-    queue({ limit = 50 } = {}) {
-      return store.all(
-        `SELECT id, surface, user_id AS userId, verdict, score, rule_ids AS ruleIds,
-                excerpt, decided_at AS decidedAt
+    async queue({ limit = 50 } = {}) {
+      return (await store.all(
+        `SELECT id, surface, user_id AS "userId", verdict, score, rule_ids AS "ruleIds",
+                excerpt, decided_at AS "decidedAt"
          FROM decisions WHERE verdict IN ('flag', 'block') ORDER BY decided_at DESC LIMIT ?`,
         Math.min(limit, 200),
-      ).map((r) => ({ ...r, ruleIds: JSON.parse(r.ruleIds) }));
+      )).map((r) => ({ ...r, ruleIds: JSON.parse(r.ruleIds) }));
     },
     close: () => store.close(),
   };

@@ -8,7 +8,6 @@
 
 import { validate } from '../../platform/validate.mjs';
 import { notFound, badRequest, forbidden, unauthorized } from '../../platform/errors.mjs';
-import { openLiveStore } from './store.mjs';
 import { resolveStage, takeoverDuration } from './stage.mjs';
 
 const PRESENCE_WINDOW_MS = 45_000;
@@ -18,7 +17,7 @@ const VIEWER_KEY = /^[A-Za-z0-9_-]{4,64}$/;
 
 export function createLiveService({
   runtime,
-  store = openLiveStore(':memory:'),
+  store,
   catalog,                          // contract client or service handle
   programmeClient = null,           // contract client for admin's /programme/current
   socialClient = null,              // contract client for social's /social/posts/:id
@@ -144,12 +143,12 @@ export function createLiveService({
     return null;
   };
 
-  const loadOverrides = (viewerKey) => {
+  const loadOverrides = async (viewerKey) => {
     const now = runtime.now();
     // Lazy sweep: expired rows are dead weight, not state.
-    store.run('DELETE FROM stage_overrides WHERE expires_at <= ?', now);
-    const read = (key) => {
-      const row = store.get('SELECT * FROM stage_overrides WHERE key = ?', key);
+    await store.run('DELETE FROM stage_overrides WHERE expires_at <= ?', now);
+    const read = async (key) => {
+      const row = await store.get('SELECT * FROM stage_overrides WHERE key = ?', key);
       if (!row) return null;
       return {
         videoId: row.video_id, video: JSON.parse(row.video_json), scope: row.scope,
@@ -157,8 +156,8 @@ export function createLiveService({
       };
     };
     return {
-      viewer: viewerKey ? read(`viewer:${viewerKey}`) : null,
-      broadcast: read('broadcast'),
+      viewer: viewerKey ? await read(`viewer:${viewerKey}`) : null,
+      broadcast: await read('broadcast'),
     };
   };
 
@@ -168,21 +167,21 @@ export function createLiveService({
   const stageFor = async (auth, { viewerId = null } = {}) => {
     const viewerKey = viewerKeyFor(auth, viewerId);
     const base = await mainBroadcast();
-    return resolveStage({ base, overrides: loadOverrides(viewerKey), now: runtime.now() });
+    return resolveStage({ base, overrides: await loadOverrides(viewerKey), now: runtime.now() });
   };
 
   // --- telemetry ---------------------------------------------------------
 
-  const liveViewers = () =>
-    store.get('SELECT COUNT(*) AS n FROM presence WHERE last_seen > ?', runtime.now() - PRESENCE_WINDOW_MS).n;
+  const liveViewers = async () =>
+    (await store.get('SELECT COUNT(*) AS n FROM presence WHERE last_seen > ?', runtime.now() - PRESENCE_WINDOW_MS)).n;
 
-  const telemetry = () => {
+  const telemetry = async () => {
     const seed = catalog.centralTv();
     return {
       onAir: true,
       resolution: '1080p HD',
       // A real measurement from presence heartbeats.
-      viewers: liveViewers(),
+      viewers: await liveViewers(),
       // Seed content shipped with the catalog, kept separate so nobody mistakes
       // it for a measurement.
       baselineViewers: seed.viewers ?? 0,
@@ -207,13 +206,18 @@ export function createLiveService({
     async state(auth, { viewerId = null } = {}) {
       const stage = await stageFor(auth, { viewerId });
       const videoId = stage.current?.id;
+      const [tele, likes, liked] = await Promise.all([
+        telemetry(),
+        store.get('SELECT COUNT(*) AS n FROM tv_likes WHERE video_id = ?', videoId ?? ''),
+        auth ? store.get('SELECT 1 AS x FROM tv_likes WHERE user_id = ? AND video_id = ?', auth.userId, videoId ?? '') : null,
+      ]);
       return {
         stage,
-        telemetry: telemetry(),
+        telemetry: tele,
         likes: {
-          total: store.get('SELECT COUNT(*) AS n FROM tv_likes WHERE video_id = ?', videoId ?? '').n,
+          total: likes.n,
           seeded: catalog.centralTv().likes ?? 0,
-          liked: Boolean(auth && store.get('SELECT 1 AS x FROM tv_likes WHERE user_id = ? AND video_id = ?', auth.userId, videoId ?? '')),
+          liked: Boolean(liked),
         },
       };
     },
@@ -249,7 +253,7 @@ export function createLiveService({
       const now = runtime.now();
       const ttl = takeoverDuration(video.durationSeconds, durationMs ?? null);
       const key = scope === 'broadcast' ? 'broadcast' : `viewer:${viewerKey}`;
-      store.run(
+      await store.run(
         `INSERT INTO stage_overrides (key, scope, video_id, video_json, started_at, expires_at, requested_by)
          VALUES (?,?,?,?,?,?,?)
          ON CONFLICT(key) DO UPDATE SET scope=excluded.scope, video_id=excluded.video_id,
@@ -274,7 +278,7 @@ export function createLiveService({
       }
       const viewerKey = viewerKeyFor(auth, viewerId);
       const key = scope === 'broadcast' ? 'broadcast' : `viewer:${viewerKey}`;
-      store.run('DELETE FROM stage_overrides WHERE key = ?', key);
+      await store.run('DELETE FROM stage_overrides WHERE key = ?', key);
       if (scope === 'broadcast') hub.publish('stage', { scope, reverted: true });
       return stageFor(auth, { viewerId });
     },
@@ -291,7 +295,7 @@ export function createLiveService({
         });
       }
       const id = `lc_${runtime.uuid()}`;
-      store.run(
+      await store.run(
         'INSERT INTO comments (id, user_id, author, handle, avatar, badge, text, flagged, created_at) VALUES (?,?,?,?,?,?,?,?,?)',
         id, auth.userId, auth.user.name, auth.user.handle, auth.user.avatar, auth.user.badge,
         text, decision.needsReview ? 1 : 0, runtime.now(),
@@ -304,8 +308,8 @@ export function createLiveService({
       return { comment, moderation: { verdict: decision.verdict, needsReview: decision.needsReview } };
     },
 
-    comments({ limit = 30 } = {}) {
-      const rows = store.all(
+    async comments({ limit = 30 } = {}) {
+      const rows = await store.all(
         `SELECT id, author, handle, avatar, badge, text, created_at AS at, flagged
          FROM comments ORDER BY created_at DESC LIMIT ?`, Math.min(limit, 100),
       );
@@ -323,33 +327,35 @@ export function createLiveService({
       return { comments: rows, seeded: false };
     },
 
-    react(auth, input) {
+    async react(auth, input) {
       const { emoji } = validate(input, { emoji: { type: 'string', required: true, max: 8 } });
       if (!REACTION_EMOJIS.includes(emoji)) {
         throw badRequest('That reaction is not on the broadcast palette.', { allowed: REACTION_EMOJIS });
       }
-      store.run(
-        'INSERT INTO reactions (emoji, total) VALUES (?, 1) ON CONFLICT(emoji) DO UPDATE SET total = total + 1',
+      await store.run(
+        'INSERT INTO reactions (emoji, total) VALUES (?, 1) ON CONFLICT(emoji) DO UPDATE SET total = reactions.total + 1',
         emoji,
       );
-      const total = store.get('SELECT total FROM reactions WHERE emoji = ?', emoji).total;
+      const total = (await store.get('SELECT total FROM reactions WHERE emoji = ?', emoji)).total;
       hub.publish('reaction', { emoji, total, at: runtime.now() });
       return { emoji, total };
     },
 
-    reactions: () => ({
-      palette: REACTION_EMOJIS,
-      totals: store.all('SELECT emoji, total FROM reactions ORDER BY total DESC'),
-    }),
+    async reactions() {
+      return {
+        palette: REACTION_EMOJIS,
+        totals: await store.all('SELECT emoji, total FROM reactions ORDER BY total DESC'),
+      };
+    },
 
     async toggleLike(auth, input) {
       if (!auth) throw unauthorized();
       const stage = await stageFor(auth, { viewerId: input?.viewerId ?? null });
       const videoId = stage.current?.id ?? 'main';
-      const existing = store.get('SELECT 1 AS x FROM tv_likes WHERE user_id = ? AND video_id = ?', auth.userId, videoId);
-      if (existing) store.run('DELETE FROM tv_likes WHERE user_id = ? AND video_id = ?', auth.userId, videoId);
-      else store.run('INSERT INTO tv_likes (user_id, video_id, created_at) VALUES (?,?,?)', auth.userId, videoId, runtime.now());
-      const total = store.get('SELECT COUNT(*) AS n FROM tv_likes WHERE video_id = ?', videoId).n;
+      const existing = await store.get('SELECT 1 AS x FROM tv_likes WHERE user_id = ? AND video_id = ?', auth.userId, videoId);
+      if (existing) await store.run('DELETE FROM tv_likes WHERE user_id = ? AND video_id = ?', auth.userId, videoId);
+      else await store.run('INSERT INTO tv_likes (user_id, video_id, created_at) VALUES (?,?,?)', auth.userId, videoId, runtime.now());
+      const total = (await store.get('SELECT COUNT(*) AS n FROM tv_likes WHERE video_id = ?', videoId)).n;
       return { videoId, liked: !existing, total, seeded: catalog.centralTv().likes ?? 0 };
     },
 
@@ -364,7 +370,7 @@ export function createLiveService({
         });
       }
       const id = `msg_${runtime.uuid()}`;
-      store.run(
+      await store.run(
         'INSERT INTO chat_messages (id, server_id, channel_id, user_id, author, avatar, text, flagged, created_at) VALUES (?,?,?,?,?,?,?,?,?)',
         id, serverId, channelId, auth.userId, auth.user.name, auth.user.avatar, text,
         decision.needsReview ? 1 : 0, runtime.now(),
@@ -374,11 +380,11 @@ export function createLiveService({
       return { message, moderation: { verdict: decision.verdict, needsReview: decision.needsReview } };
     },
 
-    chat(serverId, channelId, { limit = 50 } = {}) {
+    async chat(serverId, channelId, { limit = 50 } = {}) {
       if (!catalog.hasChannel(serverId, channelId)) throw notFound(`No channel "${channelId}" in hub "${serverId}".`);
       return {
         serverId, channelId,
-        messages: store.all(
+        messages: await store.all(
           `SELECT id, author, avatar, text, created_at AS at, flagged
            FROM chat_messages WHERE server_id = ? AND channel_id = ?
            ORDER BY created_at ASC LIMIT ?`, serverId, channelId, Math.min(limit, 200),
@@ -389,21 +395,21 @@ export function createLiveService({
     async leaderboard({ limit = 10 } = {}) {
       const stage = await stageFor(null, {});
       const target = { type: 'stream', id: stage.mainBroadcast?.id ?? 'main' };
-      const rows = giftPort?.topGifters ? giftPort.topGifters(target, { limit }) : [];
+      const rows = giftPort?.topGifters ? await giftPort.topGifters(target, { limit }) : [];
       return { target, leaders: rows, generatedAt: runtime.now() };
     },
 
-    presence(auth, input) {
+    async presence(auth, input) {
       const { viewerId } = validate(input ?? {}, { viewerId: { type: 'string', required: false, max: 64 } });
       const key = viewerKeyFor(auth, viewerId);
       if (!key) throw badRequest('Send a viewerId (4-64 chars, A-Za-z0-9_-) or sign in.');
       const now = runtime.now();
-      store.run(
+      await store.run(
         'INSERT INTO presence (viewer_key, user_id, last_seen) VALUES (?,?,?) ON CONFLICT(viewer_key) DO UPDATE SET last_seen = excluded.last_seen, user_id = excluded.user_id',
         key, auth?.userId ?? null, now,
       );
-      store.run('DELETE FROM presence WHERE last_seen < ?', now - PRESENCE_WINDOW_MS * 4);
-      return { counted: true, viewers: liveViewers(), windowMs: PRESENCE_WINDOW_MS };
+      await store.run('DELETE FROM presence WHERE last_seen < ?', now - PRESENCE_WINDOW_MS * 4);
+      return { counted: true, viewers: await liveViewers(), windowMs: PRESENCE_WINDOW_MS };
     },
 
     // Wallet emits gift events here through the composition root.

@@ -1,4 +1,4 @@
-import { openStore } from '../../platform/store.mjs';
+import { openStore } from '../../platform/db/index.mjs';
 
 const MIGRATIONS = {
   '001_moderation': `
@@ -25,4 +25,4 @@ const MIGRATIONS = {
   `,
 };
 
-export const openModerationStore = (file) => openStore(file, MIGRATIONS);
+export const openModerationStore = (target, options) => openStore(target, MIGRATIONS, options);

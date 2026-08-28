@@ -14,11 +14,73 @@ Open `http://localhost:4173` and the existing UI renders against the live API.
 Stop the server and it renders against the bundled `window.CentralData`, exactly
 as it did before — the backend is additive, never a hard dependency.
 
-## Why no dependencies
+## Storage
 
-Node 22 ships everything this needed: `node:http` for the server, `node:sqlite`
-for storage, `node:test` for the suite, `node:crypto` (scrypt) for passwords,
-and SSE over plain HTTP instead of a websocket library. Nothing here is a
+Two engines, one codebase.
+
+```bash
+npm start                                   # SQLite: a file per service, zero setup
+DATABASE_URL=postgres://... npm start       # Postgres: one database, a schema per service
+```
+
+Each service owns a Postgres **schema**, which is the same isolation a private
+SQLite file gave it. That is not decorative: social and live both define a table
+called `comments`, and sharing one namespace made the second service's migration
+fail outright.
+
+Move existing SQLite data across:
+
+```bash
+npm run migrate:postgres -- --url postgres://localhost:5432/neutv --dry-run
+npm run migrate:postgres -- --url postgres://localhost:5432/neutv
+```
+
+Rows insert with `ON CONFLICT DO NOTHING`, so a repeat run is safe and a partial
+one resumes.
+
+### Both engines are tested
+
+```bash
+npm test                                    # SQLite, in memory, ~5s
+npm run test:pg                             # the identical suite against Postgres
+```
+
+Running both is the point. The Postgres pass immediately caught the `comments`
+collision and thirteen camelCase column aliases that Postgres folds to lower
+case (`AS ruleIds` comes back as `ruleids`) - bugs SQLite is happy to hide.
+
+## Video storage
+
+```bash
+NEUTV_MEDIA_DRIVER=local                    # default: disk, served at /media
+NEUTV_MEDIA_DRIVER=s3                       # any S3-compatible bucket
+NEUTV_MEDIA_BASE_URL=https://cdn.neu.tv     # serve playback from the edge
+```
+
+The S3 driver speaks the S3 REST API directly, signing with SigV4 built from
+`node:crypto`. It works against Cloudflare R2, AWS S3, Backblaze B2, DigitalOcean
+Spaces and MinIO. The AWS SDK is tens of megabytes of dependency for two HTTP
+calls; the signing algorithm is public and about forty lines.
+
+Uploads stream rather than buffer, so a multi-gigabyte file never sits in memory.
+That means object storage needs a `Content-Length` up front - discovering the
+length by buffering is exactly what this avoids - and the driver refuses an
+upload without one. The type allowlist, the size cap and the id-derived object
+key all apply the same as on disk.
+
+**Unverified:** the signing is covered by tests through an injected `fetch`, but
+no request has been made against a real bucket, because there are no credentials
+on this machine. Point it at a bucket and upload once before relying on it.
+
+## Why (almost) no dependencies
+
+`pg` is the only runtime dependency, and only because there is no way to speak
+the Postgres wire protocol without a driver.
+
+Everything else is Node 22 standard library: `node:http` for the server,
+`node:sqlite` for the zero-setup engine, `node:test` for the suite,
+`node:crypto` for scrypt passwords and for S3 request signing, and SSE over
+plain HTTP instead of a websocket library. Nothing here is a
 framework decision anyone has to relitigate, there is no build step, and
 `npm install` is not part of running it.
 
@@ -157,6 +219,9 @@ Set these in `backend/.env` (see `.env.example`) or export them.
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `PORT` | `4173` | Gateway port |
+| `DATABASE_URL` | none | Postgres. Unset means SQLite per service. |
+| `NEUTV_MEDIA_DRIVER` | `local` | `local` or `s3` |
+| `NEUTV_MEDIA_BASE_URL` | `/media` | CDN hostname for playback |
 | `NEUTV_ADMIN_EMAILS` | none | Comma-separated emails granted the admin role |
 | `NEUTV_FRONTEND_ROOT` | `../frontend` | Static files the gateway serves |
 

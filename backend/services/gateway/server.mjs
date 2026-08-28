@@ -27,8 +27,8 @@ const REPO_ROOT = join(BACKEND_ROOT, '..');
 const FRONTEND_ROOT = process.env.NEUTV_FRONTEND_ROOT || join(REPO_ROOT, 'frontend');
 const MAX_JSON_BYTES = 1024 * 1024; // 1 MB; uploads take the raw path instead
 
-export function createGateway(options = {}) {
-  const app = compose(options);
+export async function createGateway(options = {}) {
+  const app = await compose(options);
   const limiter = createLimiter(app.runtime);
   const uploadsRoot = options.uploadsRoot || join(BACKEND_ROOT, 'services', 'admin', 'data', 'uploads');
   const staticRoot = options.staticRoot || FRONTEND_ROOT;
@@ -147,7 +147,7 @@ export function createGateway(options = {}) {
     // --- session ---------------------------------------------------------
     const header = req.headers.authorization || '';
     const token = header.startsWith('Bearer ') ? header.slice(7).trim() : (url.searchParams.get('token') || null);
-    const auth = app.services.identity.authenticate(token);
+    const auth = await app.services.identity.authenticate(token);
 
     const level = route.auth;
     if ((level === 'required' || level === 'admin') && !auth) throw unauthorized();
@@ -204,7 +204,8 @@ export function createGateway(options = {}) {
 const isMain = process.argv[1] && process.argv[1].endsWith('server.mjs');
 if (isMain) {
   const port = Number(process.env.PORT || 4173);
-  const { server, app } = createGateway({
+  // Top-level await: the process must not listen until every migration has run.
+  const { server, app } = await createGateway({
     adminEmails: (process.env.NEUTV_ADMIN_EMAILS || '').split(',').map((s) => s.trim()).filter(Boolean),
   });
 
@@ -217,11 +218,13 @@ if (isMain) {
     console.log(`NEU TV gateway on http://localhost:${port}`);
     console.log(`  contract   ${CONTRACT_VERSION}  |  catalog ${app.services.catalog.checksum}`);
     console.log(`  services   ${SERVICES.join(', ')}`);
+    console.log(`  database   ${process.env.DATABASE_URL ? 'postgres' : 'sqlite (per service)'}`);
+    console.log(`  media      ${(process.env.NEUTV_MEDIA_DRIVER || 'local')}${process.env.NEUTV_MEDIA_BASE_URL ? ` -> ${process.env.NEUTV_MEDIA_BASE_URL}` : ''}`);
     console.log(`  frontend   ${FRONTEND_ROOT}`);
     console.log(`  admins     ${process.env.NEUTV_ADMIN_EMAILS || '(none set - export NEUTV_ADMIN_EMAILS to enable the back office)'}`);
   });
 
-  const shutdown = () => { server.close(); app.close(); process.exit(0); };
+  const shutdown = async () => { server.close(); await app.close(); process.exit(0); };
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
 }
