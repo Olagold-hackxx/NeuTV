@@ -89,6 +89,10 @@ export const ROUTES = [
   // Public read of the current programme: what the stage reverts to, and what
   // a cold frontend loads before any takeover happens.
   { service: 'admin', method: 'GET',    path: '/programme/current',          auth: 'none',  summary: 'The main broadcast the stage returns to.' },
+  // Public read of a PUBLISHED video. The live service resolves stage takeovers
+  // through this: the admin route is admin-only, which works in-process but
+  // 403s the moment the services are split across hosts.
+  { service: 'admin', method: 'GET',    path: '/videos/:videoId',            auth: 'none',  summary: 'A published video, for stage playback.' },
 
   // --- moderation: the gate every piece of user text passes through --------
   { service: 'moderation', method: 'POST', path: '/moderation/check',  auth: 'optional', summary: 'Classify user text. Deterministic rules, LLM escalation.' },

@@ -62,9 +62,12 @@ export function createLiveService({
         duration: vod.duration, durationSeconds: parseClock(vod.duration),
       };
     }
-    // Admin-uploaded videos are addressed by the same route.
+    // Admin-uploaded videos, through the PUBLIC video route. Using the
+    // admin-only route here worked in-process (loopback does not run the
+    // gateway's auth gate) but would 403 as soon as the services were split
+    // across hosts.
     if (programmeClient) {
-      const res = await programmeClient.call('admin', 'GET', `/admin/videos/${videoId}`, { auth: { internal: true } });
+      const res = await programmeClient.call('admin', 'GET', `/videos/${videoId}`, {});
       if (res.status === 200 && res.body?.video) {
         const v = res.body.video;
         return {
