@@ -5,7 +5,7 @@ media rows, platforms, schedule, VOD, hashtags, trending, and search.
 
 **No database.** Everything derives from `seed/catalog.seed.json` plus the
 clock, so there is no mutable state and nothing for two processes to disagree
-about. Regenerate the seed with `npm run seed` (parses `src/data.js`).
+about. The seed is committed content, edited in place.
 
 - `GET /catalog/bootstrap` returns the whole `window.CentralData` payload, so
   the existing frontend can drop it in.

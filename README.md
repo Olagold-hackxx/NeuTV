@@ -11,7 +11,7 @@ frontend/    The app: index.html, src/, assets/
 npm start     # gateway + frontend on http://localhost:4173
 npm test      # 172 gate tests, ~1.5s
 npm run eval  # quality evals with pass thresholds
-npm run seed  # regenerate the catalog seed from frontend/src/data.js
+npm run seed:videos  # give every catalog video a row in the admin library
 ```
 
 Every script delegates to `backend/`, which holds its own `package.json` so it
@@ -31,11 +31,12 @@ No AI, deliberately. See `backend/README.md` for why, and
 
 ## frontend/
 
-`index.html` plus `src/{app.js, data.js, styles.css, neutv-api.js}` and
-`assets/logos/`. `neutv-api.js` is the client for the whole API contract;
-`index.html` hydrates from it before the first render and falls back to the
-bundled `window.CentralData` when the backend is down, so the page works with no
-server running.
+`index.html` plus `src/{app.js, catalog.js, bridge.js, styles.css,
+neutv-api.js}` and `assets/logos/`. `neutv-api.js` is the client for the whole
+API contract; `index.html` hydrates from it before the first render — the
+editorial catalog from `/catalog/bootstrap`, the on-demand shelves from the
+published admin library at `/videos`. There is no bundled copy of the content:
+what the back office publishes is what the site carries.
 
 Migrating the remaining handlers (likes, comments, tips, chat) to the API, the
 admin/CRM screens, the Next.js move and the design pass are the next phase.

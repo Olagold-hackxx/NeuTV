@@ -1,7 +1,7 @@
 // Catalog service: the content spine of the 24/7 network.
 //
 // Deliberately has no database. Everything it serves is derived from a
-// committed seed (scripts/extract-seed.mjs) plus the clock, so there is no
+// committed seed plus the clock, so there is no
 // mutable state to store and nothing for two processes to disagree about.
 // Adding SQLite here would buy nothing and cost a failure mode.
 

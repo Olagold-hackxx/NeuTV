@@ -162,8 +162,25 @@ export async function createGateway(options = {}) {
       limiter.check(`${route.service}:${route.path}:${who}`, hit.route.limit);
     }
 
-    // --- SSE -------------------------------------------------------------
+    // --- streaming responses ---------------------------------------------
+    //
+    // Two shapes share the 'stream' flag and they are not interchangeable:
+    //   { stream: fn }  an SSE subscription the gateway keeps open
+    //   { file: {...} } a file to send, used by live broadcast segments
+    // Dispatch first, then decide, so a file route never gets SSE headers.
     if (hit?.route?.stream) {
+      const result = await dispatch(router, {
+        method: req.method, path: apiPath, query: parseQuery(url.search),
+        body: {}, auth, headers: req.headers,
+      });
+
+      if (result?.file) {
+        // A live segment is immutable once written and named by sequence, so it
+        // caches hard; the manifest is what changes.
+        return serveFile(req, res, result.file.absolute, { cache: 'public, max-age=31536000, immutable' })
+          || send(res, 404, { error: { code: 'not_found', message: 'Segment gone.' } });
+      }
+
       res.writeHead(200, {
         'content-type': 'text/event-stream',
         'cache-control': 'no-cache, no-transform',
@@ -171,10 +188,6 @@ export async function createGateway(options = {}) {
         'x-accel-buffering': 'no',
       });
       res.write(': connected\n\n');
-      const result = await dispatch(router, {
-        method: req.method, path: apiPath, query: parseQuery(url.search),
-        body: {}, auth, headers: req.headers,
-      });
       const unsubscribe = result.stream((frame) => res.write(frame));
       const beat = setInterval(() => res.write(': keepalive\n\n'), 25_000);
       req.on('close', () => { clearInterval(beat); unsubscribe(); });

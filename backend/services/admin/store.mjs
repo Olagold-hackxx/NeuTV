@@ -69,6 +69,32 @@ const MIGRATIONS = {
     );
     CREATE INDEX idx_live_events_status ON live_events(status, created_at DESC);
   `,
+  // Segments produced by broadcasting from the admin page.
+  //
+  // Only the index lives here; the bytes are on disk. A rolling window is kept
+  // so a long broadcast does not grow without bound, and the init segment (the
+  // WebM header, seq 0) is never evicted because a player joining late cannot
+  // decode anything without it.
+  '003_live_segments': `
+    CREATE TABLE live_segments (
+      event_id   TEXT NOT NULL,
+      seq        INTEGER NOT NULL,
+      path       TEXT NOT NULL,
+      bytes      INTEGER NOT NULL,
+      mime       TEXT NOT NULL,
+      is_init    INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY (event_id, seq)
+    );
+    CREATE INDEX idx_live_segments_event ON live_segments(event_id, seq DESC);
+  `,
+  // How the event is fed. 'external' plays a URL the admin supplies; 'browser'
+  // is recorded in the admin tab and arrives as segments. They have different
+  // readiness rules, and inferring which is which from "is playbackUrl empty"
+  // was ambiguous enough to let a browser broadcast fail to go on air.
+  '004_event_source': `
+    ALTER TABLE live_events ADD COLUMN source TEXT NOT NULL DEFAULT 'external';
+  `,
 };
 
 export const openAdminStore = (target, options) => openStore(target, MIGRATIONS, options);

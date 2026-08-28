@@ -4,15 +4,15 @@ The 24/7 linear broadcast network behind NEU TV (Central Stream): seven
 services, zero npm dependencies, Node 22 standard library only.
 
 ```bash
-npm run seed      # regenerate the catalog seed from src/data.js
+npm run seed:videos  # give every catalog video a row in the admin library
 npm test          # 183 gate tests, deterministic, ~1.7s
 npm run eval      # quality evals with pass thresholds
 npm start         # gateway + frontend on http://localhost:4173
 ```
 
-Open `http://localhost:4173` and the existing UI renders against the live API.
-Stop the server and it renders against the bundled `window.CentralData`, exactly
-as it did before — the backend is additive, never a hard dependency.
+Open `http://localhost:4173` and the UI renders against the live API. There is
+no bundled fallback catalog any more: the frontend has no content of its own, so
+the API is a hard dependency and a page that cannot reach it says so.
 
 ## Storage
 
@@ -146,6 +146,38 @@ two things claiming it is not a state the stage machine can resolve.
 Going on and off air is published over SSE, so a viewer already watching
 switches without reloading, and a viewer mid-takeover is not yanked away: they
 return to the live event when their video ends.
+
+### Broadcasting from the admin page
+
+The admin page is the studio. It captures the camera or the screen in the
+browser, records short chunks with MediaRecorder, and posts each one to the API;
+viewers fetch those chunks and assemble them through MediaSource. No encoder to
+install, no media server, no accounts.
+
+```
+PUT /api/v1/admin/live-events/:id/segment      one recorded chunk (admin)
+GET /api/v1/live-event/:id/manifest?after=N    which segments exist (public)
+GET /api/v1/live-event/:id/segment/:seq        the bytes (public, immutable)
+```
+
+**Latency is roughly 3-6 seconds**, because a segment cannot be sent until it has
+been recorded. That is a broadcast, not a conversation. Sub-second needs an SFU,
+which is what the hosted ingest drivers below are for.
+
+Two details that make late joiners work: segment 0 is the WebM header and is
+never evicted, because a viewer joining an hour in still needs it to decode
+anything; everything after it is a rolling window, so a six-hour broadcast does
+not fill the volume. The player fetches segment 0 first regardless of where the
+window currently starts, appends one chunk at a time (a SourceBuffer rejects
+overlapping appends), and skips forward if it drifts more than a few seconds
+behind the edge.
+
+An event declares how it is fed:
+
+| `source` | Video comes from | Needs a playback URL |
+| --- | --- | --- |
+| `browser` | the admin tab, as segments | no |
+| `external` | a URL you supply | yes |
 
 ### Ingest
 

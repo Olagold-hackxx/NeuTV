@@ -39,11 +39,38 @@ export function createAdminRouter(deps) {
   r.post('/admin/live-events/:eventId/rotate', async (req) => ok(await service.liveEvents.rotateKey(req.params.eventId)), { auth: 'admin' });
   r.del('/admin/live-events/:eventId',        async (req) => ok(await service.liveEvents.cancel(req.params.eventId)), { auth: 'admin' });
 
+  // The browser posts a recorded chunk. Raw binary: the gateway hands over the
+  // request stream and it goes straight to disk.
+  r.put('/admin/live-events/:eventId/segment', async (req) => created(
+    await service.liveSegments.append(req.params.eventId, {
+      ...req.raw,
+      init: req.query.init === '1' || req.query.init === 'true',
+    }),
+  ), { auth: 'admin', raw: true });
+
   // Public: never carries the stream key.
   r.get('/live-event/current', async () => ok(await service.liveEvents.current()), { auth: 'none' });
 
+  r.get('/live-event/:eventId/manifest', async (req) => ok(
+    await service.liveSegments.manifest(req.params.eventId, {
+      after: req.query.after !== undefined ? Number(req.query.after) : -1,
+      limit: Number(req.query.limit) || 60,
+    }),
+  ), { auth: 'none' });
+
+  // Segment bytes. Declared as a stream so the gateway serves the file itself
+  // rather than trying to JSON-encode it.
+  r.get('/live-event/:eventId/segment/:seq', async (req) => ({
+    file: await service.liveSegments.locate(req.params.eventId, req.params.seq),
+  }), { auth: 'none', stream: true });
+
   // Public: what the stage reverts to, and how the stage resolves a takeover.
   r.get('/programme/current', async () => ok(await service.currentProgramme()), { auth: 'none' });
+  // Declared before the parameterised route so "videos" cannot be read as an id.
+  r.get('/videos', async (req) => ok(await service.publishedVideos({
+    productId: req.query.productId || null,
+    limit: Number(req.query.limit) || 60,
+  })), { auth: 'none' });
   r.get('/videos/:videoId',   async (req) => ok(await service.publishedVideo(req.params.videoId)), { auth: 'none' });
 
   return Object.assign(r, { service });

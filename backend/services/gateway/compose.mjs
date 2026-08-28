@@ -113,6 +113,9 @@ export async function compose({
     // ever sees "something with save() on it".
     storage: storage || createMediaStorage(process.env, { uploadsRoot: uploads }),
     uploadsRoot: uploads,
+    // Broadcast segments are transient and windowed, so they live beside the
+    // uploads rather than in them.
+    segmentsRoot: `${dataDir}/admin/data/live-segments`,
     // CRM read ports. Each is a narrow, read-only view another service chose to
     // expose - not a database handle.
     ports: {

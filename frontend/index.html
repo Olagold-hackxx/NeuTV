@@ -39,14 +39,13 @@
     </div>
   </div>
 
-  <!-- Content and app. src/data.js is the bundled fallback catalog and the
-       source the backend seed is generated from; hydrate() replaces it below
-       when the API is reachable. -->
-  <script src="./src/data.js?v=2.0"></script>
+  <!-- The app. There is no bundled catalog: every product, hub, shelf and
+       video on this page arrives from the API through hydrate() below. -->
   <script src="./src/catalog.js?v=2.0"></script>
   <script src="./src/app.js?v=2.0"></script>
 
   <!-- NEU TV backend client (contract v2) -->
+  <script src="./src/segment-player.js?v=1.0"></script>
   <script src="./src/neutv-api.js?v=2.0"></script>
 
   <!-- Mount Script -->
@@ -63,23 +62,36 @@
       }
     }
 
-    // Pull the live catalog before the first render. If the backend is not
-    // running, hydrate() resolves anyway and the bundled window.CentralData
-    // above renders exactly as it always has - the page never blocks on it.
+    // The page has no content of its own any more, so a failure to reach the
+    // API is a real failure and says so. It used to fall back to a catalog
+    // bundled into the page, which meant a dead backend looked exactly like a
+    // healthy one and nobody noticed for as long as the fixtures stayed
+    // plausible.
+    function showOffline(message) {
+      document.getElementById('root').innerHTML =
+        '<div class="h-screen w-screen flex flex-col items-center justify-center bg-[#060A12] text-white gap-4 px-6 text-center">'
+        + '<div class="w-14 h-14 rounded-2xl bg-[#0B1220] border border-white/10 flex items-center justify-center">'
+        + '<span class="text-2xl font-black italic text-white/40">N</span></div>'
+        + '<div class="text-lg font-semibold">NEU TV cannot reach its API</div>'
+        + '<div class="text-sm text-white/50 max-w-md">The catalog, the library and the live stage all come from the '
+        + 'backend. Start it with <span class="font-mono text-[#00F6A7]">npm start</span> and reload.</div>'
+        + '<div class="text-xs font-mono text-white/30">' + (message || '') + '</div>'
+        + '<button onclick="window.location.reload()" class="mt-2 px-4 py-2 rounded-lg bg-[#00F6A7] text-black text-sm font-semibold">Retry</button>'
+        + '</div>';
+    }
+
+    // Pull the catalog and the published library before the first render.
     function bootstrapApp() {
-      if (!window.NeuTV) return initApp();
+      if (!window.NeuTV) return showOffline('client script failed to load');
       window.NeuTV.hydrate()
         .then(function (res) {
-          console.log(res.live
-            ? '[NEU TV] live catalog ' + res.checksum
-            : '[NEU TV] offline, using bundled catalog');
-        })
-        .catch(function () { /* hydrate never rejects, but never trust that */ })
-        .then(function () {
+          if (!res.live) return showOffline(res.error);
+          console.log('[NEU TV] catalog ' + res.checksum + ', ' + res.library + ' videos in the library');
           initApp();
           // Keep this viewer inside the live count while the tab is open.
-          if (window.NEUTV_LIVE && window.NeuTV.live) window.NeuTV.live.startPresence();
-        });
+          if (window.NeuTV.live) window.NeuTV.live.startPresence();
+        })
+        .catch(function (err) { showOffline(err && err.message); });
     }
 
     if (document.readyState === 'loading') {

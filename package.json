@@ -9,7 +9,7 @@
   },
   "scripts": {
     "start": "npm start   --prefix backend",
-    "seed": "npm run seed --prefix backend",
+    "seed:videos": "npm run seed:videos --prefix backend --",
     "test": "npm test     --prefix backend",
     "eval": "npm run eval --prefix backend",
     "verify": "npm run verify --prefix backend",

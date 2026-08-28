@@ -1,12 +1,13 @@
 'use client';
 
-import { useActionState } from 'react';
+import { useActionState, useState } from 'react';
 import { scheduleLiveEvent } from '@/lib/actions';
 import type { ActionResult } from '@/lib/actions';
 import type { LiveEvent, Product } from '@/lib/types';
 
 export function ScheduleForm({ products }: { products: Product[] }) {
   const [state, action, pending] = useActionState<ActionResult | null, FormData>(scheduleLiveEvent, null);
+  const [source, setSource] = useState<'browser' | 'external'>('browser');
   const created = state?.ok ? (state.details as LiveEvent) : null;
 
   return (
@@ -20,11 +21,23 @@ export function ScheduleForm({ products }: { products: Product[] }) {
       </div>
 
       <div className="field">
+        <label htmlFor="source">How are you broadcasting?</label>
+        <select id="source" name="source" value={source} onChange={(e) => setSource(e.target.value as 'browser' | 'external')}>
+          <option value="browser">From this browser (camera or screen)</option>
+          <option value="external">From an external stream (OBS, YouTube Live)</option>
+        </select>
+        <p className="hint">
+          {source === 'browser'
+            ? 'The studio below captures this tab and pushes it to viewers. Nothing to install.'
+            : 'Stream wherever you already do, then paste the public playback URL below.'}
+        </p>
+      </div>
+
+      <div className="field" style={{ display: source === 'external' ? 'block' : 'none' }}>
         <label htmlFor="playbackUrl">Playback source</label>
         <input id="playbackUrl" name="playbackUrl" placeholder="https://…/live.m3u8  or  a YouTube id" maxLength={600} />
         <p className="hint">
-          An HLS <code>.m3u8</code> URL, or a YouTube Live video id. Stream to your
-          own destination with OBS, then paste the public URL here. With a hosted
+          An HLS <code>.m3u8</code> URL, or a YouTube Live video id. With a hosted
           ingest driver configured this is filled in for you.
         </p>
       </div>

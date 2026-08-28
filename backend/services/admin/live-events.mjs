@@ -23,6 +23,7 @@ export const adminEvent = (row) => ({
   description: row.description,
   productId: row.product_id,
   status: row.status,
+  source: row.source ?? 'external',
   driver: row.driver,
   ingestUrl: row.ingest_url,
   streamKey: row.stream_key,
@@ -50,6 +51,7 @@ export const publicEvent = (row) => ({
   description: row.description,
   productId: row.product_id,
   status: row.status,
+  source: row.source ?? 'external',
   playbackUrl: row.playback_url,
   youtubeId: row.youtube_id,
   posterUrl: row.poster_url,
@@ -93,8 +95,13 @@ export function createLiveEvents({ runtime, store, catalog, ingest, events }) {
         playbackUrl: { type: 'string', required: false, max: 600 },
         posterUrl: { type: 'string', required: false, max: 600 },
         scheduledFor: { type: 'int', required: false, min: 0 },
+        source: { type: 'string', required: false, default: 'external', enum: ['external', 'browser'] },
       });
       if (!knownProduct(v.productId)) throw badRequest(`"${v.productId}" is not an ecosystem product.`);
+      if (v.source === 'external' && !v.playbackUrl) {
+        // Not fatal - it can be added before going on air - but a browser
+        // broadcast never needs one and should not be nagged for it.
+      }
 
       // The provider decides what ingest looks like. With the manual driver
       // that is "nothing", and the admin supplies the playback URL instead.
@@ -104,11 +111,11 @@ export function createLiveEvents({ runtime, store, catalog, ingest, events }) {
       const id = `evt_${runtime.uuid()}`;
       const now = runtime.now();
       await store.run(
-        `INSERT INTO live_events (id, title, description, product_id, status, driver, ingest_url,
+        `INSERT INTO live_events (id, title, description, product_id, status, source, driver, ingest_url,
                                   stream_key, playback_url, youtube_id, poster_url, provider_ref,
                                   scheduled_for, created_by, created_at, updated_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-        id, v.title, v.description, v.productId, 'scheduled', ingest.driver,
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        id, v.title, v.description, v.productId, 'scheduled', v.source, ingest.driver,
         provisioned.ingestUrl ?? null,
         // Even the manual driver gets a key: it is what a future self-hosted
         // RTMP endpoint authenticates, and minting it now avoids a migration.
@@ -155,8 +162,10 @@ export function createLiveEvents({ runtime, store, catalog, ingest, events }) {
       const row = await getRow(eventId);
       if (row.status === 'live') throw conflict('That event is already on air.');
       if (row.status !== 'scheduled') throw conflict(`Cannot go on air from "${row.status}".`);
-      // Nothing to show is not a broadcast.
-      if (!row.playback_url && !row.youtube_id) {
+      // Nothing to show is not a broadcast - but what "something to show" means
+      // depends on how the event is fed. A browser broadcast has no URL by
+      // design: its video arrives as segments once the studio starts recording.
+      if (row.source !== 'browser' && !row.playback_url && !row.youtube_id) {
         throw conflict('That event has no playback URL yet, so viewers would see nothing.');
       }
 

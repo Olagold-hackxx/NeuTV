@@ -1,6 +1,6 @@
 {
   "contractVersion": "1.0.0",
-  "source": "frontend/src/data.js#window.CentralData",
+  "source": "committed catalog content (editorial); videos live in the admin store",
   "checksum": "a594026e97b4b2a6",
   "content": {
     "AGGREGATED_HASHTAG_POSTS": [

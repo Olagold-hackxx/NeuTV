@@ -1,6 +1,7 @@
 import { getLiveEvents, getProducts } from '@/lib/api';
 import { timestamp } from '@/lib/format';
 import { LiveEventPanel } from './live-event-panel';
+import { Studio } from './studio';
 import { ScheduleForm } from './schedule-form';
 
 export const dynamic = 'force-dynamic';
@@ -48,6 +49,9 @@ export default async function LivePage() {
 
       <div className="grid grid-2" style={{ gridTemplateColumns: '1.5fr 1fr', alignItems: 'start' }}>
         <div className="stack" style={{ gap: 16 }}>
+          {/* The studio broadcasts whatever is on air, or the next scheduled
+              event if nothing is. */}
+          {(onAir ?? upcoming[0]) ? <Studio event={(onAir ?? upcoming[0])!} /> : null}
           {onAir ? <LiveEventPanel event={onAir} /> : null}
 
           <div className="panel">

@@ -86,22 +86,70 @@
     token: function () { return token; },
 
     /**
-     * Replace window.CentralData with the live catalog.
-     * Resolves to { live: boolean } so the caller knows which source rendered.
+     * Build window.CentralData from the API.
+     *
+     * This used to merge over a 34KB blob bundled into the page, which meant
+     * the site rendered a hardcoded copy of the catalog whether or not the
+     * backend agreed with it - and an operator could publish a video in the
+     * back office and never see it appear. There is no second copy now: the
+     * catalog service supplies the editorial content and the admin library
+     * supplies the videos, and both arrive over the wire.
+     *
+     * Resolves to { live: boolean }; it never rejects, so a caller can render
+     * an honest error state instead of handling a throw.
      */
     hydrate: function () {
       return get('/catalog/bootstrap', { auth: false })
         .then(function (data) {
-          window.CentralData = Object.assign({}, window.CentralData, data);
-          window.NEUTV_LIVE = true;
-          return { live: true, checksum: data.checksum };
+          // The library is what the back office publishes. It is fetched
+          // alongside the catalog rather than after it, and a failure here is
+          // not fatal: the page still has its editorial content.
+          return get('/videos?limit=200', { auth: false })
+            .catch(function () { return { videos: [] }; })
+            .then(function (library) {
+              var videos = (library && library.videos) || [];
+              window.CentralData = Object.assign({}, data, {
+                LIBRARY: videos,
+                // On-demand shelves render straight from the published library,
+                // so publishing a video in the back office puts it on the site.
+                // The catalog's own VOD list is the fallback only while the
+                // library is empty - a fresh database, before it is seeded.
+                VOD_LIBRARY: videos.length ? videos.map(NeuTV.toVodItem) : (data.VOD_LIBRARY || []),
+              });
+              window.NEUTV_LIVE = true;
+              return { live: true, checksum: data.checksum, library: videos.length };
+            });
         })
         .catch(function (err) {
-          // The inline blob in index.html stays exactly as it was.
           window.NEUTV_LIVE = false;
-          if (window.console) console.warn('[NeuTV] backend unreachable, using bundled data:', err.message);
+          if (window.console) console.error('[NeuTV] the API is unreachable:', err.message);
           return { live: false, error: err.message };
         });
+    },
+
+    /**
+     * A library video in the shape the on-demand shelves render.
+     *
+     * The admin store speaks in playbackUrl/posterUrl/durationSeconds; the
+     * player reads videoUrl/thumbnail/duration. This is the one place that
+     * translation happens.
+     */
+    toVodItem: function (video) {
+      var seconds = video.durationSeconds || 0;
+      var minutes = Math.floor(seconds / 60);
+      return {
+        id: video.id,
+        title: video.title,
+        description: video.description || '',
+        platformId: video.productId,
+        productId: video.productId,
+        duration: seconds
+          ? String(minutes).padStart(2, '0') + ':' + String(seconds % 60).padStart(2, '0')
+          : '',
+        thumbnail: video.posterUrl || '',
+        videoUrl: video.playbackUrl || '',
+        youtubeId: video.youtubeId || null,
+      };
     },
 
     health: function () { return fetch((window.NEUTV_API_BASE || '') + '/health').then(function (r) { return r.json(); }); },
@@ -278,6 +326,18 @@
       crm: function () { return get('/admin/crm/overview'); },
       crmViewers: function (limit) { return get('/admin/crm/viewers' + (limit ? '?limit=' + limit : '')); },
       moderationQueue: function (limit) { return get('/admin/crm/moderation' + (limit ? '?limit=' + limit : '')); },
+    },
+
+    /** Public: the published library. Drafts and archived videos never appear. */
+    videos: {
+      list: function (opts) {
+        var o = opts || {};
+        var q = [];
+        if (o.productId) q.push('productId=' + encodeURIComponent(o.productId));
+        if (o.limit) q.push('limit=' + o.limit);
+        return get('/videos' + (q.length ? '?' + q.join('&') : ''), { auth: false });
+      },
+      get: function (id) { return get('/videos/' + encodeURIComponent(id), { auth: false }); },
     },
 
     /** Public: what the stage reverts to. */

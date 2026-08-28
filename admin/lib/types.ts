@@ -103,6 +103,7 @@ export interface LiveEvent {
   description: string;
   productId: string;
   status: LiveEventStatus;
+  source: 'external' | 'browser';
   driver: 'manual' | 'mux' | 'cloudflare';
   ingestUrl: string | null;
   streamKey: string;

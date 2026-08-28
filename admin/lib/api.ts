@@ -61,11 +61,6 @@ export async function call<T>(path: string, options: CallOptions = {}): Promise<
   const parsed = text ? JSON.parse(text) : null;
 
   if (!res.ok) {
-    try {
-      const { appendFileSync } = await import('node:fs');
-      appendFileSync('/private/tmp/claude-501/-Users-mac-Projects-Portfolio-NEUTV/7b2a7187-0e46-49f7-b620-cf377decc61d/scratchpad/probe.log',
-        JSON.stringify({ path, method, status: res.status, tokenLen: token ? token.length : null, body: text.slice(0, 300) }) + '\n');
-    } catch {}
     // An expired or revoked session sends the operator back to the login form
     // rather than rendering a page full of error states.
     if ((res.status === 401 || res.status === 403) && !anonymous) redirect('/login');

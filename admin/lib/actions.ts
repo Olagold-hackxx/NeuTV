@@ -136,6 +136,7 @@ export async function scheduleLiveEvent(_prev: ActionResult | null, form: FormDa
     title: String(form.get('title') ?? '').trim(),
     description: String(form.get('description') ?? '').trim(),
     productId: String(form.get('productId') ?? 'worldstreet'),
+    source: String(form.get('source') ?? 'browser'),
   };
   const playback = String(form.get('playbackUrl') ?? '').trim();
   const poster = String(form.get('posterUrl') ?? '').trim();

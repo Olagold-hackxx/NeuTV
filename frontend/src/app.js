@@ -126,6 +126,9 @@
         product: event.productId,
         productId: event.productId,
         isLiveEvent: true,
+        // The event says how it is fed. Guessing from "playbackUrl is empty"
+        // was ambiguous; source is explicit.
+        isSegmented: event.source === 'browser',
       };
       setLiveEvent(card);
       setMainBroadcast(card);
@@ -1654,9 +1657,32 @@
             // During a takeover it is the clicked video, played as real video
             // with controls and NO loop - it has to be able to end, because
             // reaching the end is what returns the stage to the main broadcast.
+            // A broadcast coming from the admin's browser arrives as WebM
+            // segments and is assembled here through MediaSource.
+            (!stageOverride && liveEvent && liveEvent.isSegmented)
+              ? h('video', {
+                  key: 'seg-' + liveEvent.id,
+                  ref: (el) => {
+                    if (!el || el._neuSegEvent === liveEvent.id) return;
+                    if (el._neuSegStop) el._neuSegStop();
+                    el._neuSegEvent = liveEvent.id;
+                    if (window.NeuTVSegmentPlayer && window.NeuTVSegmentPlayer.supported()) {
+                      el._neuSegStop = window.NeuTVSegmentPlayer.play(el, liveEvent.id, {
+                        onError: () => {},
+                      });
+                    }
+                  },
+                  poster: liveEvent.posterUrl || undefined,
+                  autoPlay: true,
+                  muted: isMuted,
+                  playsInline: true,
+                  controls: false,
+                  className: 'w-full h-full object-cover border-0'
+                })
+
             // A live event playing HLS needs a real <video> with hls.js
             // attached; there is no duration and no end to revert at.
-            (!stageOverride && liveEvent && isHls(liveEvent.videoUrl))
+            : (!stageOverride && liveEvent && isHls(liveEvent.videoUrl))
               ? h('video', {
                   key: 'live-' + liveEvent.id,
                   ref: (el) => { if (el && el.src !== liveEvent.videoUrl) attachHls(el, liveEvent.videoUrl); },

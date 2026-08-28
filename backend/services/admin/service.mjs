@@ -14,6 +14,7 @@ import { notFound, badRequest, conflict } from '../../platform/errors.mjs';
 import { createStorage } from './storage/local.mjs';
 import { createIngestProvider } from './ingest/index.mjs';
 import { createLiveEvents } from './live-events.mjs';
+import { createLiveSegments } from './live-segments.mjs';
 
 const STATUSES = ['draft', 'ready', 'published', 'archived'];
 
@@ -56,11 +57,16 @@ export function createAdminService({
   ports = {},                 // { viewers, spend, moderation, engagement }
   events = { emit: () => {} },
   ingest = null,
+  segmentsRoot = null,
 }) {
   const files = storage || createStorage({ root: uploadsRoot || './services/admin/data/uploads' });
   const liveEvents = createLiveEvents({
     runtime, store, catalog, events,
     ingest: ingest || createIngestProvider(),
+  });
+  const liveSegments = createLiveSegments({
+    runtime, store,
+    root: segmentsRoot || `${uploadsRoot || './services/admin/data'}/../live-segments`,
   });
 
   const getRow = async (videoId) => {
@@ -89,6 +95,20 @@ export function createAdminService({
       const row = await getRow(videoId);
       if (row.status !== 'published') throw notFound(`No published video "${videoId}".`);
       return { video: publicVideo(row, mediaBase) };
+    },
+
+    // Public read of the whole published library. This is what the viewer app
+    // renders its on-demand shelves from: the back office decides what the
+    // network carries, and the site shows exactly that. Drafts and archived
+    // videos are invisible here, so an unfinished upload cannot leak onto the
+    // page by being listed.
+    async publishedVideos({ productId = null, limit = 60 } = {}) {
+      const rows = await store.all(
+        'SELECT * FROM videos WHERE status = ? ORDER BY created_at DESC LIMIT ?',
+        'published', Math.min(Math.max(Number(limit) || 60, 1), 200),
+      );
+      const filtered = productId ? rows.filter((r) => r.product_id === productId) : rows;
+      return { videos: filtered.map((r) => publicVideo(r, mediaBase)), total: filtered.length };
     },
 
     async createVideo(actorId, input) {
@@ -298,6 +318,7 @@ export function createAdminService({
 
     // --- live events ------------------------------------------------------
     liveEvents,
+    liveSegments,
 
     close: () => store.close(),
   };

@@ -179,3 +179,31 @@ test('the public shape is built by naming fields, not by deleting them', () => {
   assert.ok(adminEvent(row).streamKey, 'admins see the key');
   assert.ok(!Object.keys(publicEvent(row)).some((k) => /key|ingest|provider/i.test(k)));
 });
+
+test('a browser broadcast goes on air without a playback URL', async () => {
+  // Its video arrives as segments once the studio starts recording, so
+  // demanding a URL up front made browser broadcasting impossible to start.
+  const { events } = await build();
+  const { event } = await events.create(ADMIN, { title: 'Live From The Studio', source: 'browser' });
+  assert.equal(event.source, 'browser');
+  assert.equal(event.playbackUrl, null);
+
+  const started = await events.start(event.id);
+  assert.equal(started.event.status, 'live');
+  assert.equal((await events.current()).event.source, 'browser');
+});
+
+test('an external event still needs somewhere to play from', async () => {
+  const { events } = await build();
+  const { event } = await events.create(ADMIN, { title: 'External', source: 'external' });
+  await assert.rejects(() => events.start(event.id), (e) => e.status === 409 && /no playback URL/.test(e.message));
+});
+
+test('the source is visible publicly so a player knows how to fetch it', async () => {
+  const { events } = await build();
+  const { event } = await events.create(ADMIN, { title: 'Studio', source: 'browser' });
+  await events.start(event.id);
+  const current = (await events.current()).event;
+  assert.equal(current.source, 'browser');
+  assert.equal(current.playbackUrl, null, 'a player must fall back to segments');
+});
