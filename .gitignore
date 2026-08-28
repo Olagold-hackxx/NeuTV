@@ -1,0 +1,9 @@
+node_modules/
+*.log
+.env
+.env.*
+.DS_Store
+
+# Per-service SQLite stores are runtime state, never committed.
+services/*/data/
+/tmp/
