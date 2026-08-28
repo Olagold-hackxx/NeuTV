@@ -1,0 +1,63 @@
+# admin
+
+The NEU TV back office: video library, programming and CRM. Next.js 16 (App
+Router), React 19, TypeScript.
+
+```bash
+npm run admin          # dev,  http://localhost:4174
+npm run admin:build    # production build
+npm run admin:start    # production server
+```
+
+It needs the API running (`npm start`, port 4173). Point it elsewhere with
+`NEUTV_API_BASE`.
+
+## Sign in
+
+Back-office access is granted by deployment, not by signing up:
+
+```bash
+NEUTV_ADMIN_EMAILS=you@example.com npm start     # in backend/
+```
+
+Sign up once with that email, then log in here. A non-admin account is rejected
+at the login form rather than on the first admin route it happens to hit.
+
+## The admin token never reaches the browser
+
+An admin session can set the main broadcast and read the entire viewer roster,
+so it is kept out of reach of any script on the page:
+
+- login is a **server action** that puts the token in an **httpOnly cookie**
+- every read is a **server component** calling the API server-side
+- every write is a **server action**
+- file uploads stream through `app/api/upload/[videoId]/route.ts`, which reads
+  the cookie and pipes the request body to the API with `duplex: 'half'`
+
+That last one is why uploads are proxied rather than sent straight to the API:
+the browser would need the bearer token to do it directly. Streaming (rather
+than buffering) keeps multi-gigabyte uploads viable, and `XMLHttpRequest` on the
+client gives a real progress bar — still the only way to get upload progress
+events in a browser.
+
+## Pages
+
+| Route | What it does |
+| --- | --- |
+| `/` | Live dashboard: what is on air, library, viewers, spend, moderation, ledger health |
+| `/videos` | Library, and the form that registers a new video |
+| `/videos/[id]` | Upload the file, change status or product, put it on air, archive it |
+| `/programme` | Set the main broadcast, with the history of what held it |
+| `/viewers` | Roster joined to what each account has spent |
+| `/moderation` | The review queue: everything flagged or blocked |
+
+Nothing is cached (`force-dynamic`). A back office showing a stale programme
+after you changed it is worse than one that is slow.
+
+## Known gaps
+
+- **Taking a flagged message down is not wired up.** The API has no delete route
+  for a published comment; the queue is read-only until that exists.
+- **`authMethod: sso` means the viewer typed a name.** The ecosystem SSO gateway
+  has not been built by the team that owns it, so those badges are self-asserted
+  and the roster labels them `unverified` rather than presenting them as proof.

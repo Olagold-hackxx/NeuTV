@@ -1,0 +1,23 @@
+{
+  "name": "neutv-admin",
+  "version": "1.0.0",
+  "private": true,
+  "description": "NEU TV back office: video library, programming and CRM.",
+  "scripts": {
+    "dev": "next dev -p 4174",
+    "build": "next build",
+    "start": "next start -p 4174",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "next": "^16.3.3",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2",
+    "@types/node": "^26.4.0",
+    "@types/react": "^19.2.18"
+  }
+}
