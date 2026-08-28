@@ -126,6 +126,50 @@ restart, and a viewer who closed the tab an hour ago is already back on the main
 broadcast. `scope: 'viewer'` (the default) changes only that viewer's stage;
 `scope: 'broadcast'` moves everyone and needs broadcast rights.
 
+## Going live
+
+An admin can put a real broadcast on air, and it **outranks the programmed
+video**: while an event is live it *is* the main broadcast. Ending it hands the
+stage back automatically. Precedence is `live event > programme > seed`.
+
+```
+POST /api/v1/admin/live-events              schedule, and mint a stream key
+POST /api/v1/admin/live-events/:id/start    go on air
+POST /api/v1/admin/live-events/:id/stop     end, and fall back to the programme
+POST /api/v1/admin/live-events/:id/rotate   new key; the old one dies immediately
+GET  /api/v1/live-event/current             public. Never carries the stream key.
+```
+
+Exactly one event may be live at a time - the network has one main stage, and
+two things claiming it is not a state the stage machine can resolve.
+
+Going on and off air is published over SSE, so a viewer already watching
+switches without reloading, and a viewer mid-takeover is not yanked away: they
+return to the live event when their video ends.
+
+### Ingest
+
+```bash
+NEUTV_LIVE_DRIVER=manual        # default: no accounts, no infrastructure
+NEUTV_LIVE_DRIVER=mux           # RTMP ingest + HLS minted via the Mux API
+NEUTV_LIVE_DRIVER=cloudflare    # Cloudflare Stream live inputs
+```
+
+**manual** is the default and works today: stream to YouTube Live or your own
+RTMP server with OBS, then paste the public playback URL - an `.m3u8` manifest
+or a YouTube id. The other two provision ingest for you and fill the playback
+URL in automatically.
+
+The stream key is a bearer credential for an encoder and is treated like one: it
+never appears in the public payload, and `publicEvent()` is built by naming
+fields rather than deleting them, so a field added to the admin shape later
+cannot leak by accident. A test asserts the key appears nowhere in the public
+response or the SSE announcement.
+
+**Unverified:** the Mux and Cloudflare adapters are covered by tests through an
+injected `fetch`, but no request has been made against either service - there
+are no credentials here. The manual driver is fully exercised end to end.
+
 ## Admin / CRM
 
 ```bash

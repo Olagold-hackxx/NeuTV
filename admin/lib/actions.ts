@@ -8,7 +8,7 @@ import { revalidatePath } from 'next/cache';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { ApiError, call, SESSION_COOKIE } from './api';
-import type { SessionUser, Video } from './types';
+import type { LiveEvent, SessionUser, Video } from './types';
 
 export interface ActionResult {
   ok: boolean;
@@ -122,6 +122,71 @@ export async function setProgramme(videoId: string, note = ''): Promise<ActionRe
     await call('/admin/programme', { method: 'PUT', body: { videoId, note } });
     // The main broadcast is on every page's header, so revalidate broadly.
     revalidatePath('/', 'layout');
+    return { ok: true };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+
+// --- live events ------------------------------------------------------------
+
+export async function scheduleLiveEvent(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {
+  const body: Record<string, unknown> = {
+    title: String(form.get('title') ?? '').trim(),
+    description: String(form.get('description') ?? '').trim(),
+    productId: String(form.get('productId') ?? 'worldstreet'),
+  };
+  const playback = String(form.get('playbackUrl') ?? '').trim();
+  const poster = String(form.get('posterUrl') ?? '').trim();
+  if (playback) body.playbackUrl = playback;
+  if (poster) body.posterUrl = poster;
+
+  try {
+    const res = await call<{ event: LiveEvent; instructions: string }>('/admin/live-events', { method: 'POST', body });
+    revalidatePath('/live');
+    revalidatePath('/');
+    return { ok: true, details: res.event };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+/** Going on air changes what every viewer is watching, so revalidate broadly. */
+export async function startLiveEvent(id: string): Promise<ActionResult> {
+  try {
+    await call(`/admin/live-events/${encodeURIComponent(id)}/start`, { method: 'POST', body: {} });
+    revalidatePath('/', 'layout');
+    return { ok: true };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+export async function stopLiveEvent(id: string): Promise<ActionResult> {
+  try {
+    await call(`/admin/live-events/${encodeURIComponent(id)}/stop`, { method: 'POST', body: {} });
+    revalidatePath('/', 'layout');
+    return { ok: true };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+export async function rotateStreamKey(id: string): Promise<ActionResult> {
+  try {
+    await call(`/admin/live-events/${encodeURIComponent(id)}/rotate`, { method: 'POST', body: {} });
+    revalidatePath('/live');
+    return { ok: true };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+export async function cancelLiveEvent(id: string): Promise<ActionResult> {
+  try {
+    await call(`/admin/live-events/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    revalidatePath('/live');
     return { ok: true };
   } catch (err) {
     return fail(err);

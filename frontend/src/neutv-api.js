@@ -282,6 +282,9 @@
 
     /** Public: what the stage reverts to. */
     programme: function () { return get('/programme/current', { auth: false }); },
+
+    /** Public: the live event on air, if any. Never carries a stream key. */
+    liveEvent: function () { return get('/live-event/current', { auth: false }); },
   };
 
   window.NeuTV = NeuTV;

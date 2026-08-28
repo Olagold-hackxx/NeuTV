@@ -49,6 +49,38 @@
       });
     };
 
+    // Attach an HLS stream to a <video>.
+    //
+    // Safari plays .m3u8 natively; nothing else does, so hls.js is loaded from
+    // a CDN on demand - only when a live event is actually using HLS, so the
+    // 99% of sessions that never see one pay nothing for it.
+    const attachHls = (el, url) => {
+      if (!el || !url) return;
+      if (el.canPlayType('application/vnd.apple.mpegurl')) { el.src = url; return; }
+      const start = () => {
+        if (!window.Hls || !window.Hls.isSupported()) { el.src = url; return; }
+        if (el._neuHls) el._neuHls.destroy();
+        const hls = new window.Hls({ lowLatencyMode: true });
+        el._neuHls = hls;
+        hls.loadSource(url);
+        hls.attachMedia(el);
+      };
+      if (window.Hls) return start();
+      if (!document.getElementById('neutv-hls')) {
+        const tag = document.createElement('script');
+        tag.id = 'neutv-hls';
+        tag.src = 'https://cdn.jsdelivr.net/npm/hls.js@1/dist/hls.min.js';
+        tag.onload = start;
+        // If the CDN is unreachable, hand the URL to the browser and let it try.
+        tag.onerror = () => { el.src = url; };
+        document.head.appendChild(tag);
+      } else {
+        document.getElementById('neutv-hls').addEventListener('load', start);
+      }
+    };
+
+    const isHls = (url) => typeof url === 'string' && url.indexOf('.m3u8') !== -1;
+
     // Put a video on the main stage.
     //
     // The main broadcast owns the main page. Clicking any other video replaces
@@ -80,6 +112,28 @@
       BRIDGE.sync(api => api.live.takeStage(video.id));
     };
 
+    // A live event becomes the main broadcast: it is what the stage shows, and
+    // what a takeover returns to when the clicked video ends.
+    const applyLiveEvent = (event) => {
+      if (!event) return;
+      const card = {
+        id: event.id,
+        title: event.title,
+        description: event.description || '',
+        youtubeId: event.youtubeId || null,
+        videoUrl: event.playbackUrl || null,
+        posterUrl: event.posterUrl || null,
+        product: event.productId,
+        productId: event.productId,
+        isLiveEvent: true,
+      };
+      setLiveEvent(card);
+      setMainBroadcast(card);
+      // Don't yank the screen away from someone mid-video; they return to the
+      // live event when their takeover ends.
+      setStageOverride(prev => { if (!prev) setCentralTv(card); return prev; });
+    };
+
     // Called when the takeover finishes, or when the viewer dismisses it.
     const returnToMainBroadcast = (announce) => {
       setStageOverride(null);
@@ -102,6 +156,8 @@
     // programme on load, so it is whatever an admin actually put on air.
     const [mainBroadcast, setMainBroadcast] = useState(INITIAL_CENTRAL_TV);
     const [stageOverride, setStageOverride] = useState(null);
+    // The live event on air, if any. It outranks the programmed video.
+    const [liveEvent, setLiveEvent] = useState(null);
     const [isMuted, setIsMuted] = useState(true);
     const [qualityMode, setQualityMode] = useState('1080p');
     const [isMiniPlayer, setIsMiniPlayer] = useState(false);
@@ -375,6 +431,32 @@
         if (res.likes) { setTvLikes((res.likes.seeded || 0) + res.likes.total); setIsTvLiked(res.likes.liked); }
       });
       refreshWallet();
+
+      // Pick up an event that is already on air.
+      BRIDGE.sync(api => api.liveEvent()).then(res => {
+        if (res && res.event && res.event.isLive) applyLiveEvent(res.event);
+      });
+
+      // And switch the moment one starts or ends, without a reload. This is
+      // what makes "go live" feel live for someone already watching.
+      if (BRIDGE.isLive() && window.NeuTV.live && window.NeuTV.live.subscribe) {
+        const stop = window.NeuTV.live.subscribe({
+          'live-event': (payload) => {
+            if (!payload) return;
+            if (payload.status === 'started') {
+              applyLiveEvent(payload.event);
+              showToast('🔴 ' + payload.event.title + ' is live');
+            } else if (payload.status === 'ended') {
+              setLiveEvent(null);
+              setStageOverride(null);
+              setCentralTv(mainBroadcast);
+              showToast('The live broadcast has ended');
+            }
+          },
+        });
+        return stop;
+      }
+      return undefined;
     }, []);
 
     // Open a shared post link.
@@ -1572,7 +1654,20 @@
             // During a takeover it is the clicked video, played as real video
             // with controls and NO loop - it has to be able to end, because
             // reaching the end is what returns the stage to the main broadcast.
-            stageOverride && stageOverride.videoUrl
+            // A live event playing HLS needs a real <video> with hls.js
+            // attached; there is no duration and no end to revert at.
+            (!stageOverride && liveEvent && isHls(liveEvent.videoUrl))
+              ? h('video', {
+                  key: 'live-' + liveEvent.id,
+                  ref: (el) => { if (el && el.src !== liveEvent.videoUrl) attachHls(el, liveEvent.videoUrl); },
+                  poster: liveEvent.posterUrl || undefined,
+                  autoPlay: true,
+                  muted: isMuted,
+                  playsInline: true,
+                  controls: false,
+                  className: 'w-full h-full object-cover border-0'
+                })
+            : stageOverride && stageOverride.videoUrl
               ? h('video', {
                   key: stageOverride.id,
                   src: stageOverride.videoUrl,
@@ -1593,6 +1688,16 @@
                   className: 'w-full h-full object-cover border-0 scale-[1.02] '
                     + (stageOverride ? '' : 'pointer-events-none')
                 }),
+
+            // While an event is on air, say so. This is a real broadcast, not
+            // the looping linear channel.
+            !stageOverride && liveEvent && h('div', {
+              className: 'absolute top-3 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/85 backdrop-blur-md border border-red-500/50 shadow-xl max-w-[92%]'
+            },
+              h('span', { className: 'w-1.5 h-1.5 rounded-full bg-red-500 animate-live flex-shrink-0' }),
+              h('span', { className: 'text-[10px] md:text-xs font-black text-red-400 tracking-wide flex-shrink-0' }, 'LIVE'),
+              h('span', { className: 'text-[10px] md:text-xs font-bold text-white truncate' }, liveEvent.title)
+            ),
 
             // While a takeover is playing, say what is on and offer the way back.
             stageOverride && h('div', {

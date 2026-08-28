@@ -121,6 +121,8 @@ export async function compose({
       moderation: { summary: () => moderation.summary(), queue: (o) => moderation.queue(o) },
       engagement: { summary: () => social.engagementSummary() },
     },
+    // A live event going on or off air reaches viewers over SSE, so the stage
+    // switches without anyone reloading.
     events: { emit: (type, payload) => hub.publish(type, payload) },
   });
 

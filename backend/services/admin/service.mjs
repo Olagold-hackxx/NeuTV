@@ -12,6 +12,8 @@
 import { validate } from '../../platform/validate.mjs';
 import { notFound, badRequest, conflict } from '../../platform/errors.mjs';
 import { createStorage } from './storage/local.mjs';
+import { createIngestProvider } from './ingest/index.mjs';
+import { createLiveEvents } from './live-events.mjs';
 
 const STATUSES = ['draft', 'ready', 'published', 'archived'];
 
@@ -53,8 +55,13 @@ export function createAdminService({
   catalog,                    // for product id validation, through the contract
   ports = {},                 // { viewers, spend, moderation, engagement }
   events = { emit: () => {} },
+  ingest = null,
 }) {
   const files = storage || createStorage({ root: uploadsRoot || './services/admin/data/uploads' });
+  const liveEvents = createLiveEvents({
+    runtime, store, catalog, events,
+    ingest: ingest || createIngestProvider(),
+  });
 
   const getRow = async (videoId) => {
     const row = await store.get('SELECT * FROM videos WHERE id = ?', videoId);
@@ -288,6 +295,9 @@ export function createAdminService({
     async crmModeration({ limit = 50 } = {}) {
       return { queue: (await ports.moderation?.queue?.({ limit })) ?? [] };
     },
+
+    // --- live events ------------------------------------------------------
+    liveEvents,
 
     close: () => store.close(),
   };

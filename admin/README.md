@@ -65,6 +65,7 @@ events in a browser.
 | `/` | Live dashboard: what is on air, library, viewers, spend, moderation, ledger health |
 | `/videos` | Library, and the form that registers a new video |
 | `/videos/[id]` | Upload the file, change status or product, put it on air, archive it |
+| `/live` | Schedule an event, reveal or rotate its stream key, go on air |
 | `/programme` | Set the main broadcast, with the history of what held it |
 | `/viewers` | Roster joined to what each account has spent |
 | `/moderation` | The review queue: everything flagged or blocked |

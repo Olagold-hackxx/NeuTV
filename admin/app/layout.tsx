@@ -16,6 +16,7 @@ export const dynamic = 'force-dynamic';
 const LINKS = [
   { href: '/', label: 'Dashboard' },
   { href: '/videos', label: 'Videos' },
+  { href: '/live', label: 'Go Live' },
   { href: '/programme', label: 'Programme' },
   { href: '/viewers', label: 'Viewers' },
   { href: '/moderation', label: 'Moderation' },

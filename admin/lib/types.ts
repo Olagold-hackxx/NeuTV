@@ -93,3 +93,28 @@ export interface SessionUser {
   authMethod: 'sso' | 'password';
   verified: boolean;
 }
+
+export type LiveEventStatus = 'scheduled' | 'live' | 'ended' | 'cancelled';
+
+/** What an admin sees. Carries ingest credentials; never render it publicly. */
+export interface LiveEvent {
+  id: string;
+  title: string;
+  description: string;
+  productId: string;
+  status: LiveEventStatus;
+  driver: 'manual' | 'mux' | 'cloudflare';
+  ingestUrl: string | null;
+  streamKey: string;
+  playbackUrl: string | null;
+  youtubeId: string | null;
+  posterUrl: string | null;
+  scheduledFor: number | null;
+  startedAt: number | null;
+  endedAt: number | null;
+  peakViewers: number;
+  createdBy: string;
+  createdAt: number;
+  updatedAt: number;
+  isLive: boolean;
+}

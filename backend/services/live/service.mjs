@@ -109,9 +109,36 @@ export function createLiveService({
     return null;
   };
 
-  // The main broadcast. Admin's programme wins; the seeded Central TV entry is
-  // the fallback so the page is never empty on a fresh install.
+  // The main broadcast, in order of precedence:
+  //
+  //   1. a live event on air  - a broadcast in progress outranks anything
+  //      scheduled, which is the whole point of going live
+  //   2. the admin's programme
+  //   3. the seeded Central TV entry, so a fresh install is never empty
   const mainBroadcast = async () => {
+    if (programmeClient) {
+      try {
+        const res = await programmeClient.call('admin', 'GET', '/live-event/current', {});
+        const event = res.status === 200 ? res.body?.event : null;
+        if (event?.isLive) {
+          return {
+            id: event.id,
+            title: event.title,
+            kind: 'live-event',
+            productId: event.productId,
+            description: event.description,
+            videoUrl: event.playbackUrl,
+            youtubeId: event.youtubeId,
+            posterUrl: event.posterUrl,
+            // A live broadcast has no end to revert at.
+            durationSeconds: 0,
+            isLive: true,
+            startedAt: event.startedAt,
+            source: 'live-event',
+          };
+        }
+      } catch { /* fall through to the programme */ }
+    }
     if (programmeClient) {
       try {
         const res = await programmeClient.call('admin', 'GET', '/programme/current', {});

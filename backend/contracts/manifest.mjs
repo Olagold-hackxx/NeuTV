@@ -88,6 +88,18 @@ export const ROUTES = [
   { service: 'admin', method: 'GET',    path: '/admin/crm/moderation',       auth: 'admin', summary: 'Moderation queue: everything flagged for review.' },
   // Public read of the current programme: what the stage reverts to, and what
   // a cold frontend loads before any takeover happens.
+  // --- live events: an admin going on air --------------------------------
+  { service: 'admin', method: 'GET',    path: '/admin/live-events',                  auth: 'admin', summary: 'Live events: scheduled, on air and ended.' },
+  { service: 'admin', method: 'POST',   path: '/admin/live-events',                  auth: 'admin', summary: 'Schedule an event and mint its stream key.' },
+  { service: 'admin', method: 'GET',    path: '/admin/live-events/:eventId',         auth: 'admin', summary: 'One event, including its ingest credentials.' },
+  { service: 'admin', method: 'PUT',    path: '/admin/live-events/:eventId',         auth: 'admin', summary: 'Edit an event that is not on air.' },
+  { service: 'admin', method: 'POST',   path: '/admin/live-events/:eventId/start',   auth: 'admin', summary: 'Go on air. Supersedes the programme.' },
+  { service: 'admin', method: 'POST',   path: '/admin/live-events/:eventId/stop',    auth: 'admin', summary: 'End the broadcast and fall back to the programme.' },
+  { service: 'admin', method: 'POST',   path: '/admin/live-events/:eventId/rotate',  auth: 'admin', summary: 'Mint a new stream key and invalidate the old one.' },
+  { service: 'admin', method: 'DELETE', path: '/admin/live-events/:eventId',         auth: 'admin', summary: 'Cancel an event that is not on air.' },
+  // Public: what is on air. Never carries the stream key.
+  { service: 'admin', method: 'GET',    path: '/live-event/current',                 auth: 'none',  summary: 'The live event on air right now, if any.' },
+
   { service: 'admin', method: 'GET',    path: '/programme/current',          auth: 'none',  summary: 'The main broadcast the stage returns to.' },
   // Public read of a PUBLISHED video. The live service resolves stage takeovers
   // through this: the admin route is admin-only, which works in-process but

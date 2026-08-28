@@ -42,6 +42,33 @@ const MIGRATIONS = {
     );
     CREATE INDEX idx_prog_history_time ON programme_history(set_at DESC);
   `,
+  // Live events: an admin going on air. Separate from videos because the
+  // lifecycle is different - an event is scheduled, goes live, and ends - and
+  // because it carries ingest credentials a video never has.
+  '002_live_events': `
+    CREATE TABLE live_events (
+      id            TEXT PRIMARY KEY,
+      title         TEXT NOT NULL,
+      description   TEXT NOT NULL DEFAULT '',
+      product_id    TEXT NOT NULL,
+      status        TEXT NOT NULL,            -- 'scheduled' | 'live' | 'ended' | 'cancelled'
+      driver        TEXT NOT NULL,            -- which ingest provider minted it
+      ingest_url    TEXT,
+      stream_key    TEXT,                     -- a bearer credential; admin-only
+      playback_url  TEXT,                     -- HLS manifest, or null when using youtube_id
+      youtube_id    TEXT,
+      poster_url    TEXT,
+      provider_ref  TEXT,                     -- the provider's own id, for teardown
+      scheduled_for INTEGER,
+      started_at    INTEGER,
+      ended_at      INTEGER,
+      peak_viewers  INTEGER NOT NULL DEFAULT 0,
+      created_by    TEXT NOT NULL,
+      created_at    INTEGER NOT NULL,
+      updated_at    INTEGER NOT NULL
+    );
+    CREATE INDEX idx_live_events_status ON live_events(status, created_at DESC);
+  `,
 };
 
 export const openAdminStore = (target, options) => openStore(target, MIGRATIONS, options);
