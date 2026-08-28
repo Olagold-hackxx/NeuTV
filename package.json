@@ -15,6 +15,7 @@
     "verify": "npm run verify --prefix backend",
     "admin": "npm run dev --prefix admin",
     "admin:build": "npm run build --prefix admin",
-    "admin:start": "npm start --prefix admin"
+    "admin:start": "npm start --prefix admin",
+    "admin:create": "npm run admin:create --prefix backend --"
   }
 }

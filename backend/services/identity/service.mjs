@@ -240,6 +240,27 @@ export function createIdentityService({
       return { authenticated: true, guest: false, user: auth.user, productId: auth.productId, role: auth.role, scopes: auth.scopes };
     },
 
+    // Set or replace an account's password. Operations only: there is no route
+    // for this in the contract, and there deliberately is not one. It is
+    // reachable from scripts/create-admin.mjs, which needs filesystem access to
+    // the database - a level of access that already implies full control.
+    resetPassword(email, password) {
+      const normalized = String(email || '').trim().toLowerCase();
+      const { password: checked } = validate({ password }, {
+        password: { type: 'string', required: true, min: 8, max: 200 },
+      });
+      const user = store.get('SELECT * FROM users WHERE email = ?', normalized);
+      if (!user) throw notFound(`No account for ${normalized}.`);
+      store.run('UPDATE users SET password_hash = ? WHERE id = ?', hasher.hash(checked), user.id);
+      // Every existing session is invalidated: a password reset that leaves old
+      // sessions alive has not actually locked anyone out.
+      const revoked = store.run(
+        'UPDATE sessions SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL',
+        runtime.now(), user.id,
+      );
+      return { user: publicUser(user), sessionsRevoked: revoked.changes };
+    },
+
     // --- read ports for the admin CRM (see services/admin/ports.mjs) ------
 
     viewerSummary() {

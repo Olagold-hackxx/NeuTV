@@ -20,6 +20,7 @@
     "test:moderation": "node --no-warnings=ExperimentalWarning --test services/moderation/test/*.test.mjs",
     "test:gateway": "node --no-warnings=ExperimentalWarning --test services/gateway/test/*.test.mjs",
     "eval": "node --no-warnings=ExperimentalWarning scripts/run-evals.mjs",
-    "verify": "npm run seed && npm test && npm run eval"
+    "verify": "npm run seed && npm test && npm run eval",
+    "admin:create": "node --no-warnings=ExperimentalWarning --env-file-if-exists=.env scripts/create-admin.mjs"
   }
 }

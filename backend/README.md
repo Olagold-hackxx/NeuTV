@@ -67,9 +67,20 @@ broadcast. `scope: 'viewer'` (the default) changes only that viewer's stage;
 ## Admin / CRM
 
 ```bash
-cp .env.example .env      # then edit NEUTV_ADMIN_EMAILS
+cp .env.example .env                                   # then edit NEUTV_ADMIN_EMAILS
+npm run admin:create -- --email you@example.com --generate
 npm start
 ```
+
+There is no password in the environment. `NEUTV_ADMIN_EMAILS` says *who* may be
+an administrator; `admin:create` sets that account's password and prints it
+once. Pass `--password 'your-own'` instead of `--generate` to choose it, and run
+the same command again later to reset it (which also revokes every live
+session).
+
+The script refuses any email not in `NEUTV_ADMIN_EMAILS`, so it cannot mint an
+administrator the deployment has not authorised. The admin panel has a login
+form and no sign-up form for the same reason.
 
 `npm start` loads `.env` through Node's own `--env-file-if-exists`, so there is
 no dotenv dependency and a checkout without a `.env` still starts. Exported

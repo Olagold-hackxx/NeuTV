@@ -5,6 +5,7 @@ import { TEST_COST, createPasswordHasher } from '../../../platform/password.mjs'
 import { createCatalogService } from '../../catalog/service.mjs';
 import { createIdentityService } from '../service.mjs';
 import { scopesFor, scopeIdsFor } from '../scopes.mjs';
+import { ROUTES } from '../../../contracts/manifest.mjs';
 
 const build = (over = {}) => {
   const runtime = fakeRuntime();
@@ -150,4 +151,31 @@ test('scope helpers stay in step with the product list', () => {
     assert.ok(scopesFor(id).length > 4, `${id} should add a product scope`);
     assert.equal(new Set(scopeIdsFor(id)).size, scopeIdsFor(id).length, 'no duplicate scopes');
   }
+});
+
+test('resetPassword replaces the password and kills every live session', () => {
+  const { identity } = build();
+  const created = identity.signup({ email: 'ops@neu.tv', password: 'originalpass1' });
+  const session = identity.authenticate(created.session.token);
+  assert.ok(session, 'signed in to begin with');
+
+  const res = identity.resetPassword('ops@neu.tv', 'a-brand-new-password');
+  assert.equal(res.sessionsRevoked, 1);
+  assert.equal(identity.authenticate(created.session.token), null,
+    'a reset that leaves old sessions alive has not locked anyone out');
+
+  assert.throws(() => identity.signin({ email: 'ops@neu.tv', password: 'originalpass1' }), (e) => e.status === 401);
+  assert.ok(identity.signin({ email: 'ops@neu.tv', password: 'a-brand-new-password' }).session.token);
+});
+
+test('resetPassword refuses an unknown account and a weak password', () => {
+  const { identity } = build();
+  identity.signup({ email: 'ops@neu.tv', password: 'originalpass1' });
+  assert.throws(() => identity.resetPassword('nobody@neu.tv', 'longenough1'), (e) => e.status === 404);
+  assert.throws(() => identity.resetPassword('ops@neu.tv', 'short'), (e) => e.status === 400);
+});
+
+test('resetPassword is not reachable over the contract', () => {
+  // It is an operations tool, not an API. Nothing in the manifest exposes it.
+  assert.ok(!ROUTES.some((r) => r.path.includes('reset') || r.path.includes('password')));
 });

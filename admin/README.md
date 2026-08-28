@@ -14,14 +14,22 @@ It needs the API running (`npm start`, port 4173). Point it elsewhere with
 
 ## Sign in
 
-Back-office access is granted by deployment, not by signing up:
+There is no sign-up form here, and that is deliberate: nobody should be able to
+create an administrator through a public page.
 
 ```bash
-NEUTV_ADMIN_EMAILS=you@example.com npm start     # in backend/
+# in backend/
+echo 'NEUTV_ADMIN_EMAILS=you@example.com' >> .env
+npm run admin:create -- --email you@example.com --generate
 ```
 
-Sign up once with that email, then log in here. A non-admin account is rejected
-at the login form rather than on the first admin route it happens to hit.
+`NEUTV_ADMIN_EMAILS` says who may be an administrator. `admin:create` sets that
+account's password and prints it once; re-running it resets the password and
+revokes every live session. It refuses any email not on that list, so it cannot
+mint an administrator the deployment has not authorised.
+
+A non-admin account is rejected at the login form here, rather than on the first
+admin route it happens to hit.
 
 ## The admin token never reaches the browser
 
