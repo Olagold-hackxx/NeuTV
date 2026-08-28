@@ -167,3 +167,42 @@ test('the stage resolves an admin video through the public route, not the admin 
   assert.ok(calls.includes('/videos/vid-1'), 'must use the public route');
   assert.ok(!calls.some((p) => p.startsWith('/admin/')), 'must not depend on an admin-only route');
 });
+
+test('a video attached to an announcement post can take the stage', async () => {
+  // Clicking a video in the feed puts it on the main stage, so the stage must
+  // resolve a post id, not only spotlights and uploads.
+  const socialClient = {
+    call: async (_service, _method, path) => {
+      if (path === '/social/posts/post-neu-1') {
+        return {
+          status: 200,
+          body: {
+            post: {
+              id: 'post-neu-1', videoTitle: 'TSLA Breakout', productId: 'worldstreet',
+              productName: 'WorldStreet', author: 'NEU TV Official', handle: '@neutv',
+              videoMp4: 'https://cdn/x.mp4', duration: '03:00', content: 'a breakdown',
+            },
+          },
+        };
+      }
+      return { status: 404, body: null };
+    },
+  };
+  const { live } = build({ socialClient });
+  const stage = await live.takeStage(null, { videoId: 'post-neu-1', viewerId: VIEWER });
+  assert.equal(stage.current.id, 'post-neu-1');
+  assert.equal(stage.current.kind, 'post');
+  assert.equal(stage.current.videoUrl, 'https://cdn/x.mp4');
+  assert.equal(stage.revertsIn, 180_000, 'holds the stage for the length of the video');
+});
+
+test('a post with no video cannot take the stage', async () => {
+  const socialClient = {
+    call: async () => ({ status: 200, body: { post: { id: 'post-text', content: 'just text' } } }),
+  };
+  const { live } = build({ socialClient });
+  await assert.rejects(
+    () => live.takeStage(null, { videoId: 'post-text', viewerId: VIEWER }),
+    (e) => e.status === 404,
+  );
+});

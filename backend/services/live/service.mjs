@@ -21,6 +21,7 @@ export function createLiveService({
   store = openLiveStore(':memory:'),
   catalog,                          // contract client or service handle
   programmeClient = null,           // contract client for admin's /programme/current
+  socialClient = null,              // contract client for social's /social/posts/:id
   moderation = null,                // contract client for /moderation/check
   giftPort = null,                  // wallet read port for the leaderboard
   hub = { publish: () => {}, clientCount: () => 0 },
@@ -62,6 +63,35 @@ export function createLiveService({
         duration: vod.duration, durationSeconds: parseClock(vod.duration),
       };
     }
+    // A video attached to an announcement post. Clicking one in the feed puts
+    // it on the main stage, so the stage has to be able to resolve a post id
+    // the same way it resolves a spotlight.
+    if (socialClient) {
+      const res = await socialClient.call('social', 'GET', `/social/posts/${videoId}`, {});
+      if (res.status === 200 && res.body?.post) {
+        const p = res.body.post;
+        // A post with nothing to play is not a stage candidate.
+        if (p.videoMp4 || p.youtubeId) {
+          return {
+            id: p.id,
+            title: p.videoTitle || p.content?.slice(0, 80) || 'Announcement',
+            kind: 'post',
+            productId: p.productId,
+            product: p.productName,
+            streamer: p.author,
+            handle: p.handle,
+            avatar: p.avatar,
+            videoUrl: p.videoMp4,
+            youtubeId: p.youtubeId,
+            posterUrl: p.mediaUrl,
+            duration: p.duration,
+            durationSeconds: parseClock(p.duration),
+            description: p.content,
+          };
+        }
+      }
+    }
+
     // Admin-uploaded videos, through the PUBLIC video route. Using the
     // admin-only route here worked in-process (loopback does not run the
     // gateway's auth gate) but would 403 as soon as the services were split

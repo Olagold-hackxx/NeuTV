@@ -6,6 +6,11 @@
   const CATALOG = window.NeuTVCatalog;
   const { EMOJIS, GIFTS } = CATALOG;
 
+  // Every handler updates local state first, then persists through this. When
+  // the backend is unreachable sync() is a no-op and the app behaves exactly as
+  // it did before there was one. See src/bridge.js.
+  const BRIDGE = window.NeuTVBridge || { isLive: () => false, sync: () => Promise.resolve(null) };
+
   const ReactObj = window.React || {};
   const { useState, useEffect, useMemo, useRef, createElement: h } = ReactObj;
 
@@ -35,6 +40,53 @@
 
     // Coin Balance State (No sign-in bonus)
     const [coinBalance, setCoinBalance] = useState(0);
+
+    // The wallet lives on the server. Balances open at 0 and only move through
+    // the ledger, so the client never invents one.
+    const refreshWallet = () => {
+      BRIDGE.sync(api => api.wallet.balance()).then(res => {
+        if (res) setCoinBalance(res.balance);
+      });
+    };
+
+    // Put a video on the main stage.
+    //
+    // The main broadcast owns the main page. Clicking any other video replaces
+    // it, and when that video ends the stage returns on its own. The server
+    // holds the same state (per viewer, with an expiry), so a reload lands back
+    // on whatever should be playing rather than resetting to the top.
+    const takeStage = (video) => {
+      if (!video) return;
+      const card = {
+        id: video.id,
+        title: video.videoTitle || video.title || video.content || 'Announcement',
+        description: video.content || video.description || '',
+        youtubeId: video.youtubeId || null,
+        videoUrl: video.videoMp4 || video.videoUrl || null,
+        posterUrl: video.mediaUrl || video.thumbnail || video.posterUrl || null,
+        streamer: video.author || video.name || centralTv.streamer,
+        avatar: video.avatar || centralTv.avatar,
+        product: video.productName || video.product || centralTv.product,
+        productId: video.productId || centralTv.productId,
+        viewers: centralTv.viewers,
+        likes: centralTv.likes,
+        isTakeover: true,
+      };
+      setStageOverride(card);
+      setCentralTv(card);
+      setIsMuted(false);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      showToast('Now playing on the main stage 📺');
+      BRIDGE.sync(api => api.live.takeStage(video.id));
+    };
+
+    // Called when the takeover finishes, or when the viewer dismisses it.
+    const returnToMainBroadcast = (announce) => {
+      setStageOverride(null);
+      setCentralTv(mainBroadcast);
+      if (announce) showToast('Back to the live broadcast 📡');
+      BRIDGE.sync(api => api.live.revertStage());
+    };
     const [isGiftModalOpen, setIsGiftModalOpen] = useState(false);
 
     // Navigation & Selected Product State (Left Sidebar)
@@ -46,6 +98,10 @@
     
     // Player & Viewing State
     const [centralTv, setCentralTv] = useState(INITIAL_CENTRAL_TV);
+    // What the stage returns to when a takeover ends. Set from the server's
+    // programme on load, so it is whatever an admin actually put on air.
+    const [mainBroadcast, setMainBroadcast] = useState(INITIAL_CENTRAL_TV);
+    const [stageOverride, setStageOverride] = useState(null);
     const [isMuted, setIsMuted] = useState(true);
     const [qualityMode, setQualityMode] = useState('1080p');
     const [isMiniPlayer, setIsMiniPlayer] = useState(false);
@@ -142,6 +198,11 @@
             [authorHandle]: isFollowing
           };
         });
+        // The server owns the toggle, so reconcile against what it decided
+        // rather than trusting the optimistic flip.
+        BRIDGE.sync(api => api.social.follow(authorHandle)).then(res => {
+          if (res) setFollowingUsers(prev => ({ ...prev, [authorHandle]: res.isFollowing }));
+        });
       });
     };
 
@@ -162,6 +223,12 @@
           return { ...prev, [postId]: isLiked };
         });
         spawnHeart('❤️');
+        BRIDGE.sync(api => api.social.upvote(postId)).then(res => {
+          if (!res) return;
+          setLikedPosts(prev => ({ ...prev, [postId]: res.isUpvoted }));
+          setPosts(curr => curr.map(p => p.id === postId
+            ? { ...p, upvotes: res.upvotes, isUpvoted: res.isUpvoted } : p));
+        });
       });
     };
 
@@ -171,6 +238,9 @@
           const isSaved = !prev[postId];
           showToast(isSaved ? 'Post saved to bookmarks! 🔖' : 'Removed from bookmarks');
           return { ...prev, [postId]: isSaved };
+        });
+        BRIDGE.sync(api => api.social.save(postId)).then(res => {
+          if (res) setSavedPosts(prev => ({ ...prev, [postId]: res.isSaved }));
         });
       });
     };
@@ -211,6 +281,26 @@
         setPostCommentInputs(prev => ({ ...prev, [postId]: '' }));
         setOpenCommentSections(prev => ({ ...prev, [postId]: true }));
         showToast('Comment posted! 💬');
+
+        // Moderation runs server-side, so a blocked comment has to be pulled
+        // back out of the feed it was optimistically added to.
+        BRIDGE.sync(
+          api => api.social.comment(postId, text.trim()),
+          err => {
+            if (err && err.status === 400) {
+              setPosts(prev => prev.map(p => p.id === postId
+                ? { ...p, comments: (p.comments || []).filter(c => c.id !== newC.id) } : p));
+              showToast(err.message || 'That comment was blocked by moderation.');
+            }
+          },
+        ).then(res => {
+          if (!res) return;
+          // Swap the optimistic row for the stored one so it carries a real id.
+          setPosts(prev => prev.map(p => p.id === postId
+            ? { ...p, comments: (p.comments || []).map(c => c.id === newC.id
+                ? { ...c, id: res.comment.id, timestamp: 'Just now' } : c) }
+            : p));
+        });
       });
     };
 
@@ -223,6 +313,9 @@
         navigator.clipboard.writeText(link);
       }
       showToast('Link copied to clipboard! 📋');
+      BRIDGE.sync(api => api.social.share(post.id)).then(res => {
+        if (res) setPosts(prev => prev.map(p => p.id === post.id ? { ...p, shares: res.shares } : p));
+      });
     };
 
     const handlePostReactionEmoji = (postId, emoji) => {
@@ -249,6 +342,39 @@
 
       window.addEventListener('scroll', handleScroll, { passive: true });
       return () => window.removeEventListener('scroll', handleScroll);
+    }, []);
+
+    // Adopt the server's stage on load: the main broadcast an admin put on air,
+    // and any takeover this viewer had running when they last left.
+    useEffect(() => {
+      BRIDGE.sync(api => api.live.state()).then(res => {
+        if (!res || !res.stage) return;
+        const main = res.stage.mainBroadcast || res.stage.revertsTo;
+        if (main) {
+          const card = {
+            id: main.id, title: main.title, description: main.description || '',
+            youtubeId: main.youtubeId || null, videoUrl: main.videoUrl || null,
+            posterUrl: main.posterUrl || null, streamer: main.streamer, avatar: main.avatar,
+            product: main.product, productId: main.productId,
+            viewers: res.telemetry ? res.telemetry.baselineViewers : undefined,
+            likes: res.likes ? res.likes.seeded : undefined,
+          };
+          setMainBroadcast(card);
+          if (!res.stage.isOverride) setCentralTv(card);
+        }
+        if (res.stage.isOverride && res.stage.current) {
+          const c = res.stage.current;
+          setStageOverride({
+            id: c.id, title: c.title, description: c.description || '',
+            youtubeId: c.youtubeId || null, videoUrl: c.videoUrl || null,
+            posterUrl: c.posterUrl || null, streamer: c.streamer, avatar: c.avatar,
+            product: c.product, productId: c.productId, isTakeover: true,
+          });
+          setCentralTv(prev => ({ ...prev, ...c, isTakeover: true }));
+        }
+        if (res.likes) { setTvLikes((res.likes.seeded || 0) + res.likes.total); setIsTvLiked(res.likes.liked); }
+      });
+      refreshWallet();
     }, []);
 
     // Open a shared post link.
@@ -409,15 +535,28 @@
         platform: selectedSSO ? selectedSSO.name : 'NEU TV'
       });
       triggerConfettiShower();
+
+      // The server issues the session and owns the account identity, so adopt
+      // what it returns rather than keeping the locally invented user.
+      const productId = selectedSSO ? selectedSSO.id : 'worldstreet';
+      BRIDGE.sync(api => api.identity.sso(productId, username, ssoForm.password || undefined))
+        .then(res => {
+          if (!res) return;
+          setCurrentUser({ id: res.user.id, name: res.user.name, avatar: res.user.avatar, badge: res.user.badge });
+          setCelebrationModal(prev => prev ? { ...prev, name: res.user.name, badge: res.user.badge } : prev);
+          refreshWallet();
+        });
     };
 
     // Logout Handler
     const handleLogout = () => {
+      BRIDGE.sync(api => api.identity.logout());
       setCurrentUser(null);
       setIsGuest(true);
       setIsGateOpen(false);
       setSelectedSSO(null);
       setCelebrationModal(null);
+      setCoinBalance(0);
     };
 
     // Email / Form Auth Submit Handler
@@ -445,6 +584,18 @@
         platform: 'NEU TV'
       });
       triggerConfettiShower();
+
+      BRIDGE.sync(
+        api => (authMode === 'signup'
+          ? api.identity.signup({ name, email: authForm.email, password: authForm.password, platform: authForm.platform })
+          : api.identity.signin(authForm.email, authForm.password)),
+        err => { if (err) showToast(err.message || 'Could not reach the network.'); },
+      ).then(res => {
+        if (!res) return;
+        setCurrentUser({ id: res.user.id, name: res.user.name, avatar: res.user.avatar, badge: res.user.badge });
+        setCelebrationModal(prev => prev ? { ...prev, name: res.user.name, badge: res.user.badge } : prev);
+        refreshWallet();
+      });
     };
 
     // Spawn flying emoji
@@ -484,6 +635,18 @@
 
         setIsGiftModalOpen(false);
         showToast(`Sent ${gift.name} ${gift.emoji || '🎁'}! 🎉`);
+
+        // The server is authoritative on cost and balance: it re-checks funds
+        // and refuses a gift the viewer cannot afford, so put the coins back if
+        // it says no.
+        BRIDGE.sync(
+          api => api.wallet.tip(gift.id, { type: 'stream', id: centralTv.id || 'main' }),
+          err => {
+            setCoinBalance(prev => prev + gift.cost);
+            setActiveGiftBanner(null);
+            if (err) showToast(err.message || 'That gift did not go through.');
+          },
+        ).then(res => { if (res) setCoinBalance(res.balance); });
       });
     };
 
@@ -500,7 +663,20 @@
           text: chatInputText.trim()
         };
         setActiveLiveComments(prev => [newComment, ...prev.slice(0, 2)]);
+        const text = chatInputText.trim();
         setChatInputText('');
+
+        // Moderation is server-side. A blocked message has to come back off the
+        // ticker it was optimistically added to.
+        BRIDGE.sync(
+          api => api.live.comment(text),
+          err => {
+            if (err && err.status === 400) {
+              setActiveLiveComments(prev => prev.filter(c => c.uniqueId !== newComment.uniqueId));
+              showToast(err.message || 'That message was blocked by moderation.');
+            }
+          },
+        );
       });
     };
 
@@ -526,7 +702,21 @@
           [chanId]: [...(prev[chanId] || []), newMsg]
         }));
 
+        const text = rightChatInputText.trim();
         setRightChatInputText('');
+
+        BRIDGE.sync(
+          api => api.live.sendChat(activeCommunityServerId, chanId, text),
+          err => {
+            if (err && err.status === 400) {
+              setCommunityMessages(prev => ({
+                ...prev,
+                [chanId]: (prev[chanId] || []).filter(m => m.id !== newMsg.id),
+              }));
+              showToast(err.message || 'That message was blocked by moderation.');
+            }
+          },
+        );
       });
     };
 
@@ -558,6 +748,11 @@
             setTimeout(() => spawnHeart('❤️'), i * 150);
           }
         }
+        BRIDGE.sync(api => api.live.like()).then(res => {
+          if (!res) return;
+          setIsTvLiked(res.liked);
+          setTvLikes((res.seeded || 0) + res.total);
+        });
       });
     };
 
@@ -666,9 +861,22 @@
         };
 
         setPosts([newPost, ...posts]);
+        const draft = { content: newPostText, productId: prodObj.id, mediaUrl: newPostMedia.trim() || undefined };
         setNewPostText('');
         setNewPostMedia('');
         setIsCreatePostOpen(false);
+
+        BRIDGE.sync(
+          api => api.social.create(draft),
+          err => {
+            setPosts(prev => prev.filter(p => p.id !== newPost.id));
+            if (err) showToast(err.message || 'That post could not be published.');
+          },
+        ).then(res => {
+          // Adopt the stored post so it carries the real id every later
+          // like, comment and share has to address.
+          if (res) setPosts(prev => prev.map(p => (p.id === newPost.id ? { ...p, ...res.post, comments: [] } : p)));
+        });
       });
     };
 
@@ -1355,14 +1563,48 @@
 
           h('div', { className: 'relative w-full aspect-video bg-black flex items-center justify-center overflow-hidden' },
             
-            // Embedded 24/7 Continuous Live Stream (Speed controls & fast-forwarding disabled for Live TV)
-            h('iframe', {
-              src: `https://www.youtube-nocookie.com/embed/${centralTv.youtubeId || 'SqBx7QADBes'}?autoplay=1&mute=${isMuted ? 1 : 0}&loop=1&playlist=${centralTv.youtubeId || 'SqBx7QADBes'}&controls=0&disablekb=1&modestbranding=1&enablejsapi=1&rel=0&iv_load_policy=3&playsinline=1`,
-              title: centralTv.title || 'NEU TV Live Broadcast',
-              allow: 'autoplay; fullscreen; picture-in-picture; encrypted-media',
-              allowFullScreen: true,
-              className: 'w-full h-full object-cover border-0 pointer-events-none scale-[1.02]'
-            }),
+            // The stage plays one of two things.
+            //
+            // Normally it is the 24/7 linear broadcast: a looping embed with
+            // seeking and keyboard control disabled, because live television
+            // cannot be scrubbed.
+            //
+            // During a takeover it is the clicked video, played as real video
+            // with controls and NO loop - it has to be able to end, because
+            // reaching the end is what returns the stage to the main broadcast.
+            stageOverride && stageOverride.videoUrl
+              ? h('video', {
+                  key: stageOverride.id,
+                  src: stageOverride.videoUrl,
+                  poster: stageOverride.posterUrl || undefined,
+                  autoPlay: true,
+                  muted: isMuted,
+                  loop: false,
+                  controls: true,
+                  playsInline: true,
+                  onEnded: () => returnToMainBroadcast(true),
+                  className: 'w-full h-full object-contain bg-black border-0'
+                })
+              : h('iframe', {
+                  src: `https://www.youtube-nocookie.com/embed/${centralTv.youtubeId || 'SqBx7QADBes'}?autoplay=1&mute=${isMuted ? 1 : 0}&loop=${stageOverride ? 0 : 1}&playlist=${centralTv.youtubeId || 'SqBx7QADBes'}&controls=${stageOverride ? 1 : 0}&disablekb=1&modestbranding=1&enablejsapi=1&rel=0&iv_load_policy=3&playsinline=1`,
+                  title: centralTv.title || 'NEU TV Live Broadcast',
+                  allow: 'autoplay; fullscreen; picture-in-picture; encrypted-media',
+                  allowFullScreen: true,
+                  className: 'w-full h-full object-cover border-0 scale-[1.02] '
+                    + (stageOverride ? '' : 'pointer-events-none')
+                }),
+
+            // While a takeover is playing, say what is on and offer the way back.
+            stageOverride && h('div', {
+              className: 'absolute top-3 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/85 backdrop-blur-md border border-[#00F6A7]/40 shadow-xl max-w-[92%]'
+            },
+              h('span', { className: 'w-1.5 h-1.5 rounded-full bg-[#00F6A7] flex-shrink-0' }),
+              h('span', { className: 'text-[10px] md:text-xs font-bold text-white truncate' }, stageOverride.title),
+              h('button', {
+                onClick: () => returnToMainBroadcast(true),
+                className: 'ml-1 px-2.5 py-0.5 rounded-full bg-white/15 hover:bg-white/25 text-[10px] font-black text-white transition flex-shrink-0'
+              }, 'Back to live')
+            ),
 
             // ANIMATED LIVE GIFT ALERT BANNER
             activeGiftBanner && h('div', { className: 'absolute top-16 left-1/2 -translate-x-1/2 z-50 px-6 py-3 rounded-full bg-[#111B33] text-white font-black text-xs md:text-sm flex items-center gap-3 shadow-2xl border-2 border-amber-400 animate-bounce' },
@@ -1691,8 +1933,18 @@
               ),
 
               // 2. MAIN VIDEO PLAYER FIELD (NATIVE AUTOPLAY VIDEO WITH FALLBACK)
+              //
+              // Clicking this preview promotes the video to the main stage,
+              // where it replaces the live broadcast until it finishes.
               h('div', {
-                className: 'relative aspect-video rounded-2xl overflow-hidden bg-black border border-white/10 shadow-2xl w-full group'
+                className: 'relative aspect-video rounded-2xl overflow-hidden bg-black border border-white/10 shadow-2xl w-full group cursor-pointer',
+                onClick: (ev) => {
+                  // Let the inline controls work; only a click on the frame
+                  // itself promotes the video.
+                  if (ev.target && ev.target.tagName === 'VIDEO') return;
+                  takeStage(post);
+                },
+                title: 'Play on the main stage'
               },
                 // Direct Autoplaying Video Stream
                 h('video', {
@@ -1705,6 +1957,17 @@
                   controls: true,
                   className: 'w-full h-full object-cover border-0'
                 }),
+
+                // The explicit affordance. The whole frame is clickable, but a
+                // preview that silently does something on click is a guess; a
+                // button is not.
+                h('button', {
+                  onClick: (ev) => { ev.stopPropagation(); takeStage(post); },
+                  className: 'absolute bottom-3 right-3 z-20 px-3.5 py-2 rounded-full bg-gradient-to-r from-[#00F6A7] to-[#00C8FF] text-black font-black text-[11px] shadow-xl flex items-center gap-1.5 opacity-0 group-hover:opacity-100 focus:opacity-100 transition duration-200 hover:brightness-110'
+                },
+                  h('i', { 'data-lucide': 'tv', className: 'w-3.5 h-3.5' }),
+                  'Play on main stage'
+                ),
 
                 // Top badges (Platform & Views)
                 h('div', { className: 'absolute top-3 left-3 right-3 flex items-center justify-between z-10 pointer-events-none' },
@@ -2150,16 +2413,10 @@
               h('span', null, 'Creator Spotlight: ', h('strong', { className: 'text-white font-extrabold' }, selectedVideo.influencer)),
               h('button', {
                 onClick: () => {
-                  setCentralTv({
-                    title: selectedVideo.title,
-                    description: selectedVideo.description,
-                    youtubeId: selectedVideo.youtubeId || 'xHU5MHuUSKI',
-                    viewers: 42800,
-                    likes: 12400
-                  });
+                  // Same path as a feed video, so the server records the
+                  // takeover and the stage knows what to return to.
+                  takeStage(selectedVideo);
                   setSelectedVideo(null);
-                  window.scrollTo({ top: 0, behavior: 'smooth' });
-                  showToast('Now broadcasting on main stage! 📺');
                 },
                 className: 'px-3.5 py-1.5 rounded-full bg-gradient-to-r from-[#00F6A7] to-[#00C8FF] text-black font-black text-xs hover:brightness-110 transition flex items-center gap-1.5 shadow-md'
               },

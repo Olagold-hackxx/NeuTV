@@ -87,6 +87,7 @@ export function compose({
     runtime, catalog, hub,
     moderation: client,
     programmeClient: client,
+    socialClient: client,
     giftPort: { topGifters: (target, opts) => wallet.topGifters(target, opts) },
     store: openLiveStore(file('live', 'live')),
   });
