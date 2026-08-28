@@ -133,5 +133,20 @@ Two lanes, on purpose.
 | `NEUTV_ADMIN_EMAILS` | none | Comma-separated emails granted the admin role |
 | `NEUTV_CLAUDE_BIN` | auto-discovered | Absolute path to the Claude Code binary |
 
+## Known limits
+
+- **Rate limiting is per-process and in-memory.** Correct for the single-process
+  deployment this ships as; running several gateway instances behind a load
+  balancer would give each its own budget. That needs a shared store before
+  horizontal scaling, not before launch.
+- **The LLM escalation path is unverified against a real binary here**, because
+  Claude Code is not installed on the build machine. Parsing, timeouts and error
+  handling are covered by tests through an injected `exec`; the handshake itself
+  is not. Check `/api/v1/llm/health` on a host that has it.
+- **The existing UI is wired to the catalog only.** `NeuTV.hydrate()` feeds the
+  live catalog into the first render; likes, comments, tips and chat still run
+  on local React state. Migrating those handlers is the next phase, along with
+  the admin/CRM screens.
+
 See `ARCHITECTURE.md` for the boundaries, and `contracts/manifest.mjs` for the
 route contract itself.
