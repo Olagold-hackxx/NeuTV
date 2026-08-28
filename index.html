@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NEU TV — The New Economy, On Screen.</title>
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <!-- Custom Brand Style Sheet -->
+  <link rel="stylesheet" href="./src/styles.css?v=61.0">
+
+  <!-- React 18 & ReactDOM CDN with CDNJS Fallbacks -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js" crossorigin></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js" crossorigin></script>
+</head>
+<body class="bg-[#060A12] text-white antialiased selection:bg-[#00F6A7] selection:text-black min-h-screen">
+
+  <div id="root">
+    <!-- Initial Loading State matching Brand Guide -->
+    <div class="h-screen w-screen flex flex-col items-center justify-center bg-[#060A12] text-white space-y-4">
+      <div class="w-14 h-14 rounded-2xl bg-[#0B1220] border border-[#00F6A7]/40 shadow-[0_0_30px_rgba(0,246,167,0.25)] flex items-center justify-center animate-pulse">
+        <span class="text-2xl font-black italic bg-gradient-to-r from-[#00F6A7] via-[#00C8FF] to-[#4D6BFF] bg-clip-text text-transparent">N</span>
+      </div>
+      <div class="text-center space-y-1">
+        <div class="flex items-center justify-center gap-1">
+          <span class="text-lg font-black italic tracking-tight bg-gradient-to-r from-[#00F6A7] via-[#00C8FF] to-[#4D6BFF] bg-clip-text text-transparent">NEU</span>
+          <span class="text-xs font-black text-[#00C8FF] -mt-1 tracking-widest">TV</span>
+        </div>
+        <div class="text-[10px] font-mono tracking-[0.25em] uppercase text-white/50">THE NEW ECONOMY, ON SCREEN.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Data Script -->
+  <script src="./src/data.js?v=61.0"></script>
+
+  <!-- Native React Application Script -->
+  <script src="./src/app.js?v=61.0"></script>
+
+  <!-- Mount Script -->
+  <script>
+    function initApp() {
+      const rootElement = document.getElementById('root');
+      if (rootElement && window.CentralApp && window.React && window.ReactDOM) {
+        try {
+          const root = ReactDOM.createRoot(rootElement);
+          root.render(React.createElement(window.CentralApp));
+        } catch(err) {
+          console.error("Mount error:", err);
+        }
+      }
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initApp);
+    } else {
+      initApp();
+    }
+
+    // Refresh Lucide icons
+    setInterval(function() {
+      if (window.lucide && typeof window.lucide.createIcons === 'function') {
+        window.lucide.createIcons();
+      }
+    }, 1000);
+  </script>
+</body>
+</html>
