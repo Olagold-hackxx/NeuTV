@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NEU TV — The New Economy, On Screen.</title>
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Lucide Icons CDN -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <!-- React 18 & ReactDOM CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js" crossorigin></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js" crossorigin></script>
+
+  <!-- App stylesheet & animations -->
+  <link rel="stylesheet" href="./src/styles.css?v=2.0">
+</head>
+<body class="bg-[#060A12] text-white antialiased selection:bg-[#00F6A7] selection:text-black min-h-screen">
+
+  <div id="root">
+    <!-- Initial Loading State matching Brand Guide -->
+    <div class="h-screen w-screen flex flex-col items-center justify-center bg-[#060A12] text-white space-y-4">
+      <div class="w-14 h-14 rounded-2xl bg-[#0B1220] border border-[#00F6A7]/40 shadow-[0_0_30px_rgba(0,246,167,0.25)] flex items-center justify-center animate-pulse">
+        <span class="text-2xl font-black italic bg-gradient-to-r from-[#00F6A7] via-[#00C8FF] to-[#4D6BFF] bg-clip-text text-transparent">N</span>
+      </div>
+      <div class="text-center space-y-1">
+        <div class="flex items-center justify-center gap-1">
+          <span class="text-lg font-black italic tracking-tight bg-gradient-to-r from-[#00F6A7] via-[#00C8FF] to-[#4D6BFF] bg-clip-text text-transparent">NEU</span>
+          <span class="text-xs font-black text-[#00C8FF] -mt-1 tracking-widest">TV</span>
+        </div>
+        <div class="text-[10px] font-mono tracking-[0.25em] uppercase text-white/50">THE NEW ECONOMY, ON SCREEN.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Content and app. src/data.js is the bundled fallback catalog and the
+       source the backend seed is generated from; hydrate() replaces it below
+       when the API is reachable. -->
+  <script src="./src/data.js?v=2.0"></script>
+  <script src="./src/app.js?v=2.0"></script>
+
+  <!-- NEU TV backend client (contract v2) -->
+  <script src="./src/neutv-api.js?v=2.0"></script>
+
+  <!-- Mount Script -->
+  <script>
+    function initApp() {
+      const rootElement = document.getElementById('root');
+      if (rootElement && window.CentralApp && window.React && window.ReactDOM) {
+        try {
+          const root = ReactDOM.createRoot(rootElement);
+          root.render(React.createElement(window.CentralApp));
+        } catch(err) {
+          console.error("Mount error:", err);
+        }
+      }
+    }
+
+    // Pull the live catalog before the first render. If the backend is not
+    // running, hydrate() resolves anyway and the bundled window.CentralData
+    // above renders exactly as it always has - the page never blocks on it.
+    function bootstrapApp() {
+      if (!window.NeuTV) return initApp();
+      window.NeuTV.hydrate()
+        .then(function (res) {
+          console.log(res.live
+            ? '[NEU TV] live catalog ' + res.checksum
+            : '[NEU TV] offline, using bundled catalog');
+        })
+        .catch(function () { /* hydrate never rejects, but never trust that */ })
+        .then(function () {
+          initApp();
+          // Keep this viewer inside the live count while the tab is open.
+          if (window.NEUTV_LIVE && window.NeuTV.live) window.NeuTV.live.startPresence();
+        });
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', bootstrapApp);
+    } else {
+      bootstrapApp();
+    }
+
+    // Refresh Lucide icons dynamically
+    setInterval(function() {
+      if (window.lucide && typeof window.lucide.createIcons === 'function') {
+        window.lucide.createIcons();
+      }
+    }, 1000);
+  </script>
+</body>
+</html>

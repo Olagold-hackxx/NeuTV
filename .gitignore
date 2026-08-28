@@ -4,6 +4,6 @@ node_modules/
 .env.*
 .DS_Store
 
-# Per-service SQLite stores are runtime state, never committed.
-services/*/data/
+# Per-service SQLite stores and uploaded video are runtime state, never committed.
+backend/services/*/data/
 /tmp/
