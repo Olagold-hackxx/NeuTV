@@ -79,17 +79,45 @@
     // bundled into the page, which meant a dead backend looked exactly like a
     // healthy one and nobody noticed for as long as the fixtures stayed
     // plausible.
+    // Two audiences, one failure.
+    //
+    // A viewer gets an apology and a retry button. They cannot start a server,
+    // they do not know what an API is, and "Failed to fetch" tells them nothing
+    // - this screen used to say "run npm start", which is a developer's note
+    // left on a public page.
+    //
+    // Whoever is actually debugging gets the detail, on localhost where the
+    // instruction is true, and in the console everywhere.
     function showOffline(message) {
+      var isLocal = ['localhost', '127.0.0.1', '[::1]', ''].indexOf(location.hostname) !== -1;
+      if (window.console) {
+        console.error('[NEU TV] the API at ' + ((window.NEUTV_API_BASE || location.origin) + '/api/v1')
+          + ' could not be reached:', message || '(no detail)');
+      }
+
+      var detail = isLocal
+        ? '<div class="text-sm text-white/50 max-w-md">The catalog, the library and the live stage all come from the '
+          + 'backend. Start it with <span class="font-mono text-[#00F6A7]">npm start</span> and reload.</div>'
+          + '<div class="text-xs font-mono text-white/30">' + escapeHtml(message || '') + '</div>'
+        : '<div class="text-sm text-white/50 max-w-md">We can&rsquo;t load the broadcast right now. '
+          + 'This is on our side &mdash; please try again in a moment.</div>';
+
       document.getElementById('root').innerHTML =
         '<div class="h-screen w-screen flex flex-col items-center justify-center bg-[#060A12] text-white gap-4 px-6 text-center">'
         + '<div class="w-14 h-14 rounded-2xl bg-[#0B1220] border border-white/10 flex items-center justify-center">'
         + '<span class="text-2xl font-black italic text-white/40">N</span></div>'
-        + '<div class="text-lg font-semibold">NEU TV cannot reach its API</div>'
-        + '<div class="text-sm text-white/50 max-w-md">The catalog, the library and the live stage all come from the '
-        + 'backend. Start it with <span class="font-mono text-[#00F6A7]">npm start</span> and reload.</div>'
-        + '<div class="text-xs font-mono text-white/30">' + (message || '') + '</div>'
+        + '<div class="text-lg font-semibold">' + (isLocal ? 'NEU TV cannot reach its API' : 'NEU TV is temporarily unavailable') + '</div>'
+        + detail
         + '<button onclick="window.location.reload()" class="mt-2 px-4 py-2 rounded-lg bg-[#00F6A7] text-black text-sm font-semibold">Retry</button>'
         + '</div>';
+    }
+
+    // The message can carry a URL from a fetch failure, and it is written into
+    // innerHTML.
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+      });
     }
 
     // Pull the catalog and the published library before the first render.
