@@ -13,8 +13,16 @@ import { cookies } from 'next/headers';
 import { API_BASE, SESSION_COOKIE } from '@/lib/api';
 
 export const runtime = 'nodejs';
-// Video uploads run far longer than a default serverless budget.
-export const maxDuration = 3600;
+// Video uploads run far longer than a default serverless budget, but not
+// arbitrarily long: this was 3600, which no Vercel plan permits - the platform
+// clamps it, so the real ceiling was whatever the plan allowed and the number
+// here was a comforting fiction. 300s is the Pro default maximum.
+//
+// It is a real limit, not a formality: at a typical upstream this caps a
+// browser upload at a few hundred megabytes. Beyond that the file has to go
+// straight to object storage with a presigned URL rather than being streamed
+// through this function.
+export const maxDuration = 300;
 
 export async function PUT(
   request: Request,

@@ -88,10 +88,33 @@ export const ROUTES = [
   { service: 'admin', method: 'GET',    path: '/admin/crm/moderation',       auth: 'admin', summary: 'Moderation queue: everything flagged for review.' },
   // Public read of the current programme: what the stage reverts to, and what
   // a cold frontend loads before any takeover happens.
+  // --- live events: an admin going on air --------------------------------
+  { service: 'admin', method: 'GET',    path: '/admin/live-events',                  auth: 'admin', summary: 'Live events: scheduled, on air and ended.' },
+  { service: 'admin', method: 'POST',   path: '/admin/live-events',                  auth: 'admin', summary: 'Schedule an event and mint its stream key.' },
+  { service: 'admin', method: 'GET',    path: '/admin/live-events/:eventId',         auth: 'admin', summary: 'One event, including its ingest credentials.' },
+  { service: 'admin', method: 'PUT',    path: '/admin/live-events/:eventId',         auth: 'admin', summary: 'Edit an event that is not on air.' },
+  { service: 'admin', method: 'POST',   path: '/admin/live-events/:eventId/start',   auth: 'admin', summary: 'Go on air. Supersedes the programme.' },
+  { service: 'admin', method: 'POST',   path: '/admin/live-events/:eventId/stop',    auth: 'admin', summary: 'End the broadcast and fall back to the programme.' },
+  { service: 'admin', method: 'POST',   path: '/admin/live-events/:eventId/rotate',  auth: 'admin', summary: 'Mint a new stream key and invalidate the old one.' },
+  { service: 'admin', method: 'DELETE', path: '/admin/live-events/:eventId',         auth: 'admin', summary: 'Cancel an event that is not on air.' },
+  // Broadcasting from the admin page: the browser records and posts segments.
+  { service: 'admin', method: 'PUT',    path: '/admin/live-events/:eventId/segment',  auth: 'admin', summary: 'Append one recorded segment. Raw binary body.', raw: true },
+  // Public playback of a browser broadcast. A player polls the manifest and
+  // appends the segments it has not seen.
+  { service: 'admin', method: 'GET',    path: '/live-event/:eventId/manifest',        auth: 'none',  summary: 'Which segments exist right now.' },
+  { service: 'admin', method: 'GET',    path: '/live-event/:eventId/segment/:seq',    auth: 'none',  summary: 'One segment of a browser broadcast.', stream: true },
+
+  // Public: what is on air. Never carries the stream key.
+  { service: 'admin', method: 'GET',    path: '/live-event/current',                 auth: 'none',  summary: 'The live event on air right now, if any.' },
+
   { service: 'admin', method: 'GET',    path: '/programme/current',          auth: 'none',  summary: 'The main broadcast the stage returns to.' },
   // Public read of a PUBLISHED video. The live service resolves stage takeovers
   // through this: the admin route is admin-only, which works in-process but
   // 403s the moment the services are split across hosts.
+  // Public read of the published library. The viewer app builds its on-demand
+  // shelves from this, so what the back office publishes is what the site
+  // carries - there is no second, hardcoded copy of the catalog in the browser.
+  { service: 'admin', method: 'GET',    path: '/videos',                     auth: 'none',  summary: 'Every published video, newest first.' },
   { service: 'admin', method: 'GET',    path: '/videos/:videoId',            auth: 'none',  summary: 'A published video, for stage playback.' },
 
   // --- moderation: the gate every piece of user text passes through --------

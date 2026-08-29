@@ -25,6 +25,28 @@ export interface Video {
   updatedAt: number;
 }
 
+/**
+ * What an edit may change.
+ *
+ * Not `Partial<Video>`: a video is read with a resolved `playbackUrl` and
+ * written with the thing behind it, and the two are not the same field. Sending
+ * `kind`, `sourceUrl` or `youtubeId` replaces the playback source outright -
+ * the API keeps exactly one, so a swapped URL cannot lose to a stale YouTube id.
+ */
+export interface VideoPatch {
+  title?: string;
+  description?: string;
+  productId?: string;
+  status?: VideoStatus;
+  kind?: 'upload' | 'external';
+  sourceUrl?: string;
+  youtubeId?: string;
+  posterUrl?: string;
+  /** "04:12" or "1:02:33", as it is typed into the form. */
+  duration?: string;
+  durationSeconds?: number;
+}
+
 export interface Programme {
   videoId: string;
   setBy: string;
@@ -92,4 +114,30 @@ export interface SessionUser {
   role: 'viewer' | 'creator' | 'admin';
   authMethod: 'sso' | 'password';
   verified: boolean;
+}
+
+export type LiveEventStatus = 'scheduled' | 'live' | 'ended' | 'cancelled';
+
+/** What an admin sees. Carries ingest credentials; never render it publicly. */
+export interface LiveEvent {
+  id: string;
+  title: string;
+  description: string;
+  productId: string;
+  status: LiveEventStatus;
+  source: 'external' | 'browser';
+  driver: 'manual' | 'mux' | 'cloudflare';
+  ingestUrl: string | null;
+  streamKey: string;
+  playbackUrl: string | null;
+  youtubeId: string | null;
+  posterUrl: string | null;
+  scheduledFor: number | null;
+  startedAt: number | null;
+  endedAt: number | null;
+  peakViewers: number;
+  createdBy: string;
+  createdAt: number;
+  updatedAt: number;
+  isLive: boolean;
 }

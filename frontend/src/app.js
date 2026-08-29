@@ -1,42 +1,31 @@
 (function() {
-  const data = window.CentralData || {};
-  const FALLBACK_PRODUCTS = [
-    { id: 'worldstreet', name: 'WorldStreet', tag: '24/7 Stock Leverage', logo: './assets/logos/ark_logo.png' },
-    { id: 'market', name: 'mARKet', tag: 'P2P Commerce', logo: './assets/logos/chat_cube_logo.png' },
-    { id: 'linkpay', name: 'KashPlus', tag: 'Instant Payments', logo: './assets/logos/kashplus_logo.png' },
-    { id: 'ark', name: 'ARK', tag: 'Yield Vaults', logo: './assets/logos/ark_logo.png' },
-    { id: 'tsioncars', name: 'Tsion Cars', tag: 'Vehicle Hub', logo: './assets/logos/ark_logo.png' }
-  ];
-  const PRODUCTS = (data.PRODUCTS && data.PRODUCTS.length > 0) ? data.PRODUCTS : FALLBACK_PRODUCTS;
-  const PRODUCT_COMMUNITY_HUBS = data.PRODUCT_COMMUNITY_HUBS || {};
-  const INITIAL_CENTRAL_TV = data.INITIAL_CENTRAL_TV || {};
-  const SAMPLE_LIVE_COMMENTS = data.SAMPLE_LIVE_COMMENTS || [];
-  const INITIAL_MEDIA_ROWS = data.INITIAL_MEDIA_ROWS || [];
-  const INITIAL_POSTS = data.INITIAL_POSTS || [];
-  const TRENDING_TOPICS = data.TRENDING_TOPICS || [];
-  const PLATFORMS = data.PLATFORMS || [];
-  const SCHEDULE_ITEMS = data.SCHEDULE_ITEMS || [];
-  const VOD_LIBRARY = data.VOD_LIBRARY || [];
-  const CREATOR_SPOTLIGHTS = data.CREATOR_SPOTLIGHTS || [];
+  // Catalog constants come from catalog.js and are read during render, not at
+  // script load: hydrate() replaces window.CentralData after this file has
+  // already executed, so anything captured up here would be the stale bundled
+  // copy. See src/catalog.js.
+  const CATALOG = window.NeuTVCatalog;
+  const { EMOJIS, GIFTS } = CATALOG;
+
+  // Every handler updates local state first, then persists through this. When
+  // the backend is unreachable sync() is a no-op and the app behaves exactly as
+  // it did before there was one. See src/bridge.js.
+  const BRIDGE = window.NeuTVBridge || { isLive: () => false, sync: () => Promise.resolve(null) };
 
   const ReactObj = window.React || {};
   const { useState, useEffect, useMemo, useRef, createElement: h } = ReactObj;
 
-  const EMOJIS = ['❤️', '🔥', '👏', '🎉', '🚀', '⭐', '💖', '💎'];
 
-  const GIFTS = [
-    { id: 'giftbox', name: 'Luxury Gift Box', emoji: '🎁', cost: 1000, label: '1,000 Coins' },
-    { id: 'crown', name: 'Royal Crown', emoji: '👑', cost: 500, label: '500 Coins' },
-    { id: 'diamond', name: 'Diamond Gem', emoji: '💎', cost: 250, label: '250 Coins' },
-    { id: 'rocket', name: 'Rocket Booster', emoji: '🚀', cost: 100, label: '100 Coins' },
-    { id: 'flame', name: 'Super Flame', emoji: '🔥', cost: 50, label: '50 Coins' },
-    { id: 'trophy', name: 'Golden Trophy', emoji: '🏆', cost: 75, label: '75 Coins' },
-    { id: 'car', name: 'Supercar Key', emoji: '🏎️', cost: 350, label: '350 Coins' },
-    { id: 'spike', name: 'Kash Spike', emoji: '⚡', cost: 25, label: '25 Coins' },
-    { id: 'applause', name: 'Applause', emoji: '👏', cost: 10, label: '10 Coins' }
-  ];
 
   function App() {
+    // Read the catalog now, during render. By this point hydrate() has run, so
+    // these are the live values when the API is reachable and the bundled
+    // fallback when it is not.
+    const {
+      PRODUCTS, PRODUCT_COMMUNITY_HUBS, INITIAL_CENTRAL_TV, SAMPLE_LIVE_COMMENTS,
+      INITIAL_POSTS, TRENDING_TOPICS, PLATFORMS,
+      SCHEDULE_ITEMS, VOD_LIBRARY, CREATOR_SPOTLIGHTS, LIBRARY_POSTS,
+    } = CATALOG.read();
+
     // Refresh Lucide icons on every state change
     useEffect(() => {
       if (window.lucide && typeof window.lucide.createIcons === 'function') {
@@ -45,12 +34,118 @@
     });
 
     // Authentication & SSO State
+    const [isInitialSplash, setIsInitialSplash] = useState(true);
     const [currentUser, setCurrentUser] = useState(null);
     const [isGuest, setIsGuest] = useState(false);
     const [isGateOpen, setIsGateOpen] = useState(false);
 
     // Coin Balance State (No sign-in bonus)
     const [coinBalance, setCoinBalance] = useState(0);
+
+    // The wallet lives on the server. Balances open at 0 and only move through
+    // the ledger, so the client never invents one.
+    const refreshWallet = () => {
+      BRIDGE.sync(api => api.wallet.balance()).then(res => {
+        if (res) setCoinBalance(res.balance);
+      });
+    };
+
+    // Attach an HLS stream to a <video>.
+    //
+    // Safari plays .m3u8 natively; nothing else does, so hls.js is loaded from
+    // a CDN on demand - only when a live event is actually using HLS, so the
+    // 99% of sessions that never see one pay nothing for it.
+    const attachHls = (el, url) => {
+      if (!el || !url) return;
+      if (el.canPlayType('application/vnd.apple.mpegurl')) { el.src = url; return; }
+      const start = () => {
+        if (!window.Hls || !window.Hls.isSupported()) { el.src = url; return; }
+        if (el._neuHls) el._neuHls.destroy();
+        const hls = new window.Hls({ lowLatencyMode: true });
+        el._neuHls = hls;
+        hls.loadSource(url);
+        hls.attachMedia(el);
+      };
+      if (window.Hls) return start();
+      if (!document.getElementById('neutv-hls')) {
+        const tag = document.createElement('script');
+        tag.id = 'neutv-hls';
+        tag.src = 'https://cdn.jsdelivr.net/npm/hls.js@1/dist/hls.min.js';
+        tag.onload = start;
+        // If the CDN is unreachable, hand the URL to the browser and let it try.
+        tag.onerror = () => { el.src = url; };
+        document.head.appendChild(tag);
+      } else {
+        document.getElementById('neutv-hls').addEventListener('load', start);
+      }
+    };
+
+    const isHls = (url) => typeof url === 'string' && url.indexOf('.m3u8') !== -1;
+
+    // Put a video on the main stage.
+    //
+    // The main broadcast owns the main page. Clicking any other video replaces
+    // it, and when that video ends the stage returns on its own. The server
+    // holds the same state (per viewer, with an expiry), so a reload lands back
+    // on whatever should be playing rather than resetting to the top.
+    const takeStage = (video) => {
+      if (!video) return;
+      const card = {
+        id: video.id,
+        title: video.videoTitle || video.title || video.content || 'Announcement',
+        description: video.content || video.description || '',
+        youtubeId: video.youtubeId || null,
+        videoUrl: video.videoMp4 || video.videoUrl || null,
+        posterUrl: video.mediaUrl || video.thumbnail || video.posterUrl || null,
+        streamer: video.author || video.name || centralTv.streamer,
+        avatar: video.avatar || centralTv.avatar,
+        product: video.productName || video.product || centralTv.product,
+        productId: video.productId || centralTv.productId,
+        viewers: centralTv.viewers,
+        likes: centralTv.likes,
+        isTakeover: true,
+      };
+      setStageOverride(card);
+      setCentralTv(card);
+      setIsMuted(false);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      showToast('Now playing on the main stage 📺');
+      BRIDGE.sync(api => api.live.takeStage(video.id));
+    };
+
+    // A live event becomes the main broadcast: it is what the stage shows, and
+    // what a takeover returns to when the clicked video ends.
+    const applyLiveEvent = (event) => {
+      if (!event) return;
+      const card = {
+        id: event.id,
+        title: event.title,
+        description: event.description || '',
+        youtubeId: event.youtubeId || null,
+        videoUrl: event.playbackUrl || null,
+        posterUrl: event.posterUrl || null,
+        product: event.productId,
+        productId: event.productId,
+        isLiveEvent: true,
+        // The event says how it is fed. Guessing from "playbackUrl is empty"
+        // was ambiguous; source is explicit.
+        isSegmented: event.source === 'browser',
+      };
+      setLiveEvent(card);
+      setLiveError(null);
+      setMainBroadcast(card);
+      // Don't yank the screen away from someone mid-video; they return to the
+      // live event when their takeover ends.
+      setStageOverride(prev => { if (!prev) setCentralTv(card); return prev; });
+    };
+
+    // Called when the takeover finishes, or when the viewer dismisses it.
+    const returnToMainBroadcast = (announce) => {
+      setStageOverride(null);
+      setCentralTv(mainBroadcast);
+      if (announce) showToast('Back to the live broadcast 📡');
+      BRIDGE.sync(api => api.live.revertStage());
+    };
     const [isGiftModalOpen, setIsGiftModalOpen] = useState(false);
 
     // Navigation & Selected Product State (Left Sidebar)
@@ -62,14 +157,81 @@
     
     // Player & Viewing State
     const [centralTv, setCentralTv] = useState(INITIAL_CENTRAL_TV);
+    // What the stage returns to when a takeover ends. Set from the server's
+    // programme on load, so it is whatever an admin actually put on air.
+    const [mainBroadcast, setMainBroadcast] = useState(INITIAL_CENTRAL_TV);
+    const [stageOverride, setStageOverride] = useState(null);
+    // The live event on air, if any. It outranks the programmed video.
+    const [liveEvent, setLiveEvent] = useState(null);
+    // Why a live broadcast is not playing, when it is not playing.
+    const [liveError, setLiveError] = useState(null);
     const [isMuted, setIsMuted] = useState(true);
+    const [audioLanguage, setAudioLanguage] = useState('English (Original)');
+    const [isAudioLangOpen, setIsAudioLangOpen] = useState(false);
+    const [subtitleLang, setSubtitleLang] = useState('English CC');
+    const [isSubtitleOpen, setIsSubtitleOpen] = useState(false);
+    const [isFullscreen, setIsFullscreen] = useState(false);
     const [qualityMode, setQualityMode] = useState('1080p');
     const [isMiniPlayer, setIsMiniPlayer] = useState(false);
     const [selectedVideo, setSelectedVideo] = useState(null);
 
+    const AUDIO_LANGUAGES = [
+      { id: 'en', name: 'English (Original)' },
+      { id: 'es', name: 'Spanish (Español)' },
+      { id: 'fr', name: 'French (Français)' },
+      { id: 'de', name: 'German (Deutsch)' },
+      { id: 'pt', name: 'Portuguese (Português)' },
+      { id: 'sw', name: 'Swahili (Kiswahili)' },
+      { id: 'yo', name: 'Yoruba (Èdè Yorùbá)' },
+      { id: 'ar', name: 'Arabic (العربية)' }
+    ];
+
+    const SUBTITLE_OPTIONS = [
+      { id: 'off', name: 'Subtitles Off' },
+      { id: 'en', name: 'English CC' },
+      { id: 'es', name: 'Spanish (Español) CC' },
+      { id: 'fr', name: 'French (Français) CC' },
+      { id: 'de', name: 'German (Deutsch) CC' },
+      { id: 'pt', name: 'Portuguese CC' }
+    ];
+
+    const handleToggleFullscreen = () => {
+      const el = document.getElementById('central-tv-stage');
+      if (!document.fullscreenElement) {
+        if (el && el.requestFullscreen) {
+          el.requestFullscreen();
+          setIsFullscreen(true);
+        }
+      } else {
+        if (document.exitFullscreen) {
+          document.exitFullscreen();
+          setIsFullscreen(false);
+        }
+      }
+    };
+
+    // 2. All useEffect hooks below useState
+
+    useEffect(() => {
+      const splashTimer = setTimeout(() => {
+        setIsInitialSplash(false);
+      }, 2500);
+      return () => clearTimeout(splashTimer);
+    }, []);
+
+    useEffect(() => {
+      if (window.lucide && typeof window.lucide.createIcons === 'function') {
+        window.lucide.createIcons();
+      }
+    });
+
     // Feed & Content State
-    const [mediaRows, setMediaRows] = useState(INITIAL_MEDIA_ROWS);
-    const [posts, setPosts] = useState(INITIAL_POSTS);
+    // Published videos are announcements too. The library and the designed
+    // posts are one feed, newest first, rather than a shelf above a feed
+    // showing the same videos twice.
+    const [posts, setPosts] = useState(() =>
+      [...LIBRARY_POSTS, ...INITIAL_POSTS]
+        .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)));
     const [isCreatePostOpen, setIsCreatePostOpen] = useState(false);
 
     // RIGHT SIDEBAR COMMUNITY CHAT ROOM & MEMBERSHIP STATE
@@ -138,6 +300,7 @@
     const [likedPosts, setLikedPosts] = useState({ 'post-neu-1': true, 'post-ws-1': true });
     const [savedPosts, setSavedPosts] = useState({ 'post-ws-1': true });
     const [openCommentSections, setOpenCommentSections] = useState({ 'post-neu-1': true });
+    const [highlightedPostId, setHighlightedPostId] = useState(null);
     const [postCommentInputs, setPostCommentInputs] = useState({});
     const [toastMessage, setToastMessage] = useState(null);
 
@@ -156,6 +319,11 @@
             ...prev,
             [authorHandle]: isFollowing
           };
+        });
+        // The server owns the toggle, so reconcile against what it decided
+        // rather than trusting the optimistic flip.
+        BRIDGE.sync(api => api.social.follow(authorHandle)).then(res => {
+          if (res) setFollowingUsers(prev => ({ ...prev, [authorHandle]: res.isFollowing }));
         });
       });
     };
@@ -177,6 +345,12 @@
           return { ...prev, [postId]: isLiked };
         });
         spawnHeart('❤️');
+        BRIDGE.sync(api => api.social.upvote(postId)).then(res => {
+          if (!res) return;
+          setLikedPosts(prev => ({ ...prev, [postId]: res.isUpvoted }));
+          setPosts(curr => curr.map(p => p.id === postId
+            ? { ...p, upvotes: res.upvotes, isUpvoted: res.isUpvoted } : p));
+        });
       });
     };
 
@@ -186,6 +360,9 @@
           const isSaved = !prev[postId];
           showToast(isSaved ? 'Post saved to bookmarks! 🔖' : 'Removed from bookmarks');
           return { ...prev, [postId]: isSaved };
+        });
+        BRIDGE.sync(api => api.social.save(postId)).then(res => {
+          if (res) setSavedPosts(prev => ({ ...prev, [postId]: res.isSaved }));
         });
       });
     };
@@ -226,15 +403,41 @@
         setPostCommentInputs(prev => ({ ...prev, [postId]: '' }));
         setOpenCommentSections(prev => ({ ...prev, [postId]: true }));
         showToast('Comment posted! 💬');
+
+        // Moderation runs server-side, so a blocked comment has to be pulled
+        // back out of the feed it was optimistically added to.
+        BRIDGE.sync(
+          api => api.social.comment(postId, text.trim()),
+          err => {
+            if (err && err.status === 400) {
+              setPosts(prev => prev.map(p => p.id === postId
+                ? { ...p, comments: (p.comments || []).filter(c => c.id !== newC.id) } : p));
+              showToast(err.message || 'That comment was blocked by moderation.');
+            }
+          },
+        ).then(res => {
+          if (!res) return;
+          // Swap the optimistic row for the stored one so it carries a real id.
+          setPosts(prev => prev.map(p => p.id === postId
+            ? { ...p, comments: (p.comments || []).map(c => c.id === newC.id
+                ? { ...c, id: res.comment.id, timestamp: 'Just now' } : c) }
+            : p));
+        });
       });
     };
 
     const handleSharePost = (post) => {
       setPosts(prev => prev.map(p => p.id === post.id ? { ...p, shares: (p.shares || 0) + 1 } : p));
+      // origin alone drops the pathname, so the link broke on any deployment
+      // that is not at the domain root.
+      const link = window.location.origin + window.location.pathname + '?post=' + post.id;
       if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(window.location.origin + '?post=' + post.id);
+        navigator.clipboard.writeText(link);
       }
       showToast('Link copied to clipboard! 📋');
+      BRIDGE.sync(api => api.social.share(post.id)).then(res => {
+        if (res) setPosts(prev => prev.map(p => p.id === post.id ? { ...p, shares: res.shares } : p));
+      });
     };
 
     const handlePostReactionEmoji = (postId, emoji) => {
@@ -261,6 +464,100 @@
 
       window.addEventListener('scroll', handleScroll, { passive: true });
       return () => window.removeEventListener('scroll', handleScroll);
+    }, []);
+
+    // Adopt the server's stage on load: the main broadcast an admin put on air,
+    // and any takeover this viewer had running when they last left.
+    useEffect(() => {
+      BRIDGE.sync(api => api.live.state()).then(res => {
+        if (!res || !res.stage) return;
+        const main = res.stage.mainBroadcast || res.stage.revertsTo;
+        if (main) {
+          const card = {
+            id: main.id, title: main.title, description: main.description || '',
+            youtubeId: main.youtubeId || null, videoUrl: main.videoUrl || null,
+            posterUrl: main.posterUrl || null, streamer: main.streamer, avatar: main.avatar,
+            product: main.product, productId: main.productId,
+            viewers: res.telemetry ? res.telemetry.baselineViewers : undefined,
+            likes: res.likes ? res.likes.seeded : undefined,
+          };
+          setMainBroadcast(card);
+          if (!res.stage.isOverride) setCentralTv(card);
+        }
+        if (res.stage.isOverride && res.stage.current) {
+          const c = res.stage.current;
+          setStageOverride({
+            id: c.id, title: c.title, description: c.description || '',
+            youtubeId: c.youtubeId || null, videoUrl: c.videoUrl || null,
+            posterUrl: c.posterUrl || null, streamer: c.streamer, avatar: c.avatar,
+            product: c.product, productId: c.productId, isTakeover: true,
+          });
+          setCentralTv(prev => ({ ...prev, ...c, isTakeover: true }));
+        }
+        if (res.likes) { setTvLikes((res.likes.seeded || 0) + res.likes.total); setIsTvLiked(res.likes.liked); }
+      });
+      refreshWallet();
+
+      // Pick up an event that is already on air.
+      BRIDGE.sync(api => api.liveEvent()).then(res => {
+        if (res && res.event && res.event.isLive) applyLiveEvent(res.event);
+      });
+
+      // And switch the moment one starts or ends, without a reload. This is
+      // what makes "go live" feel live for someone already watching.
+      if (BRIDGE.isLive() && window.NeuTV.live && window.NeuTV.live.subscribe) {
+        const stop = window.NeuTV.live.subscribe({
+          'live-event': (payload) => {
+            if (!payload) return;
+            if (payload.status === 'started') {
+              applyLiveEvent(payload.event);
+              showToast('🔴 ' + payload.event.title + ' is live');
+            } else if (payload.status === 'ended') {
+              setLiveEvent(null);
+              setLiveError(null);
+              setStageOverride(null);
+              setCentralTv(mainBroadcast);
+              showToast('The live broadcast has ended');
+            }
+          },
+        });
+        return stop;
+      }
+      return undefined;
+    }, []);
+
+    // Open a shared post link.
+    //
+    // The share button has always written "?post=<id>" to the clipboard, but
+    // nothing ever read it back, so every link a creator shared opened the
+    // homepage. This resolves it: clear anything filtering the post out of the
+    // feed, open its comments, scroll to it and mark it briefly so the reader
+    // can see which post the link meant.
+    useEffect(() => {
+      const params = new URLSearchParams(window.location.search);
+      const postId = params.get('post');
+      if (!postId) return;
+
+      if (!posts.some(p => p.id === postId)) {
+        showToast('That post is no longer available.');
+        return;
+      }
+
+      setActiveMainTab('tv');
+      setActiveProductId('all');
+      setSearchQuery('');
+      setOpenCommentSections(prev => ({ ...prev, [postId]: true }));
+      setHighlightedPostId(postId);
+
+      // Two frames: one for the state above to render, one for layout to settle
+      // before measuring the scroll target.
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        const el = document.getElementById('post-' + postId);
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }));
+
+      const clear = setTimeout(() => setHighlightedPostId(null), 2800);
+      return () => clearTimeout(clear);
     }, []);
 
     // Flying Hearts Spawner
@@ -306,6 +603,10 @@
 
     const [selectedSSO, setSelectedSSO] = useState(null);
     const [ssoForm, setSsoForm] = useState({ username: '', password: '' });
+    // Why a sign-in was refused, and whether one is in flight. Both gates share
+    // them: only one can be open at a time.
+    const [ssoError, setSsoError] = useState(null);
+    const [ssoPending, setSsoPending] = useState(false);
     const [authMode, setAuthMode] = useState('signup');
     const [authForm, setAuthForm] = useState({ name: '', email: '', password: '', platform: 'worldstreet' });
     const [authPoppingEmojis, setAuthPoppingEmojis] = useState([]);
@@ -359,70 +660,94 @@
       const platObj = (PRODUCTS || []).find(p => p.id === platformId) || PRODUCTS[0];
       setSelectedSSO(platObj);
       setSsoForm({ username: '', password: '' });
+      setSsoError(null);
     };
 
     // SSO Credential Submission Handler
+    //
+    // This used to sign the viewer in locally - set the user, close the gate,
+    // fire the confetti - and then call the API as an afterthought whose result
+    // it ignored. A rejected password therefore still produced a signed-in UI.
+    // Authentication is the one thing that cannot be optimistic: nothing here
+    // happens until the server says who this is.
     const handleSSOSubmit = (e) => {
       e.preventDefault();
-      const username = ssoForm.username.trim() || 'Alex Trader';
-      const formattedName = username.startsWith('@') || username.startsWith('$') ? username : `@${username}`;
-      const badgeText = `${selectedSSO ? selectedSSO.name : 'Ecosystem'} Verified`;
-      
-      setCurrentUser({
-        id: 'user_' + Date.now(),
-        name: formattedName,
-        avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80',
-        badge: badgeText
-      });
-      setIsGateOpen(false);
-      setIsGuest(false);
-      setSelectedSSO(null);
-      setSsoForm({ username: '', password: '' });
+      const username = ssoForm.username.trim();
+      const password = ssoForm.password;
+      if (!username || !password) return setSsoError('Enter your ecosystem handle and password.');
 
-      // Trigger Celebration Animation (No coin bonus)
-      setCelebrationModal({
-        name: formattedName,
-        badge: badgeText,
-        coins: 0,
-        platform: selectedSSO ? selectedSSO.name : 'NEU TV'
+      const product = selectedSSO || { id: 'worldstreet', name: 'NEU TV' };
+      setSsoError(null);
+      setSsoPending(true);
+
+      BRIDGE.sync(
+        api => api.identity.sso(product.id, username, password),
+        err => setSsoError(err && err.status === 401
+          ? 'That handle and password do not match.'
+          : (err && err.message) || 'Could not reach the network.'),
+      ).then(res => {
+        setSsoPending(false);
+        // sync() resolves null when the call failed or the backend is down.
+        // Either way this viewer is not signed in, and the gate stays open.
+        // The offline case never reaches onError, so it needs its own message
+        // rather than a button that quietly goes back to idle.
+        if (!res) return setSsoError(prev => prev || 'Could not reach the network. Try again.');
+
+        setCurrentUser({ id: res.user.id, name: res.user.name, avatar: res.user.avatar, badge: res.user.badge });
+        setIsGateOpen(false);
+        setIsGuest(false);
+        setSelectedSSO(null);
+        setSsoForm({ username: '', password: '' });
+        setCelebrationModal({
+          name: res.user.name, badge: res.user.badge, coins: 0, platform: product.name,
+        });
+        triggerConfettiShower();
+        refreshWallet();
       });
-      triggerConfettiShower();
     };
 
     // Logout Handler
     const handleLogout = () => {
+      BRIDGE.sync(api => api.identity.logout());
       setCurrentUser(null);
       setIsGuest(true);
       setIsGateOpen(false);
       setSelectedSSO(null);
       setCelebrationModal(null);
+      setCoinBalance(0);
     };
 
     // Email / Form Auth Submit Handler
+    // Same rule as the SSO gate: the server decides, and until it has, nobody
+    // is signed in. This used to open the gate and celebrate first, so a
+    // rejected sign-in left the viewer looking authenticated with a toast
+    // behind it.
     const handleAuthSubmit = (e) => {
       e.preventDefault();
-      const name = authForm.name.trim() || (authForm.email ? authForm.email.split('@')[0] : 'Alex Trader');
-      const platObj = (PRODUCTS || []).find(p => p.id === authForm.platform) || PRODUCTS[0] || { id: 'worldstreet', name: 'WorldStreet' };
-      const badgeText = `${platObj.name} Member`;
-      const formattedName = name.startsWith('@') ? name : `@${name}`;
-      
-      setCurrentUser({
-        id: 'user_' + Date.now(),
-        name: formattedName,
-        avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80',
-        badge: badgeText
-      });
-      setIsGateOpen(false);
-      setIsGuest(false);
+      const name = authForm.name.trim() || (authForm.email ? authForm.email.split('@')[0] : '');
+      setSsoError(null);
+      setSsoPending(true);
 
-      // Trigger Celebration Animation (No coin bonus)
-      setCelebrationModal({
-        name: formattedName,
-        badge: badgeText,
-        coins: 0,
-        platform: 'NEU TV'
+      BRIDGE.sync(
+        api => (authMode === 'signup'
+          ? api.identity.signup({ name, email: authForm.email, password: authForm.password, platform: authForm.platform })
+          : api.identity.signin(authForm.email, authForm.password)),
+        err => setSsoError(err && err.status === 401
+          ? 'That email and password do not match.'
+          : (err && err.message) || 'Could not reach the network.'),
+      ).then(res => {
+        setSsoPending(false);
+        if (!res) return setSsoError(prev => prev || 'Could not reach the network. Try again.');
+
+        setCurrentUser({ id: res.user.id, name: res.user.name, avatar: res.user.avatar, badge: res.user.badge });
+        setIsGateOpen(false);
+        setIsGuest(false);
+        setCelebrationModal({
+          name: res.user.name, badge: res.user.badge, coins: 0, platform: 'NEU TV',
+        });
+        triggerConfettiShower();
+        refreshWallet();
       });
-      triggerConfettiShower();
     };
 
     // Spawn flying emoji
@@ -462,6 +787,18 @@
 
         setIsGiftModalOpen(false);
         showToast(`Sent ${gift.name} ${gift.emoji || '🎁'}! 🎉`);
+
+        // The server is authoritative on cost and balance: it re-checks funds
+        // and refuses a gift the viewer cannot afford, so put the coins back if
+        // it says no.
+        BRIDGE.sync(
+          api => api.wallet.tip(gift.id, { type: 'stream', id: centralTv.id || 'main' }),
+          err => {
+            setCoinBalance(prev => prev + gift.cost);
+            setActiveGiftBanner(null);
+            if (err) showToast(err.message || 'That gift did not go through.');
+          },
+        ).then(res => { if (res) setCoinBalance(res.balance); });
       });
     };
 
@@ -478,7 +815,20 @@
           text: chatInputText.trim()
         };
         setActiveLiveComments(prev => [newComment, ...prev.slice(0, 2)]);
+        const text = chatInputText.trim();
         setChatInputText('');
+
+        // Moderation is server-side. A blocked message has to come back off the
+        // ticker it was optimistically added to.
+        BRIDGE.sync(
+          api => api.live.comment(text),
+          err => {
+            if (err && err.status === 400) {
+              setActiveLiveComments(prev => prev.filter(c => c.uniqueId !== newComment.uniqueId));
+              showToast(err.message || 'That message was blocked by moderation.');
+            }
+          },
+        );
       });
     };
 
@@ -504,7 +854,21 @@
           [chanId]: [...(prev[chanId] || []), newMsg]
         }));
 
+        const text = rightChatInputText.trim();
         setRightChatInputText('');
+
+        BRIDGE.sync(
+          api => api.live.sendChat(activeCommunityServerId, chanId, text),
+          err => {
+            if (err && err.status === 400) {
+              setCommunityMessages(prev => ({
+                ...prev,
+                [chanId]: (prev[chanId] || []).filter(m => m.id !== newMsg.id),
+              }));
+              showToast(err.message || 'That message was blocked by moderation.');
+            }
+          },
+        );
       });
     };
 
@@ -536,6 +900,11 @@
             setTimeout(() => spawnHeart('❤️'), i * 150);
           }
         }
+        BRIDGE.sync(api => api.live.like()).then(res => {
+          if (!res) return;
+          setIsTvLiked(res.liked);
+          setTvLikes((res.seeded || 0) + res.total);
+        });
       });
     };
 
@@ -547,17 +916,6 @@
         el.scrollBy({ left: amount, behavior: 'smooth' });
       }
     };
-
-    // Filter Video Rows based on Active Product Selection
-    const filteredRows = useMemo(() => {
-      return mediaRows.map(row => {
-        let items = [...(row.items || [])];
-        if (activeProductId !== 'all') {
-          items = items.filter(item => item.productId === activeProductId);
-        }
-        return { ...row, items };
-      }).filter(row => row.items.length > 0);
-    }, [mediaRows, activeProductId]);
 
     // Filter Posts based on Active Product Selection, Following, and Search
     const filteredPosts = useMemo(() => {
@@ -644,13 +1002,174 @@
         };
 
         setPosts([newPost, ...posts]);
+        const draft = { content: newPostText, productId: prodObj.id, mediaUrl: newPostMedia.trim() || undefined };
         setNewPostText('');
         setNewPostMedia('');
         setIsCreatePostOpen(false);
+
+        BRIDGE.sync(
+          api => api.social.create(draft),
+          err => {
+            setPosts(prev => prev.filter(p => p.id !== newPost.id));
+            if (err) showToast(err.message || 'That post could not be published.');
+          },
+        ).then(res => {
+          // Adopt the stored post so it carries the real id every later
+          // like, comment and share has to address.
+          if (res) setPosts(prev => prev.map(p => (p.id === newPost.id ? { ...p, ...res.post, comments: [] } : p)));
+        });
       });
     };
 
+    // Animated NEU TV Cube Signal Logo Component
+    const renderNeuAnimatedLogo = (size = 'md', className = '') => {
+      const isSm = size === 'sm';
+      const isLg = size === 'lg';
+      const containerHeight = isLg ? 'h-16' : (isSm ? 'h-7' : 'h-10');
+
+      return h('div', { className: `flex flex-col items-center justify-center ${containerHeight} select-none ${className}` },
+        // Top Row: 3 Cubes animating in sequence (N, E with Globe, U)
+        h('div', { className: 'flex items-center gap-0.5 sm:gap-1 flex-1 min-h-0' },
+          h('div', { className: 'neu-anim-cube-n h-full aspect-square flex-shrink-0' },
+            h('img', { src: './assets/logos/neu-cube-n.png', alt: 'N', className: 'w-full h-full object-contain drop-shadow' })
+          ),
+          h('div', { className: 'neu-anim-cube-e h-full aspect-square flex-shrink-0' },
+            h('img', { src: './assets/logos/neu-cube-e.png', alt: 'E', className: 'w-full h-full object-contain drop-shadow' })
+          ),
+          h('div', { className: 'neu-anim-cube-u h-full aspect-square flex-shrink-0' },
+            h('img', { src: './assets/logos/neu-cube-u.png', alt: 'U', className: 'w-full h-full object-contain drop-shadow' })
+          )
+        ),
+        // Bottom: Red Bar with Name Fading Out / Pulsing in broadcast sync
+        h('div', { className: 'neu-anim-red-bar w-full mt-0.5 flex-shrink-0' },
+          h('img', { src: './assets/logos/neu-wordmark.png', alt: 'NEW ECONOMY UNVEIL NETWORK', className: 'w-full h-auto object-contain drop-shadow' })
+        )
+      );
+    };
+
+    
+        // High-Saturation Bold Solid Brand Colors (No Gradients)
+    const getCommunityBrandTheme = (hubId) => {
+      switch (hubId) {
+        case 'worldstreet':
+          return {
+            coverBg: 'bg-[#181408]',
+            bannerBg: 'bg-[#FFC700]',
+            bannerText: 'text-black',
+            borderColor: 'border-[#FFC700]',
+            badgeBg: 'bg-[#FFC700] text-black font-black border-[#FFC700]',
+            accentText: 'text-[#FFC700]',
+            dotColor: 'bg-[#FFC700]',
+            shadowGlow: 'shadow-[0_0_35px_rgba(255,199,0,0.5)]',
+            channelHash: 'text-[#FFC700]',
+            name: 'WorldStreet'
+          };
+        case 'ark':
+          return {
+            coverBg: 'bg-[#14081E]',
+            bannerBg: 'bg-[#A855F7]',
+            bannerText: 'text-white',
+            borderColor: 'border-[#A855F7]',
+            badgeBg: 'bg-[#A855F7] text-white font-black border-[#A855F7]',
+            accentText: 'text-[#A855F7]',
+            dotColor: 'bg-[#A855F7]',
+            shadowGlow: 'shadow-[0_0_35px_rgba(168,85,247,0.5)]',
+            channelHash: 'text-[#A855F7]',
+            name: 'Market Square / ARK'
+          };
+        case 'market':
+          return {
+            coverBg: 'bg-[#121214]',
+            bannerBg: 'bg-white',
+            bannerText: 'text-black',
+            borderColor: 'border-white',
+            badgeBg: 'bg-white text-black font-black border-white',
+            accentText: 'text-white',
+            dotColor: 'bg-white',
+            shadowGlow: 'shadow-[0_0_35px_rgba(255,255,255,0.4)]',
+            channelHash: 'text-white',
+            name: 'mARKet'
+          };
+        case 'tsioncars':
+          return {
+            coverBg: 'bg-[#1C080A]',
+            bannerBg: 'bg-[#FF2A38]',
+            bannerText: 'text-white',
+            borderColor: 'border-[#FF2A38]',
+            badgeBg: 'bg-[#FF2A38] text-white font-black border-[#FF2A38]',
+            accentText: 'text-[#FF2A38]',
+            dotColor: 'bg-[#FF2A38]',
+            shadowGlow: 'shadow-[0_0_35px_rgba(255,42,56,0.5)]',
+            channelHash: 'text-[#FF2A38]',
+            name: 'Tsion Cars'
+          };
+        case 'linkpay':
+          return {
+            coverBg: 'bg-[#081814]',
+            bannerBg: 'bg-[#00D68F]',
+            bannerText: 'text-black',
+            borderColor: 'border-[#00D68F]',
+            badgeBg: 'bg-[#00D68F] text-black font-black border-[#00D68F]',
+            accentText: 'text-[#00D68F]',
+            dotColor: 'bg-[#00D68F]',
+            shadowGlow: 'shadow-[0_0_35px_rgba(0,214,143,0.5)]',
+            channelHash: 'text-[#00D68F]',
+            name: 'KashPlus'
+          };
+        default:
+          return {
+            coverBg: 'bg-[#0A0A0C]',
+            bannerBg: 'bg-white',
+            bannerText: 'text-black',
+            borderColor: 'border-white',
+            badgeBg: 'bg-white text-black font-black border-white',
+            accentText: 'text-white',
+            dotColor: 'bg-white',
+            shadowGlow: 'shadow-[0_0_25px_rgba(255,255,255,0.3)]',
+            channelHash: 'text-white/60',
+            name: 'NEU Network'
+          };
+      }
+    };
+
     return h('div', { className: 'h-screen w-screen overflow-hidden flex bg-black text-white relative selection:bg-white selection:text-black font-sans' },
+
+      // ═══════════════════════════════════════════════════════════
+      // 0. INITIAL FIRST-OPENING ANIMATED LOGO SPLASH SCREEN
+      // ═══════════════════════════════════════════════════════════
+      isInitialSplash && h('div', {
+        onClick: () => setIsInitialSplash(false),
+        className: 'fixed inset-0 z-[9999] bg-black flex flex-col items-center justify-center space-y-6 select-none cursor-pointer animate-fadeIn'
+      },
+        h('div', { className: 'flex flex-col items-center justify-center h-28' },
+          // 3 Cubes animating in sequence
+          h('div', { className: 'flex items-center gap-2.5 h-20' },
+            h('div', { className: 'neu-anim-cube-n h-full aspect-square' },
+              h('img', { src: './assets/logos/neu-cube-n.png', alt: 'N', className: 'w-full h-full object-contain drop-shadow-[0_0_25px_rgba(0,102,255,0.7)]' })
+            ),
+            h('div', { className: 'neu-anim-cube-e h-full aspect-square' },
+              h('img', { src: './assets/logos/neu-cube-e.png', alt: 'E', className: 'w-full h-full object-contain drop-shadow-[0_0_25px_rgba(0,102,255,0.7)]' })
+            ),
+            h('div', { className: 'neu-anim-cube-u h-full aspect-square' },
+              h('img', { src: './assets/logos/neu-cube-u.png', alt: 'U', className: 'w-full h-full object-contain drop-shadow-[0_0_25px_rgba(0,102,255,0.7)]' })
+            )
+          ),
+          // Red Banner Pulsing & Fading in sync
+          h('div', { className: 'neu-anim-red-bar w-full mt-2' },
+            h('img', { src: './assets/logos/neu-wordmark.png', alt: 'NEW ECONOMY UNVEIL NETWORK', className: 'w-full h-auto object-contain drop-shadow-[0_0_15px_rgba(229,9,20,0.6)]' })
+          )
+        ),
+        h('div', { className: 'text-center space-y-1.5' },
+          h('div', { className: 'text-sm font-black tracking-widest text-white uppercase' }, 'NEW ECONOMY UNVEIL NETWORK'),
+          h('div', { className: 'text-xs font-mono tracking-[0.3em] uppercase text-white/50 flex items-center justify-center gap-2' },
+            h('span', { className: 'w-2 h-2 rounded-full bg-emerald-400 animate-pulse' }),
+            '24/7 LIVE CENTRAL BROADCAST'
+          )
+        ),
+        h('div', { className: 'text-[10px] text-white/30 font-mono tracking-widest uppercase pt-4 animate-pulse' },
+          'Tap anywhere to skip'
+        )
+      ),
 
       // ═══════════════════════════════════════════════════════════
       // FULL GLASS EFFECT SIGN IN & SIGN UP MODAL WITH POPPING GIFTS & CELEBRATION PARTICLES
@@ -815,25 +1334,31 @@
                 // Access Permissions Granted Box
                 h('div', { className: 'p-3 rounded-2xl bg-white/[0.03] border border-white/10 space-y-1.5 text-[11px] text-white/70' },
                   h('div', { className: 'flex items-center gap-2' },
-                    h('i', { 'data-lucide': 'check-circle-2', className: 'w-3.5 h-3.5 fill-current text-[#00F6A7] flex-shrink-0' }),
+                    h('i', { 'data-lucide': 'check-circle-2', className: 'w-3.5 h-3.5 fill-current text-white flex-shrink-0' }),
                     h('span', null, `Sync ${selectedSSO.name} verified status & badge`)
                   ),
                   h('div', { className: 'flex items-center gap-2' },
-                    h('i', { 'data-lucide': 'check-circle-2', className: 'w-3.5 h-3.5 fill-current text-[#00F6A7] flex-shrink-0' }),
+                    h('i', { 'data-lucide': 'check-circle-2', className: 'w-3.5 h-3.5 fill-current text-white flex-shrink-0' }),
                     h('span', null, 'Full HD live broadcast streaming & interactive chat')
                   ),
                   h('div', { className: 'flex items-center gap-2' },
-                    h('i', { 'data-lucide': 'check-circle-2', className: 'w-3.5 h-3.5 fill-current text-[#00F6A7] flex-shrink-0' }),
+                    h('i', { 'data-lucide': 'check-circle-2', className: 'w-3.5 h-3.5 fill-current text-white flex-shrink-0' }),
                     h('span', null, `Instant access to official #${selectedSSO.id} community hub`)
                   )
                 ),
 
+                // A refused sign-in says so here, and the gate stays open.
+                ssoError ? h('div', {
+                  className: 'px-3.5 py-2.5 rounded-2xl bg-red-500/10 border border-red-500/30 text-[11px] text-red-300'
+                }, ssoError) : null,
+
                 // Submit Button
                 h('button', {
                   type: 'submit',
-                  className: 'w-full py-3.5 rounded-full bg-white hover:bg-white/90 text-black font-black text-xs md:text-sm transition shadow-2xl flex items-center justify-center gap-2 transform active:scale-98 mt-2'
+                  disabled: ssoPending,
+                  className: 'w-full py-3.5 rounded-full bg-white hover:bg-white/90 disabled:opacity-60 text-black font-black text-xs md:text-sm transition shadow-2xl flex items-center justify-center gap-2 transform active:scale-98 mt-2'
                 },
-                  h('span', null, `Authorize & Sign In with ${selectedSSO.name}`),
+                  h('span', null, ssoPending ? 'Verifying…' : `Authorize & Sign In with ${selectedSSO.name}`),
                   h('i', { 'data-lucide': 'arrow-right', className: 'w-4 h-4 stroke-[3]' })
                 )
               )
@@ -853,7 +1378,7 @@
               h('div', { className: 'space-y-2.5' },
                 h('div', { className: 'flex items-center justify-between text-[11px] font-extrabold uppercase tracking-wider text-white/50 px-1' },
                   h('div', { className: 'flex items-center gap-1.5' },
-                    h('i', { 'data-lucide': 'zap', className: 'w-3 h-3 fill-current text-[#00F6A7]' }),
+                    h('i', { 'data-lucide': 'zap', className: 'w-3 h-3 fill-current text-white' }),
                     h('span', null, 'Sign In with Ecosystem Account (SSO)')
                   ),
                   h('span', { className: 'text-[10px] text-white/80 font-bold' }, 'Instant Login')
@@ -864,7 +1389,7 @@
                       key: prod.id,
                       type: 'button',
                       onClick: () => handleSelectSSO(prod.id),
-                      className: 'p-2.5 rounded-2xl bg-white/5 hover:bg-white/15 border border-white/15 hover:border-[#00F6A7]/40 text-left transition flex items-center gap-2.5 group shadow-sm'
+                      className: 'p-2.5 rounded-2xl bg-white/5 hover:bg-white/15 border border-white/15 hover:border-white/20 text-left transition flex items-center gap-2.5 group shadow-sm'
                     },
                       h('div', { className: 'w-8 h-8 rounded-xl bg-black/50 border border-white/15 flex items-center justify-center p-1.5 flex-shrink-0 group-hover:scale-105 transition overflow-hidden shadow-inner' },
                         prod.logo ? h('img', { src: prod.logo, alt: prod.name, className: 'w-full h-full object-contain' }) : h('span', { className: 'font-black text-xs text-white' }, prod.name.slice(0, 2))
@@ -933,13 +1458,19 @@
                   h('span', { className: 'text-xs leading-snug' }, 'I agree to the Terms of Service & Privacy Policy.')
                 ),
 
+                // A refused sign-in says so here, and the gate stays open.
+                ssoError ? h('div', {
+                  className: 'px-3.5 py-2.5 rounded-2xl bg-red-500/10 border border-red-500/30 text-[11px] text-red-300'
+                }, ssoError) : null,
+
                 // Primary Submit Button with Filled Icon
                 h('button', {
                   type: 'submit',
-                  className: 'w-full py-3.5 rounded-full bg-white hover:bg-white/90 text-black font-black text-xs md:text-sm transition shadow-2xl flex items-center justify-center gap-2 transform active:scale-98 mt-1'
+                  disabled: ssoPending,
+                  className: 'w-full py-3.5 rounded-full bg-white hover:bg-white/90 disabled:opacity-60 text-black font-black text-xs md:text-sm transition shadow-2xl flex items-center justify-center gap-2 transform active:scale-98 mt-1'
                 },
                   h('span', null,
-                    authMode === 'signup' ? 'Create NEU Passport' : 'Sign In to NEU TV'
+                    ssoPending ? 'Verifying…' : (authMode === 'signup' ? 'Create NEU Passport' : 'Sign In to NEU TV')
                   ),
                   h('i', { 'data-lucide': 'arrow-right', className: 'w-4 h-4 stroke-[3]' })
                 )
@@ -992,13 +1523,13 @@
             h('div', { className: 'w-14 h-14 rounded-full bg-white text-black flex items-center justify-center font-black text-xl' },
               h('i', { 'data-lucide': 'sparkles', className: 'w-7 h-7 fill-current text-black' })
             ),
-            h('div', { className: 'absolute -top-1 -right-1 w-6 h-6 rounded-full bg-[#00F6A7] text-black flex items-center justify-center font-bold text-xs border-2 border-black' }, '✓')
+            h('div', { className: 'absolute -top-1 -right-1 w-6 h-6 rounded-full bg-[#0070F3] text-black flex items-center justify-center font-bold text-xs border-2 border-black' }, '✓')
           ),
 
           // Heading & Passport Activation Info
           h('div', { className: 'space-y-1.5' },
             h('div', { className: 'inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-white/10 border border-white/20 text-xs font-bold text-white uppercase tracking-wider' },
-              h('i', { 'data-lucide': 'shield-check', className: 'w-3.5 h-3.5 fill-current text-[#00F6A7]' }),
+              h('i', { 'data-lucide': 'shield-check', className: 'w-3.5 h-3.5 fill-current text-white' }),
               'Passport Verified & Active'
             ),
             h('h2', { className: 'text-2xl md:text-3xl font-black tracking-tight text-white' }, `Welcome, ${celebrationModal.name}!`),
@@ -1016,10 +1547,6 @@
             h('div', { className: 'flex items-center justify-between' },
               h('span', { className: 'text-xs text-white/60 font-medium' }, 'Central Stream Status:'),
               h('span', { className: 'text-xs font-bold text-white' }, 'Full HD & Interactive Chat Unlocked')
-            ),
-            h('div', { className: 'flex items-center justify-between' },
-              h('span', { className: 'text-xs text-white/60 font-medium' }, 'Ecosystem Access:'),
-              h('span', { className: 'text-xs font-mono text-[#00F6A7] font-bold' }, 'Active & Authenticated')
             )
           ),
 
@@ -1042,32 +1569,34 @@
       // -------------------------------------------------------------
       // 1. LEFT SIDEBAR: PRODUCTS & DIFFERENT COMMUNITY ROOMS (PRD ALIGNED)
       // -------------------------------------------------------------
-      h('aside', { className: 'w-64 md:w-72 h-screen flex-shrink-0 flex flex-col justify-between p-6 border-r border-white/10 bg-[#0B1220]/95 backdrop-blur-2xl z-40 overflow-y-auto no-scrollbar shadow-2xl sticky top-0 space-y-6' },
+      h('aside', { className: 'w-64 md:w-72 h-screen flex-shrink-0 flex flex-col justify-between p-6 border-r border-white/10 bg-[#0A0A0C]/95 backdrop-blur-2xl z-40 overflow-y-auto no-scrollbar shadow-2xl sticky top-0 space-y-6' },
         h('div', { className: 'space-y-6' },
           
-          // Official NEU TV Brand Header (from Brand Guide)
+          // Official NEU TV Brand Header
           h('div', { 
-            className: 'flex items-center gap-3.5 cursor-pointer py-1 group select-none',
+            className: 'flex items-center gap-3 cursor-pointer py-1 group select-none',
             onClick: () => { setActiveProductId('all'); setActiveMainTab('tv'); }
           },
-            // Glowing N App Icon Badge
-            h('div', { className: 'w-11 h-11 rounded-2xl bg-[#111B33] border border-[#00F6A7]/40 shadow-[0_0_20px_rgba(0,246,167,0.2)] flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition duration-300' },
-              h('span', { className: 'text-xl font-black italic bg-gradient-to-r from-[#00F6A7] via-[#00C8FF] to-[#4D6BFF] bg-clip-text text-transparent' }, 'N')
+            h('div', { className: 'h-10 flex-shrink-0 group-hover:scale-105 transition duration-300' },
+              h('img', {
+                src: './assets/logos/neu-brand-banner.png',
+                alt: 'NEU TV',
+                className: 'h-full w-auto object-contain drop-shadow'
+              })
             ),
             h('div', { className: 'min-w-0' },
               h('div', { className: 'flex items-center gap-1 leading-none' },
-                h('span', { className: 'font-black text-2xl tracking-tighter italic bg-gradient-to-r from-[#00F6A7] via-[#00C8FF] to-[#4D6BFF] bg-clip-text text-transparent group-hover:brightness-110 transition' }, 'NEU'),
-                h('span', { className: 'text-[#00C8FF] text-[11px] font-black tracking-widest -mt-1.5' }, 'TV'),
-                h('span', { className: 'w-2 h-2 rounded-full bg-[#00F6A7] animate-pulse ml-1 shadow-[0_0_8px_#00F6A7]' })
+                h('span', { className: 'text-white text-[11px] font-black tracking-widest' }, 'TV LIVE'),
+                h('span', { className: 'w-2 h-2 rounded-full bg-emerald-400 animate-pulse ml-1 shadow-[0_0_8px_rgba(52,211,153,0.5)]' })
               ),
-              h('p', { className: 'text-[9px] font-mono tracking-widest text-[#00C8FF]/80 uppercase mt-1 font-bold truncate' }, 'THE NEW ECONOMY, ON SCREEN.')
+              h('p', { className: 'text-[8px] font-mono tracking-wider text-white/50 uppercase mt-1 font-bold truncate' }, 'NEW ECONOMY UNVEIL NETWORK')
             )
           ),
 
           // Balance Display Badge with Cyan/Gold Touch
-          h('div', { className: 'p-3.5 rounded-2xl bg-[#111B33]/80 border border-white/10 flex items-center justify-between shadow-lg' },
+          h('div', { className: 'p-3.5 rounded-2xl bg-[#141418]/80 border border-white/10 flex items-center justify-between shadow-lg' },
             h('div', { className: 'flex items-center gap-2.5' },
-              h('div', { className: 'w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400' },
+              h('div', { className: 'w-8 h-8 rounded-xl bg-[#0070F3]/20 border border-[#0070F3]/40 flex items-center justify-center text-[#38B6FF]' },
                 h('i', { 'data-lucide': 'coins', className: 'w-4.5 h-4.5' })
               ),
               h('div', null,
@@ -1077,7 +1606,7 @@
             ),
             h('button', {
               onClick: () => requireAuth('send gifts', () => setIsGiftModalOpen(true)),
-              className: 'px-3 py-1.5 rounded-full bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-black text-[11px] font-black transition shadow-md flex items-center gap-1.5 transform active:scale-95'
+              className: 'px-3 py-1.5 rounded-full bg-[#0070F3] hover:bg-[#0060DF] text-white text-[11px] font-black transition shadow-lg flex items-center gap-1.5 transform active:scale-95'
             },
               h('span', { className: 'text-sm' }, '🎁'),
               h('span', null, 'Gift')
@@ -1090,10 +1619,10 @@
 
             h('button', {
               onClick: () => { setActiveMainTab('tv'); setActiveProductId('all'); },
-              className: `w-full flex items-center justify-between px-4 py-3 rounded-2xl text-xs font-bold transition duration-200 ${activeMainTab === 'tv' ? 'bg-gradient-to-r from-[#00F6A7]/20 to-[#00C8FF]/20 text-[#00F6A7] border border-[#00F6A7]/40 shadow-[0_0_20px_rgba(0,246,167,0.15)] scale-[1.02]' : 'text-white/70 hover:bg-white/5 hover:text-white'}`
+              className: `w-full flex items-center justify-between px-4 py-3 rounded-2xl text-xs font-bold transition duration-200 ${activeMainTab === 'tv' ? 'bg-white/10 text-white font-black border border-white/20 shadow-md scale-[1.02]' : 'text-white/70 hover:bg-white/5 hover:text-white'}`
             },
               h('div', { className: 'flex items-center gap-3' },
-                h('i', { 'data-lucide': 'tv', className: 'w-4.5 h-4.5 fill-current text-[#00F6A7]' }),
+                h('i', { 'data-lucide': 'tv', className: 'w-4.5 h-4.5 fill-current text-white' }),
                 h('span', null, 'NEU TV Live')
               ),
               h('span', { className: `text-[9px] px-2 py-0.5 rounded-full font-extrabold ${activeMainTab === 'tv' ? 'bg-red-500 text-white' : 'bg-red-500/20 text-red-400'}` }, 'ON AIR')
@@ -1101,31 +1630,31 @@
 
             h('button', {
               onClick: () => { setActiveMainTab('foryou'); setActiveProductId('all'); },
-              className: `w-full flex items-center justify-between px-4 py-3 rounded-2xl text-xs font-bold transition duration-200 ${activeMainTab === 'foryou' ? 'bg-gradient-to-r from-[#00F6A7]/20 to-[#00C8FF]/20 text-[#00F6A7] border border-[#00F6A7]/40 shadow-[0_0_20px_rgba(0,246,167,0.15)] scale-[1.02]' : 'text-white/70 hover:bg-white/5 hover:text-white'}`
+              className: `w-full flex items-center justify-between px-4 py-3 rounded-2xl text-xs font-bold transition duration-200 ${activeMainTab === 'foryou' ? 'bg-white/10 text-white font-black border border-white/20 shadow-md scale-[1.02]' : 'text-white/70 hover:bg-white/5 hover:text-white'}`
             },
               h('div', { className: 'flex items-center gap-3' },
-                h('i', { 'data-lucide': 'sparkles', className: 'w-4.5 h-4.5 fill-current text-amber-400' }),
+                h('i', { 'data-lucide': 'flame', className: 'w-4.5 h-4.5 fill-red-500 text-red-500 stroke-red-500' }),
                 h('span', null, 'For You')
               ),
-              h('span', { className: 'text-[9px] px-2 py-0.5 rounded-full font-bold bg-amber-500/20 text-amber-400' }, 'Hot')
+              h('span', { className: 'text-[9px] px-2 py-0.5 rounded-full font-black bg-red-500/20 text-red-400 border border-red-500/30 flex items-center gap-1' }, '🔥 Hot')
             ),
 
             h('button', {
               onClick: () => { setActiveMainTab('following'); setActiveProductId('all'); },
-              className: `w-full flex items-center justify-between px-4 py-3 rounded-2xl text-xs font-bold transition duration-200 ${activeMainTab === 'following' ? 'bg-gradient-to-r from-[#00F6A7]/20 to-[#00C8FF]/20 text-[#00F6A7] border border-[#00F6A7]/40 shadow-[0_0_20px_rgba(0,246,167,0.15)] scale-[1.02]' : 'text-white/70 hover:bg-white/5 hover:text-white'}`
+              className: `w-full flex items-center justify-between px-4 py-3 rounded-2xl text-xs font-bold transition duration-200 ${activeMainTab === 'following' ? 'bg-white/10 text-white font-black border border-white/20 shadow-md scale-[1.02]' : 'text-white/70 hover:bg-white/5 hover:text-white'}`
             },
               h('div', { className: 'flex items-center gap-3' },
-                h('i', { 'data-lucide': 'users', className: 'w-4.5 h-4.5 text-[#00C8FF]' }),
+                h('i', { 'data-lucide': 'users', className: 'w-4.5 h-4.5 text-white' }),
                 h('span', null, 'Following')
               )
             ),
 
             h('button', {
               onClick: () => { setActiveMainTab('saved'); setActiveProductId('all'); },
-              className: `w-full flex items-center justify-between px-4 py-3 rounded-2xl text-xs font-bold transition duration-200 ${activeMainTab === 'saved' ? 'bg-gradient-to-r from-[#00F6A7]/20 to-[#00C8FF]/20 text-[#00F6A7] border border-[#00F6A7]/40 shadow-[0_0_20px_rgba(0,246,167,0.15)] scale-[1.02]' : 'text-white/70 hover:bg-white/5 hover:text-white'}`
+              className: `w-full flex items-center justify-between px-4 py-3 rounded-2xl text-xs font-bold transition duration-200 ${activeMainTab === 'saved' ? 'bg-white/10 text-white font-black border border-white/20 shadow-md scale-[1.02]' : 'text-white/70 hover:bg-white/5 hover:text-white'}`
             },
               h('div', { className: 'flex items-center gap-3' },
-                h('i', { 'data-lucide': 'bookmark', className: 'w-4.5 h-4.5 text-[#4D6BFF]' }),
+                h('i', { 'data-lucide': 'bookmark', className: 'w-4.5 h-4.5 text-white' }),
                 h('span', null, 'Saved Videos')
               )
             )
@@ -1227,9 +1756,9 @@
 
         // Live Toast Action Notification
         toastMessage && h('div', {
-          className: 'fixed top-6 left-1/2 -translate-x-1/2 z-[200] px-5 py-2.5 rounded-full bg-[#111B33] border border-[#00F6A7] text-white font-bold text-xs shadow-2xl animate-bounce flex items-center gap-2'
+          className: 'fixed top-6 left-1/2 -translate-x-1/2 z-[200] px-5 py-2.5 rounded-full bg-[#141418] border border-white/20 text-white font-bold text-xs shadow-2xl animate-bounce flex items-center gap-2'
         },
-          h('i', { 'data-lucide': 'check-circle-2', className: 'w-4 h-4 text-[#00F6A7]' }),
+          h('i', { 'data-lucide': 'check-circle-2', className: 'w-4 h-4 text-white' }),
           toastMessage
         ),
 
@@ -1240,7 +1769,7 @@
           h('div', { className: 'flex items-center gap-3 md:gap-5 text-xs font-bold' },
             h('button', {
               onClick: () => { setActiveMainTab('tv'); setActiveProductId('all'); },
-              className: `pb-1.5 transition flex items-center gap-1.5 ${activeMainTab === 'tv' ? 'text-[#00F6A7] border-b-2 border-[#00F6A7]' : 'text-white/60 hover:text-white'}`
+              className: `pb-1.5 transition flex items-center gap-1.5 ${activeMainTab === 'tv' ? 'text-white border-b-2 border-white/30' : 'text-white/60 hover:text-white'}`
             },
               h('i', { 'data-lucide': 'tv', className: 'w-4 h-4 fill-current' }),
               h('span', null, 'NEU TV Live')
@@ -1248,18 +1777,26 @@
 
             h('button', {
               onClick: () => { setActiveMainTab('foryou'); setActiveProductId('all'); },
-              className: `pb-1.5 transition flex items-center gap-1.5 ${activeMainTab === 'foryou' ? 'text-[#00F6A7] border-b-2 border-[#00F6A7]' : 'text-white/60 hover:text-white'}`
+              className: `pb-1.5 transition flex items-center gap-1.5 ${activeMainTab === 'foryou' ? 'text-white border-b-2 border-white/30' : 'text-white/60 hover:text-white'}`
             },
-              h('i', { 'data-lucide': 'sparkles', className: 'w-4 h-4 text-amber-400' }),
+              h('i', { 'data-lucide': 'flame', className: 'w-4 h-4 text-red-500 fill-red-500 stroke-red-500' }),
               h('span', null, 'For You Feed')
             ),
 
             h('button', {
               onClick: () => { setActiveMainTab('following'); setActiveProductId('all'); },
-              className: `pb-1.5 transition flex items-center gap-1.5 ${activeMainTab === 'following' ? 'text-[#00F6A7] border-b-2 border-[#00F6A7]' : 'text-white/60 hover:text-white'}`
+              className: `pb-1.5 transition flex items-center gap-1.5 ${activeMainTab === 'following' ? 'text-white border-b-2 border-white/30' : 'text-white/60 hover:text-white'}`
             },
               h('i', { 'data-lucide': 'users', className: 'w-4 h-4' }),
               h('span', null, 'Following')
+            ),
+
+            h('button', {
+              onClick: () => { setActiveMainTab('saved'); setActiveProductId('all'); },
+              className: `pb-1.5 transition flex items-center gap-1.5 ${activeMainTab === 'saved' ? 'text-white border-b-2 border-white/30' : 'text-white/60 hover:text-white'}`
+            },
+              h('i', { 'data-lucide': 'bookmark', className: 'w-4 h-4' }),
+              h('span', null, 'Saved')
             )
           ),
 
@@ -1271,7 +1808,7 @@
               placeholder: 'Search NEU TV broadcasts, signals & videos...',
               value: searchQuery,
               onChange: e => setSearchQuery(e.target.value),
-              className: 'w-full bg-[#111B33]/70 border border-white/15 rounded-full pl-9 pr-4 py-1.5 text-xs text-white placeholder-white/40 outline-none focus:border-[#00F6A7]/50 focus:bg-[#111B33] transition'
+              className: 'w-full bg-[#141418]/70 border border-white/15 rounded-full pl-9 pr-4 py-1.5 text-xs text-white placeholder-white/40 outline-none focus:border-white/25 focus:bg-[#141418] transition'
             }),
             searchQuery && h('button', {
               onClick: () => setSearchQuery(''),
@@ -1284,79 +1821,294 @@
             h('select', {
               value: qualityMode,
               onChange: e => setQualityMode(e.target.value),
-              className: 'bg-[#111B33] border border-white/20 rounded-full px-3 py-1.5 text-xs text-white outline-none font-bold cursor-pointer focus:border-[#00F6A7]'
+              className: 'bg-[#141418] border border-white/20 rounded-full px-3 py-1.5 text-xs text-white outline-none font-bold cursor-pointer focus:border-white/30'
             },
-              h('option', { value: '1080p', className: 'bg-[#0B1220] text-white' }, '1080p HD Ultra'),
-              h('option', { value: 'auto', className: 'bg-[#0B1220] text-white' }, 'Auto (720p)'),
-              h('option', { value: 'lowdata', className: 'bg-[#0B1220] text-white' }, 'Low Data (240p)')
+              h('option', { value: '1080p', className: 'bg-[#0A0A0C] text-white' }, '1080p HD Ultra'),
+              h('option', { value: 'auto', className: 'bg-[#0A0A0C] text-white' }, 'Auto (720p)'),
+              h('option', { value: 'lowdata', className: 'bg-[#0A0A0C] text-white' }, 'Low Data (240p)')
             )
           )
         ),
 
-        // HERO VIDEO BROADCAST PLAYER (NEU TV LIVE STAGE)
-        h('section', { ref: heroPlayerRef, className: 'relative w-full rounded-3xl border border-white/15 bg-[#0B1220] overflow-hidden shadow-2xl group flex flex-col z-10' },
+        // HERO VIDEO BROADCAST PLAYER (NEU TV LIVE STAGE — SHOWN ON 'tv' TAB)
+        activeMainTab === 'tv' && h('section', { ref: heroPlayerRef, className: 'relative w-full rounded-3xl border border-white/15 bg-[#0A0A0C] overflow-hidden shadow-2xl group flex flex-col z-10' },
           
           // DEDICATED TV HEADER CONTROL BAR (ABOVE VIDEO — 100% VISIBLE & NON-OVERLAPPING)
-          h('div', { className: 'p-4 md:px-6 md:py-3.5 bg-[#0B1220]/95 border-b border-white/10 flex items-center justify-between gap-3 flex-wrap z-30' },
-            // Left: Live Channel Telemetry with NEU TV Gradient Logo
+          h('div', { className: 'p-4 md:px-6 md:py-3.5 bg-[#0A0A0C]/95 border-b border-white/10 flex items-center justify-between gap-3 flex-wrap z-30' },
+            // Left: Live Channel Telemetry with NEU TV Logo
             h('div', { className: 'flex items-center gap-3' },
               h('div', { className: 'flex items-center gap-1.5 px-3 py-1 rounded-full bg-red-600/20 border border-red-500/40 text-red-400 text-xs font-black' },
                 h('span', { className: 'w-2 h-2 rounded-full bg-red-500 animate-live shadow-lg' }),
                 h('span', null, 'ON AIR')
               ),
-              // Brand Logo Lockup
-              h('div', { className: 'flex items-center gap-1 text-white font-extrabold text-sm md:text-base tracking-tight leading-none' },
-                h('span', { className: 'font-black italic bg-gradient-to-r from-[#00F6A7] via-[#00C8FF] to-[#4D6BFF] bg-clip-text text-transparent' }, 'NEU'),
-                h('span', { className: 'text-[#00C8FF] text-[10px] font-black tracking-widest -mt-1' }, 'TV'),
-                h('span', { className: 'text-xs text-white/50 font-normal ml-1 hidden sm:inline' }, 'Broadcast')
+              // Static Brand Logo Lockup
+              h('div', { className: 'h-6 flex items-center' },
+                h('img', {
+                  src: './assets/logos/neu-brand-banner.png',
+                  alt: 'NEU',
+                  className: 'h-full w-auto object-contain drop-shadow'
+                })
               ),
+              h('span', { className: 'text-xs text-white/70 font-extrabold uppercase tracking-wide hidden sm:inline' }, 'Live Stage'),
               h('span', { className: 'text-white/30 hidden sm:inline' }, '|'),
-              h('span', { className: 'text-xs text-[#00F6A7] font-semibold hidden sm:inline' }, `${(centralTv.viewers || 34200).toLocaleString()} watching live`)
+              h('span', { className: 'text-xs text-white font-semibold hidden sm:inline' }, `${(centralTv.viewers || 34200).toLocaleString()} watching live`)
             ),
 
-            // Right: Prominent Audio Mute/Unmute Toggle & Quality Controls
-            h('div', { className: 'flex items-center gap-2' },
+            // Right: Audio Mute, Audio Language, Subtitles (CC) & Fullscreen Controls
+            h('div', { className: 'flex items-center gap-2 relative z-50' },
+              
+              // Mute / Unmute Button
               h('button', {
                 type: 'button',
                 onClick: () => setIsMuted(!isMuted),
-                className: `px-4 py-1.5 rounded-full text-xs font-black transition flex items-center gap-2 shadow-lg ${isMuted ? 'bg-gradient-to-r from-[#00F6A7] to-[#00C8FF] text-black hover:brightness-110' : 'bg-white/10 text-white border border-white/25 hover:bg-white/20'}`
+                className: `px-3 py-1.5 rounded-full text-xs font-black transition flex items-center gap-1.5 shadow-lg ${isMuted ? 'bg-white text-black font-black hover:bg-neutral-200' : 'bg-white/10 text-white border border-white/25 hover:bg-white/20'}`
               },
                 h('i', {
                   'data-lucide': isMuted ? 'volume-x' : 'volume-2',
-                  className: 'w-4 h-4 fill-current'
+                  className: 'w-3.5 h-3.5 fill-current'
                 }),
-                h('span', null, isMuted ? 'Unmute Audio' : 'Mute Audio')
+                h('span', null, isMuted ? 'Unmute' : 'Mute')
               ),
-              h('div', { className: 'px-2.5 py-1 rounded-full bg-[#111B33] border border-white/15 text-[10px] font-mono text-[#00C8FF] font-bold hidden md:block' }, '1080p HD')
+
+              // Audio Language Selector Dropdown
+              h('div', { className: 'relative' },
+                h('button', {
+                  type: 'button',
+                  onClick: () => { setIsAudioLangOpen(!isAudioLangOpen); setIsSubtitleOpen(false); },
+                  title: 'Select Audio Language',
+                  className: 'px-2.5 py-1.5 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 text-xs font-semibold text-white flex items-center gap-1.5 transition'
+                },
+                  h('i', { 'data-lucide': 'globe', className: 'w-3.5 h-3.5 text-blue-400' }),
+                  h('span', { className: 'hidden md:inline text-[11px]' }, audioLanguage.split(' ')[0]),
+                  h('i', { 'data-lucide': 'chevron-down', className: 'w-3 h-3 text-white/60' })
+                ),
+
+                isAudioLangOpen && h('div', {
+                  className: 'absolute right-0 top-full mt-2 w-48 bg-neutral-900 border border-white/20 rounded-2xl shadow-2xl py-1.5 z-50 animate-fadeIn backdrop-blur-xl'
+                },
+                  h('div', { className: 'px-3 py-1 text-[10px] font-mono uppercase tracking-wider text-white/50 border-b border-white/10' }, 'Audio Language'),
+                  AUDIO_LANGUAGES.map(lang => h('button', {
+                    key: lang.id,
+                    type: 'button',
+                    onClick: () => {
+                      setAudioLanguage(lang.name);
+                      setIsAudioLangOpen(false);
+                    },
+                    className: `w-full px-3 py-2 text-left text-xs font-bold transition flex items-center justify-between hover:bg-white/10 ${audioLanguage === lang.name ? 'text-[#0070F3] bg-white/5' : 'text-white/80'}`
+                  },
+                    h('span', null, lang.name),
+                    audioLanguage === lang.name && h('span', { className: 'text-[#0070F3] font-black' }, '✓')
+                  ))
+                )
+              ),
+
+              // Subtitles / Closed Captions (CC) Selector Dropdown
+              h('div', { className: 'relative' },
+                h('button', {
+                  type: 'button',
+                  onClick: () => { setIsSubtitleOpen(!isSubtitleOpen); setIsAudioLangOpen(false); },
+                  title: 'Subtitles & Captions',
+                  className: `px-2.5 py-1.5 rounded-full text-xs font-bold transition flex items-center gap-1 border ${subtitleLang !== 'Off' ? 'bg-[#0070F3] text-white border-[#0070F3]' : 'bg-white/10 text-white/70 border-white/20 hover:bg-white/20 hover:text-white'}`
+                },
+                  h('span', { className: 'font-mono text-[11px] font-black' }, 'CC'),
+                  h('span', { className: 'hidden md:inline text-[11px]' }, subtitleLang === 'Off' ? 'Off' : subtitleLang.split(' ')[0]),
+                  h('i', { 'data-lucide': 'chevron-down', className: 'w-3 h-3 text-white/60' })
+                ),
+
+                isSubtitleOpen && h('div', {
+                  className: 'absolute right-0 top-full mt-2 w-44 bg-neutral-900 border border-white/20 rounded-2xl shadow-2xl py-1.5 z-50 animate-fadeIn backdrop-blur-xl'
+                },
+                  h('div', { className: 'px-3 py-1 text-[10px] font-mono uppercase tracking-wider text-white/50 border-b border-white/10' }, 'Subtitles / CC'),
+                  SUBTITLE_OPTIONS.map(sub => h('button', {
+                    key: sub.id,
+                    type: 'button',
+                    onClick: () => {
+                      setSubtitleLang(sub.name === 'Subtitles Off' ? 'Off' : sub.name);
+                      setIsSubtitleOpen(false);
+                    },
+                    className: `w-full px-3 py-2 text-left text-xs font-bold transition flex items-center justify-between hover:bg-white/10 ${(subtitleLang === sub.name || (subtitleLang === 'Off' && sub.name === 'Subtitles Off')) ? 'text-[#0070F3] bg-white/5' : 'text-white/80'}`
+                  },
+                    h('span', null, sub.name),
+                    (subtitleLang === sub.name || (subtitleLang === 'Off' && sub.name === 'Subtitles Off')) && h('span', { className: 'text-[#0070F3] font-black' }, '✓')
+                  ))
+                )
+              ),
+
+              // Fullscreen Toggle Button
+              h('button', {
+                type: 'button',
+                onClick: handleToggleFullscreen,
+                title: 'Watch Fullscreen',
+                className: 'w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 flex items-center justify-center text-white transition'
+              },
+                h('i', { 'data-lucide': isFullscreen ? 'minimize' : 'maximize', className: 'w-3.5 h-3.5' })
+              )
             )
           ),
 
-          h('div', { className: 'relative w-full aspect-video bg-black flex items-center justify-center overflow-hidden' },
+          h('div', { id: 'central-tv-stage', className: 'relative w-full aspect-video bg-black flex items-center justify-center overflow-hidden' },
+
+            // LIVE DYNAMIC SUBTITLES OVERLAY (when CC enabled)
+            subtitleLang !== 'Off' && h('div', { className: 'absolute bottom-28 left-1/2 -translate-x-1/2 z-30 px-4 py-1.5 rounded-lg bg-black/85 backdrop-blur-md text-white font-sans text-xs md:text-sm font-semibold tracking-wide text-center max-w-lg border border-white/15 pointer-events-none shadow-2xl animate-fadeIn' },
+              h('span', { className: 'text-white/60 text-[10px] font-mono mr-1.5 uppercase' }, `[${subtitleLang}]`),
+              '"The New Economy provides verified sovereign liquidity across WorldStreet, mARKet and KashPlus."'
+            ),
             
-            // Embedded 24/7 Continuous Live Stream (Speed controls & fast-forwarding disabled for Live TV)
-            h('iframe', {
-              src: `https://www.youtube-nocookie.com/embed/${centralTv.youtubeId || 'SqBx7QADBes'}?autoplay=1&mute=${isMuted ? 1 : 0}&loop=1&playlist=${centralTv.youtubeId || 'SqBx7QADBes'}&controls=0&disablekb=1&modestbranding=1&enablejsapi=1&rel=0&iv_load_policy=3&playsinline=1`,
-              title: centralTv.title || 'NEU TV Live Broadcast',
-              allow: 'autoplay; fullscreen; picture-in-picture; encrypted-media',
-              allowFullScreen: true,
-              className: 'w-full h-full object-cover border-0 pointer-events-none scale-[1.02]'
-            }),
+            // The stage plays one of two things.
+            //
+            // Normally it is the 24/7 linear broadcast: a looping embed with
+            // seeking and keyboard control disabled, because live television
+            // cannot be scrubbed.
+            //
+            // During a takeover it is the clicked video, played as real video
+            // with controls and NO loop - it has to be able to end, because
+            // reaching the end is what returns the stage to the main broadcast.
+            // A broadcast coming from the admin's browser arrives as WebM
+            // segments and is assembled here through MediaSource.
+            (!stageOverride && liveEvent && liveEvent.isSegmented)
+              ? h('video', {
+                  key: 'seg-' + liveEvent.id,
+                  ref: (el) => {
+                    if (!el || el._neuSegEvent === liveEvent.id) return;
+                    if (el._neuSegStop) el._neuSegStop();
+                    el._neuSegEvent = liveEvent.id;
+                    if (window.NeuTVSegmentPlayer && window.NeuTVSegmentPlayer.supported()) {
+                      el._neuSegStop = window.NeuTVSegmentPlayer.play(el, liveEvent.id, {
+                        // Swallowing this left a black rectangle under a LIVE
+                        // badge with no way to tell a broadcast that had not
+                        // started from a browser that cannot play WebM at all.
+                        onError: (err) => setLiveError(err && err.message
+                          ? err.message
+                          : 'This broadcast could not be played here.'),
+                      });
+                    } else {
+                      setLiveError('This browser cannot play a studio broadcast. Try Chrome, Edge or Firefox.');
+                    }
+                  },
+                  poster: liveEvent.posterUrl || undefined,
+                  autoPlay: true,
+                  muted: isMuted,
+                  playsInline: true,
+                  controls: false,
+                  className: 'w-full h-full object-cover border-0'
+                })
+
+            // A live event playing HLS needs a real <video> with hls.js
+            // attached; there is no duration and no end to revert at.
+            : (!stageOverride && liveEvent && isHls(liveEvent.videoUrl))
+              ? h('video', {
+                  key: 'live-' + liveEvent.id,
+                  ref: (el) => { if (el && el.src !== liveEvent.videoUrl) attachHls(el, liveEvent.videoUrl); },
+                  poster: liveEvent.posterUrl || undefined,
+                  autoPlay: true,
+                  muted: isMuted,
+                  playsInline: true,
+                  controls: false,
+                  className: 'w-full h-full object-cover border-0'
+                })
+            // A live event fed by a plain video URL - an MP4 on a CDN, which is
+            // what most "paste the playback URL" events actually are. Without
+            // this branch it fell through to the linear channel below and the
+            // viewer watched the ordinary loop under a LIVE badge.
+            : (!stageOverride && liveEvent && liveEvent.videoUrl && !liveEvent.youtubeId)
+              ? h('video', {
+                  key: 'live-src-' + liveEvent.id,
+                  src: liveEvent.videoUrl,
+                  poster: liveEvent.posterUrl || undefined,
+                  autoPlay: true,
+                  muted: isMuted,
+                  playsInline: true,
+                  controls: false,
+                  className: 'w-full h-full object-cover border-0'
+                })
+            : stageOverride && stageOverride.videoUrl
+              ? h('video', {
+                  key: stageOverride.id,
+                  src: stageOverride.videoUrl,
+                  poster: stageOverride.posterUrl || undefined,
+                  autoPlay: true,
+                  muted: isMuted,
+                  loop: false,
+                  controls: true,
+                  playsInline: true,
+                  onEnded: () => returnToMainBroadcast(true),
+                  className: 'w-full h-full object-contain bg-black border-0'
+                })
+              // The linear channel. The id used to fall back to a hardcoded
+              // 'SqBx7QADBes' whenever centralTv had none, which meant every
+              // failure upstream - an unplayable live event, an empty programme
+              // - looked like a healthy broadcast of that one video. If there is
+              // nothing to play, say so.
+              : centralTv.youtubeId
+                ? h('iframe', {
+                    src: `https://www.youtube-nocookie.com/embed/${centralTv.youtubeId}?autoplay=1&mute=${isMuted ? 1 : 0}&loop=${stageOverride ? 0 : 1}&playlist=${centralTv.youtubeId}&controls=${stageOverride ? 1 : 0}&disablekb=1&modestbranding=1&enablejsapi=1&rel=0&iv_load_policy=3&playsinline=1`,
+                    title: centralTv.title || 'NEU TV Live Broadcast',
+                    allow: 'autoplay; fullscreen; picture-in-picture; encrypted-media',
+                    allowFullScreen: true,
+                    className: 'w-full h-full object-cover border-0 scale-[1.02] '
+                      + (stageOverride ? '' : 'pointer-events-none')
+                  })
+                : centralTv.videoUrl
+                  ? h('video', {
+                      key: 'central-' + (centralTv.id || 'main'),
+                      src: centralTv.videoUrl,
+                      poster: centralTv.posterUrl || undefined,
+                      autoPlay: true, muted: isMuted, loop: !stageOverride,
+                      playsInline: true, controls: false,
+                      className: 'w-full h-full object-cover border-0'
+                    })
+                  : h('div', { className: 'w-full h-full flex flex-col items-center justify-center gap-2 text-center px-6' },
+                      h('i', { 'data-lucide': 'tv', className: 'w-8 h-8 text-white/20' }),
+                      h('div', { className: 'text-sm font-bold text-white/70' }, 'Nothing is on air'),
+                      h('div', { className: 'text-[11px] text-white/40 max-w-sm' },
+                        'No live event is running and no programme has been set in the back office.')
+                    ),
+
+            // While an event is on air, say so. This is a real broadcast, not
+            // the looping linear channel.
+            !stageOverride && liveEvent && h('div', {
+              className: 'absolute top-3 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/85 backdrop-blur-md border border-red-500/50 shadow-xl max-w-[92%]'
+            },
+              h('span', { className: 'w-1.5 h-1.5 rounded-full bg-red-500 animate-live flex-shrink-0' }),
+              h('span', { className: 'text-[10px] md:text-xs font-black text-red-400 tracking-wide flex-shrink-0' }, 'LIVE'),
+              h('span', { className: 'text-[10px] md:text-xs font-bold text-white truncate' }, liveEvent.title)
+            ),
+
+            // A live event that cannot play here must say why. Silence looks
+            // identical to a broadcast that simply has not started.
+            !stageOverride && liveEvent && liveError && h('div', {
+              className: 'absolute inset-x-0 bottom-0 z-40 px-4 py-2.5 bg-black/85 backdrop-blur-md border-t border-red-500/40 text-center'
+            },
+              h('span', { className: 'text-[11px] font-semibold text-red-300' }, liveError)
+            ),
+
+            // While a takeover is playing, say what is on and offer the way back.
+            stageOverride && h('div', {
+              className: 'absolute top-3 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/85 backdrop-blur-md border border-[#00F6A7]/40 shadow-xl max-w-[92%]'
+            },
+              h('span', { className: 'w-1.5 h-1.5 rounded-full bg-[#00F6A7] flex-shrink-0' }),
+              h('span', { className: 'text-[10px] md:text-xs font-bold text-white truncate' }, stageOverride.title),
+              h('button', {
+                onClick: () => returnToMainBroadcast(true),
+                className: 'ml-1 px-2.5 py-0.5 rounded-full bg-white/15 hover:bg-white/25 text-[10px] font-black text-white transition flex-shrink-0'
+              }, 'Back to live')
+            ),
 
             // ANIMATED LIVE GIFT ALERT BANNER
-            activeGiftBanner && h('div', { className: 'absolute top-16 left-1/2 -translate-x-1/2 z-50 px-6 py-3 rounded-full bg-[#111B33] text-white font-black text-xs md:text-sm flex items-center gap-3 shadow-2xl border-2 border-amber-400 animate-bounce' },
-              h('div', { className: 'w-9 h-9 rounded-full bg-gradient-to-r from-amber-400 to-amber-500 text-black flex items-center justify-center text-lg shadow-md' },
+            activeGiftBanner && h('div', { className: 'absolute top-16 left-1/2 -translate-x-1/2 z-50 px-6 py-3 rounded-full bg-[#141418] text-white font-black text-xs md:text-sm flex items-center gap-3 shadow-2xl border-2 border-[#0070F3] shadow-[0_0_30px_rgba(0,112,243,0.5)] animate-bounce' },
+              h('div', { className: 'w-9 h-9 rounded-full bg-[#0070F3] text-white flex items-center justify-center text-lg shadow-md' },
                 activeGiftBanner.emoji || '🎁'
               ),
               h('span', null, `${activeGiftBanner.sender} sent ${activeGiftBanner.giftName}!`),
-              h('span', { className: 'px-2 py-0.5 rounded-full bg-white/10 text-amber-400 text-xs font-mono font-bold' }, `${activeGiftBanner.cost} KASH`)
+              h('span', { className: 'px-2 py-0.5 rounded-full bg-white/10 text-[#38B6FF] text-xs font-mono font-black' }, `${activeGiftBanner.cost} KASH`)
             ),
 
-            // FLYING HEARTS LAYER
-            flyingHearts.map(item => h('div', {
-              key: item.id,
-              className: 'flying-heart',
-              style: { right: `${item.rightOffset}px`, bottom: '60px' }
-            }, item.emoji)),
+            // FLOATING ANIMATED FIRE, LOVE & REACTION EMOJIS OVER BROADCAST
+            ...flyingHearts.map(heart => h('div', {
+              key: heart.id,
+              style: { right: `${heart.rightOffset || 40}px` },
+              className: 'flying-heart text-3xl select-none pointer-events-none'
+            }, heart.emoji || '🔥')),
 
             // FLOATING LIVE CHAT COMMENTS STREAM
             h('div', { className: 'absolute left-6 bottom-24 z-30 flex flex-col gap-2 max-w-sm pointer-events-none' },
@@ -1375,11 +2127,15 @@
               h('button', {
                 onClick: () => requireAuth('send live gifts', () => setIsGiftModalOpen(true)),
                 title: 'Send Live KashCoin Gift',
-                className: 'w-12 h-12 rounded-full bg-gradient-to-r from-amber-400 to-amber-500 text-black text-2xl flex items-center justify-center transition hover:scale-110 active:scale-125 shadow-2xl border-2 border-white/50'
+                className: 'w-12 h-12 rounded-full bg-[#0070F3] hover:bg-[#0060DF] text-white text-2xl flex items-center justify-center transition hover:scale-110 active:scale-125 shadow-2xl border-2 border-white/40'
               }, '🎁'),
 
               h('button', {
-                onClick: handleToggleTvLike,
+                onClick: () => {
+                  handleToggleTvLike();
+                  spawnHeart('❤️');
+                  setTimeout(() => spawnHeart('❤️'), 120);
+                },
                 className: `w-11 h-11 rounded-full border border-white/20 flex flex-col items-center justify-center backdrop-blur-md transition shadow-xl ${isTvLiked ? 'bg-rose-600 text-white border-rose-400 scale-110' : 'bg-black/70 text-white hover:bg-black/90'}`
               },
                 h('i', { 'data-lucide': 'heart', className: `w-4 h-4 ${isTvLiked ? 'fill-white' : ''}` }),
@@ -1387,19 +2143,23 @@
               ),
 
               h('button', {
-                onClick: () => requireAuth('react', () => spawnHeart('🔥')),
-                className: 'w-11 h-11 rounded-full bg-black/70 backdrop-blur-md border border-white/20 text-xl flex items-center justify-center hover:bg-black/90 transition active:scale-125 shadow-xl text-amber-400'
+                onClick: () => requireAuth('react', () => {
+                  spawnHeart('🔥');
+                  setTimeout(() => spawnHeart('🔥'), 100);
+                  setTimeout(() => spawnHeart('🔥'), 220);
+                }),
+                className: 'w-11 h-11 rounded-full bg-black/75 backdrop-blur-md border border-red-500/30 text-xl flex items-center justify-center hover:bg-red-500/20 transition active:scale-125 shadow-xl text-red-500'
               },
-                h('i', { 'data-lucide': 'flame', className: 'w-5 h-5 fill-current' })
+                h('i', { 'data-lucide': 'flame', className: 'w-5 h-5 fill-red-500 text-red-500 stroke-red-500' })
               )
             ),
 
             // Bottom Details Banner & Live Stream Comment Input Bar
-            h('div', { className: 'absolute bottom-0 left-0 right-0 z-20 p-4 md:p-6 bg-gradient-to-t from-[#060A12] via-[#060A12]/90 to-transparent flex flex-col md:flex-row md:items-end justify-between gap-4 pointer-events-auto' },
+            h('div', { className: 'absolute bottom-0 left-0 right-0 z-20 p-4 md:p-6 bg-gradient-to-t from-[#000000] via-[#000000]/90 to-transparent flex flex-col md:flex-row md:items-end justify-between gap-4 pointer-events-auto' },
               h('div', { className: 'max-w-xl space-y-1.5' },
                 // Tagline & Brand Badge Line
                 h('div', { className: 'flex items-center gap-2 flex-wrap' },
-                  h('span', { className: 'text-[9px] font-mono font-black tracking-widest text-[#00F6A7] uppercase bg-[#00F6A7]/10 px-2.5 py-0.5 rounded-full border border-[#00F6A7]/30' }, 'THE NEW ECONOMY, ON SCREEN.'),
+                  h('span', { className: 'text-[9px] font-mono font-black tracking-widest text-white uppercase bg-white/10 px-2.5 py-0.5 rounded-full border border-white/15' }, 'THE NEW ECONOMY, ON SCREEN.'),
                   h('span', { className: 'text-[9px] text-white/50 font-bold uppercase tracking-wider' }, 'INNOVATIVE • BOLD • TRUSTED • INSPIRING')
                 ),
                 h('h1', { className: 'text-lg md:text-xl font-black tracking-tight text-white leading-snug' }, centralTv.title),
@@ -1412,16 +2172,16 @@
                   placeholder: currentUser ? 'Comment on live stream...' : 'Sign in to comment...',
                   value: chatInputText,
                   onChange: e => setChatInputText(e.target.value),
-                  className: 'bg-[#111B33]/80 border border-white/20 rounded-full px-4 py-2 text-xs text-white placeholder-white/50 outline-none focus:border-[#00F6A7]/60 transition min-w-[220px]'
+                  className: 'bg-[#141418]/80 border border-white/20 rounded-full px-4 py-2 text-xs text-white placeholder-white/50 outline-none focus:border-white/30 transition min-w-[220px]'
                 }),
                 h('button', {
                   type: 'submit',
-                  className: 'px-4 py-2 rounded-full bg-gradient-to-r from-[#00F6A7] to-[#00C8FF] text-black font-extrabold text-xs hover:brightness-110 transition shadow-md'
+                  className: 'px-4 py-2 rounded-full bg-white hover:bg-neutral-200 text-black font-black text-xs transition shadow-md'
                 }, 'Send'),
                 h('button', {
                   type: 'button',
                   onClick: () => requireAuth('send live gifts', () => setIsGiftModalOpen(true)),
-                  className: 'px-3.5 py-2 rounded-full bg-gradient-to-r from-amber-400/20 to-amber-500/20 border border-amber-400/40 text-amber-300 font-extrabold text-xs hover:bg-amber-400/30 transition shadow-md whitespace-nowrap flex items-center gap-1.5'
+                  className: 'px-3.5 py-2 rounded-full bg-[#0070F3] hover:bg-[#0060DF] text-white font-extrabold text-xs transition shadow-lg whitespace-nowrap flex items-center gap-1.5'
                 },
                   h('span', { className: 'text-sm' }, '🎁'),
                   h('span', null, 'Gift')
@@ -1433,14 +2193,14 @@
 
         // ═══════════════════════════════════════════════════════════
         // ═══════════════════════════════════════════════════════════
-        // CREATOR SPOTLIGHT: VIDEO COLLAGE SLIDESHOW (PURE CSS GPU MARQUEE)
+        // CREATOR SPOTLIGHT: VIDEO COLLAGE SLIDESHOW (PURE CSS GPU MARQUEE — SHOWN ON 'tv' & 'foryou')
         // ═══════════════════════════════════════════════════════════
-        h('section', { className: 'w-full space-y-3 pt-2' },
+        (activeMainTab === 'tv' || activeMainTab === 'foryou') && h('section', { className: 'w-full space-y-3 pt-2' },
           
           // Slideshow Header with Carousel Controls (Clean, Minimal)
           h('div', { className: 'flex items-center justify-between px-1' },
             h('div', { className: 'flex items-center gap-2' },
-              h('span', { className: 'w-2 h-2 rounded-full bg-[#00F6A7] animate-pulse' }),
+              h('span', { className: 'w-2 h-2 rounded-full bg-white/70 animate-pulse' }),
               h('h2', { className: 'text-base font-black text-white tracking-tight' },
                 'Creator Spotlights'
               )
@@ -1455,7 +2215,7 @@
                   if (track) track.scrollBy({ left: -320, behavior: 'smooth' });
                 },
                 title: 'Previous',
-                className: 'w-8 h-8 rounded-full bg-[#111B33] hover:bg-[#1A2644] text-white/80 hover:text-white border border-white/15 flex items-center justify-center transition shadow-md hover:scale-105 active:scale-95'
+                className: 'w-8 h-8 rounded-full bg-[#141418] hover:bg-[#1E1E24] text-white/80 hover:text-white border border-white/15 flex items-center justify-center transition shadow-md hover:scale-105 active:scale-95'
               },
                 h('i', { 'data-lucide': 'chevron-left', className: 'w-4 h-4' })
               ),
@@ -1466,7 +2226,7 @@
                   if (track) track.scrollBy({ left: 320, behavior: 'smooth' });
                 },
                 title: 'Next',
-                className: 'w-8 h-8 rounded-full bg-[#111B33] hover:bg-[#1A2644] text-white/80 hover:text-white border border-white/15 flex items-center justify-center transition shadow-md hover:scale-105 active:scale-95'
+                className: 'w-8 h-8 rounded-full bg-[#141418] hover:bg-[#1E1E24] text-white/80 hover:text-white border border-white/15 flex items-center justify-center transition shadow-md hover:scale-105 active:scale-95'
               },
                 h('i', { 'data-lucide': 'chevron-right', className: 'w-4 h-4' })
               )
@@ -1494,7 +2254,7 @@
                       description: `${cr.title} — Spotlight breakdown by ${cr.name} (${cr.handle}) on ${cr.product}.`
                     });
                   },
-                  className: 'w-56 md:w-60 flex-shrink-0 relative aspect-[4/5] rounded-3xl overflow-hidden border border-white/15 bg-neutral-950 group cursor-pointer shadow-xl transition-all duration-500 hover:border-[#00F6A7]/60 hover:shadow-[0_15px_40px_rgba(0,246,167,0.25)] hover:-translate-y-1.5'
+                  className: 'w-56 md:w-60 flex-shrink-0 relative aspect-[4/5] rounded-3xl overflow-hidden border border-white/15 bg-neutral-950 group cursor-pointer shadow-xl transition-all duration-500 hover:border-white/40 hover:shadow-[0_10px_30px_rgba(0,0,0,0.6)] hover:-translate-y-1.5'
                 },
                   // Native Autoplay Looping Video Element
                   h('video', {
@@ -1513,37 +2273,35 @@
                   // Top Row: Creator Avatar with Story Ring & Product Badge
                   h('div', { className: 'absolute top-3 left-3 right-3 flex items-center justify-between z-20' },
                     h('div', { className: 'flex items-center gap-2 min-w-0' },
-                      h('div', { className: 'relative p-0.5 rounded-full bg-gradient-to-tr from-[#00F6A7] via-[#00C8FF] to-[#4D6BFF] flex-shrink-0 shadow-md' },
-                        h('img', {
-                          src: cr.avatar,
-                          alt: cr.name,
-                          className: 'w-7 h-7 rounded-full object-cover border border-black'
-                        })
-                      ),
+                      h('img', {
+                        src: cr.avatar,
+                        alt: cr.name,
+                        className: 'w-7 h-7 rounded-full object-cover border-2 border-white/20 flex-shrink-0'
+                      }),
                       h('span', { className: 'font-extrabold text-xs text-white truncate drop-shadow' }, cr.name)
                     ),
-                    h('span', { className: 'px-2 py-0.5 rounded-full bg-black/80 backdrop-blur-md border border-white/20 text-[9px] font-bold text-[#00F6A7] shadow flex-shrink-0' },
+                    h('span', { className: `px-2 py-0.5 rounded-full bg-black/80 border ${getCommunityBrandTheme(cr.productId).borderColor || 'border-white/20'} text-[9px] font-bold ${getCommunityBrandTheme(cr.productId).accentText || 'text-white'} shadow flex-shrink-0` },
                       cr.product
                     )
                   ),
 
                   // Center Play Action Hologram
                   h('div', { className: 'absolute inset-0 flex items-center justify-center z-20 pointer-events-none' },
-                    h('div', { className: 'w-11 h-11 rounded-full bg-black/60 backdrop-blur-md border border-white/30 flex items-center justify-center text-white group-hover:bg-[#00F6A7] group-hover:text-black group-hover:scale-110 transition duration-300 shadow-2xl' },
+                    h('div', { className: 'w-11 h-11 rounded-full bg-black/60 backdrop-blur-md border border-white/30 flex items-center justify-center text-white group-hover:bg-white group-hover:text-black group-hover:scale-110 transition duration-300 shadow-2xl' },
                       h('i', { 'data-lucide': 'play', className: 'w-4 h-4 fill-current ml-0.5' })
                     )
                   ),
 
                   // Bottom Video Information & Metrics
                   h('div', { className: 'absolute bottom-3 left-3 right-3 space-y-1 z-20' },
-                    h('div', { className: 'inline-block px-2 py-0.5 rounded-md bg-black/85 backdrop-blur-md border border-white/15 text-[9px] font-extrabold text-amber-300' },
+                    h('div', { className: `inline-block px-2 py-0.5 rounded-md bg-black/85 border border-white/15 text-[9px] font-extrabold ${getCommunityBrandTheme(cr.productId).accentText || 'text-white'}` },
                       cr.tag
                     ),
                     h('h3', { className: 'text-xs md:text-sm font-black text-white leading-snug line-clamp-2 drop-shadow' },
                       cr.title
                     ),
                     h('div', { className: 'flex items-center justify-between text-[10px] text-white/80 font-mono pt-0.5' },
-                      h('span', { className: 'flex items-center gap-1 text-[#00F6A7] font-bold' },
+                      h('span', { className: 'flex items-center gap-1 text-white font-bold' },
                         h('i', { 'data-lucide': 'eye', className: 'w-3 h-3' }),
                         cr.views
                       ),
@@ -1567,7 +2325,7 @@
           h('div', { className: 'max-w-4xl mx-auto space-y-3.5 px-1' },
             h('div', { className: 'flex items-center justify-between' },
               h('h2', { className: 'text-base md:text-lg font-black text-white tracking-tight flex items-center gap-2' },
-                h('i', { 'data-lucide': 'sparkles', className: 'w-4 h-4 text-[#00F6A7]' }),
+                h('i', { 'data-lucide': 'sparkles', className: 'w-4 h-4 text-white' }),
                 'Official Announcements'
               ),
               h('span', { className: 'text-xs text-white/50 font-medium' },
@@ -1580,249 +2338,248 @@
               h('button', {
                 type: 'button',
                 onClick: () => setActiveProductId('all'),
-                className: `px-3.5 py-1.5 rounded-full text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap shadow-sm ${activeProductId === 'all' ? 'bg-white text-black font-extrabold shadow-md' : 'bg-[#111B33] border border-white/15 text-white/70 hover:text-white'}`
+                className: `px-3.5 py-1.5 rounded-full text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap shadow-sm ${activeProductId === 'all' ? 'bg-white text-black font-black shadow-md' : 'bg-white/5 border border-white/10 text-white/70 hover:bg-white/10 hover:text-white'}`
               }, '✨ All'),
 
-              [
-                { id: 'neutv', name: 'NEU TV' },
-                ...PRODUCTS
-              ].map(prod => {
+              PRODUCTS.map(prod => {
                 const isSelected = activeProductId === prod.id;
                 return h('button', {
                   key: prod.id,
                   type: 'button',
                   onClick: () => setActiveProductId(prod.id),
-                  className: `px-3.5 py-1.5 rounded-full text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap shadow-sm ${isSelected ? 'bg-gradient-to-r from-[#00F6A7] to-[#00C8FF] text-black font-black shadow-md' : 'bg-[#111B33] border border-white/15 text-white/70 hover:text-white hover:bg-white/10'}`
+                  className: `px-3.5 py-1.5 rounded-full text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap shadow-sm ${isSelected ? 'bg-white text-black font-black shadow-md' : 'bg-white/5 border border-white/10 text-white/70 hover:bg-white/10 hover:text-white'}`
                 },
-                  h('span', { className: `w-1.5 h-1.5 rounded-full ${isSelected ? 'bg-black' : 'bg-[#00F6A7]'}` }),
+                  h('span', { className: `w-2 h-2 rounded-full ${isSelected ? 'bg-black' : (getCommunityBrandTheme(prod.id).dotColor || 'bg-white/40')}` }),
                   prod.name
                 );
               })
             )
           ),
 
-          // Render Instagram Video Post Cards (Spacious Gaps & Smooth Animation)
-          filteredPosts.map(post => {
-            const isLiked = likedPosts[post.id] || post.isUpvoted;
-            const isSaved = savedPosts[post.id] || post.isSaved;
-            const isCommentsOpen = openCommentSections[post.id];
-            const isFollowing = followingUsers[post.handle];
-            const commentsList = post.comments || [];
+          // ═══════════════════════════════════════════════════════════
+          // YOUTUBE-STYLE OFFICIAL ANNOUNCEMENTS & VIDEOS GRID (BLENDED TO BACKGROUND)
+          // ═══════════════════════════════════════════════════════════
+          h('div', { className: 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-8 md:gap-x-5 md:gap-y-10' },
+            filteredPosts.map(post => {
+              const isDeepLinked = highlightedPostId === post.id;
+              return h('div', {
+                key: post.id,
+                // Addressable so a shared "?post=<id>" link can scroll to it.
+                id: 'post-' + post.id,
+                onClick: () => setSelectedVideo({
+                  id: post.id,
+                  title: post.videoTitle || post.content,
+                  description: post.content,
+                  productName: post.productName,
+                  influencer: post.author,
+                  avatar: post.avatar,
+                  views: post.views,
+                  duration: post.duration,
+                  youtubeId: post.youtubeId,
+                  videoUrl: post.videoMp4,
+                  thumbnail: post.mediaUrl
+                }),
+                className: 'group cursor-pointer flex flex-col space-y-3 select-none bg-transparent transition-transform duration-200 rounded-2xl '
+                  + (isDeepLinked ? 'ring-2 ring-white/70 ring-offset-2 ring-offset-black' : '')
+              },
+                // 1. 16:9 Widescreen Video Thumbnail with Duration Badge
+                //
+                // A poster is optional, and an uploaded video has none unless
+                // someone typed a URL for it - so this rendered <img src={null}>
+                // and every upload showed a broken-image icon. Where there is a
+                // file to play, the video itself is the preview: preload the
+                // metadata and seek a fraction in, and the browser paints a real
+                // frame without anything having to generate a thumbnail.
+                h('div', { className: 'relative w-full aspect-video rounded-2xl overflow-hidden bg-neutral-900 shadow-md' },
+                  post.mediaUrl
+                    ? h('img', {
+                        src: post.mediaUrl,
+                        alt: post.videoTitle || post.productName,
+                        loading: 'lazy',
+                        className: 'w-full h-full object-cover group-hover:scale-105 transition-transform duration-300'
+                      })
+                    : post.videoMp4
+                      ? h('video', {
+                          src: post.videoMp4 + '#t=0.1',
+                          preload: 'metadata',
+                          muted: true,
+                          playsInline: true,
+                          tabIndex: -1,
+                          className: 'w-full h-full object-cover pointer-events-none group-hover:scale-105 transition-transform duration-300'
+                        })
+                      : h('div', { className: 'w-full h-full flex items-center justify-center text-white/20' },
+                          h('i', { 'data-lucide': 'clapperboard', className: 'w-8 h-8' })
+                        ),
+                  // Dark gradient overlay on hover
+                  h('div', { className: 'absolute inset-0 bg-black/10 group-hover:bg-black/0 transition duration-300' }),
+                  
+                  // Duration timestamp badge in bottom-right corner (YouTube style)
+                  post.duration ? h('div', { className: 'absolute bottom-2.5 right-2.5 px-1.5 py-0.5 rounded bg-black/85 text-white text-[11px] font-semibold tracking-wide shadow pointer-events-none' },
+                    post.duration
+                  ) : null,
 
-            return h('article', {
-              key: post.id,
-              className: 'max-w-4xl mx-auto w-full rounded-3xl bg-[#0B1220]/95 border border-white/15 overflow-hidden shadow-2xl space-y-4 p-5 md:p-7 backdrop-blur-xl transition-all duration-300 hover:border-[#00F6A7]/40 hover:shadow-[0_20px_50px_rgba(0,246,167,0.12)] hover:-translate-y-1 animate-fadeIn'
-            },
-              
-              // 1. TOP PROFILE HEADER (INSTAGRAM STYLE)
-              h('div', { className: 'flex items-center justify-between gap-3' },
-                // Profile Avatar & Bio preview
-                h('div', { className: 'flex items-center gap-3 min-w-0' },
-                  // Avatar with Glowing Gradient Ring
-                  h('div', { className: 'relative p-0.5 rounded-full bg-gradient-to-tr from-[#00F6A7] via-[#00C8FF] to-[#4D6BFF] flex-shrink-0 shadow-md' },
+                  // Center Play Icon on Hover
+                  h('div', { className: 'absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition duration-200 pointer-events-none' },
+                    h('div', { className: 'w-12 h-12 rounded-full bg-black/75 backdrop-blur-md border border-white/20 flex items-center justify-center text-white shadow-2xl' },
+                      h('i', { 'data-lucide': 'play', className: 'w-5 h-5 fill-current ml-0.5' })
+                    )
+                  )
+                ),
+
+                // 2. Channel Avatar + Clean Title + Meta Row (YouTube Style)
+                h('div', { className: 'flex items-start gap-3 pt-0.5' },
+                  // Channel Avatar
+                  h('div', { className: 'w-9 h-9 rounded-full overflow-hidden bg-neutral-800 flex-shrink-0 mt-0.5 shadow-sm' },
                     h('img', {
                       src: post.avatar,
                       alt: post.author,
-                      className: 'w-10 h-10 rounded-full object-cover border-2 border-[#0B1220]'
+                      className: 'w-full h-full object-cover'
                     })
                   ),
-                  h('div', { className: 'min-w-0' },
-                    h('div', { className: 'flex items-center gap-1.5 flex-wrap' },
-                      h('span', { className: 'font-extrabold text-sm text-white truncate' }, post.author),
-                      post.verified && h('span', {
-                        title: 'Verified Official Account',
-                        className: 'w-4 h-4 rounded-full bg-[#00C8FF] text-black font-black text-[10px] flex items-center justify-center flex-shrink-0'
-                      }, '✓'),
-                      h('span', { className: 'text-white/30 text-xs' }, '•'),
-                      h('span', { className: 'text-xs text-white/50 font-mono font-medium' }, post.timestamp)
+
+                  // Video Info (Title, Channel, Views & Timestamp)
+                  h('div', { className: 'flex-1 min-w-0 pr-1' },
+                    // Title (2-line max, clean bold white)
+                    h('h3', { className: 'text-sm font-bold text-white line-clamp-2 leading-snug group-hover:text-neutral-200 transition' },
+                      post.videoTitle || post.content
                     ),
-                    h('div', { className: 'flex items-center gap-2 mt-0.5' },
-                      h('span', { className: 'text-[10px] font-bold text-[#00F6A7] bg-[#00F6A7]/10 px-2 py-0.5 rounded-full border border-[#00F6A7]/25' }, post.categoryTag || post.productName),
-                      h('span', { className: 'text-[11px] text-white/50 truncate hidden sm:inline' }, post.role || post.handle)
+                    
+                    // Channel Name with Verified Badge
+                    h('div', { className: 'flex items-center gap-1 text-xs text-white/60 hover:text-white transition mt-1' },
+                      h('span', { className: 'truncate font-medium' }, post.productName || post.author),
+                      post.verified && h('span', { className: 'w-3.5 h-3.5 rounded-full bg-[#0070F3] text-white font-black text-[9px] flex items-center justify-center flex-shrink-0' }, '✓')
+                    ),
+
+                    // Views & Timestamp
+                    h('div', { className: 'text-xs text-white/50 flex items-center gap-1 mt-0.5' },
+                      h('span', null, `${post.views || '42K views'}`),
+                      h('span', null, '•'),
+                      h('span', null, post.timestamp)
                     )
+                  ),
+
+                  // 3-dot options menu icon
+                  h('button', {
+                    type: 'button',
+                    onClick: (e) => { e.stopPropagation(); handleSharePost(post); },
+                    className: 'w-8 h-8 rounded-full hover:bg-white/10 text-white/60 hover:text-white flex items-center justify-center transition flex-shrink-0 opacity-0 group-hover:opacity-100'
+                  },
+                    h('i', { 'data-lucide': 'more-vertical', className: 'w-4 h-4' })
                   )
                 ),
 
-                // Follow Button & Options
-                h('div', { className: 'flex items-center gap-2 flex-shrink-0' },
-                  h('button', {
-                    type: 'button',
-                    onClick: () => handleToggleFollow(post.handle),
-                    className: `px-3.5 py-1.5 rounded-full text-xs font-extrabold transition shadow-sm ${isFollowing ? 'bg-white/10 text-white/80 border border-white/20 hover:bg-white/20' : 'bg-gradient-to-r from-[#00F6A7] to-[#00C8FF] text-black hover:brightness-110'}`
-                  }, isFollowing ? 'Following' : 'Follow'),
+                // 3. Action Row: Likes, Comments, KashCoin Gifting & Share
+                h('div', { className: 'flex items-center justify-between pt-1 border-t border-white/5' },
+                  h('div', { className: 'flex items-center gap-3' },
+                    // Like button (Heart)
+                    h('button', {
+                      type: 'button',
+                      onClick: (e) => {
+                        e.stopPropagation();
+                        handleTogglePostLike(post.id);
+                      },
+                      className: `flex items-center gap-1 text-xs font-semibold transition transform active:scale-125 ${likedPosts[post.id] || post.isUpvoted ? 'text-rose-500 font-bold' : 'text-white/60 hover:text-white'}`
+                    },
+                      h('i', {
+                        'data-lucide': 'heart',
+                        className: `w-4 h-4 ${likedPosts[post.id] || post.isUpvoted ? 'fill-rose-500 stroke-rose-500' : 'stroke-current'}`
+                      }),
+                      h('span', { className: 'font-mono text-[11px]' }, (post.upvotes || 0).toLocaleString())
+                    ),
 
-                  h('button', {
-                    type: 'button',
-                    onClick: () => handleSharePost(post),
-                    className: 'w-8 h-8 rounded-full bg-white/5 hover:bg-white/15 text-white/60 hover:text-white flex items-center justify-center transition border border-white/10'
-                  },
-                    h('i', { 'data-lucide': 'more-horizontal', className: 'w-4 h-4' })
-                  )
-                )
-              ),
+                    // Comment button (Message bubble)
+                    h('button', {
+                      type: 'button',
+                      onClick: (e) => {
+                        e.stopPropagation();
+                        setSelectedVideo({
+                          id: post.id,
+                          title: post.videoTitle || post.content,
+                          description: post.content,
+                          productName: post.productName,
+                          influencer: post.author,
+                          avatar: post.avatar,
+                          views: post.views,
+                          duration: post.duration,
+                          youtubeId: post.youtubeId,
+                          videoUrl: post.videoMp4,
+                          thumbnail: post.mediaUrl
+                        });
+                      },
+                      className: 'flex items-center gap-1 text-xs font-semibold text-white/60 hover:text-white transition'
+                    },
+                      h('i', { 'data-lucide': 'message-circle', className: 'w-4 h-4' }),
+                      h('span', { className: 'font-mono text-[11px]' }, (post.comments || []).length)
+                    ),
 
-              // 2. MAIN VIDEO PLAYER FIELD (NATIVE AUTOPLAY VIDEO WITH FALLBACK)
-              h('div', {
-                className: 'relative aspect-video rounded-2xl overflow-hidden bg-black border border-white/10 shadow-2xl w-full group'
-              },
-                // Direct Autoplaying Video Stream
-                h('video', {
-                  src: post.videoMp4,
-                  poster: post.mediaUrl,
-                  autoPlay: true,
-                  muted: true,
-                  loop: true,
-                  playsInline: true,
-                  controls: true,
-                  className: 'w-full h-full object-cover border-0'
-                }),
+                    // Gift Button (KashCoin tipping)
+                    h('button', {
+                      type: 'button',
+                      onClick: (e) => {
+                        e.stopPropagation();
+                        requireAuth('send gift', () => setIsGiftModalOpen(true));
+                      },
+                      className: 'px-2.5 py-1 rounded-full bg-[#0070F3]/20 hover:bg-[#0070F3] border border-[#0070F3]/40 text-[#38B6FF] hover:text-white text-[11px] font-bold flex items-center gap-1 transition active:scale-95 shadow-sm'
+                    },
+                      h('span', { className: 'text-xs' }, '🎁'),
+                      h('span', null, 'Gift')
+                    ),
 
-                // Top badges (Platform & Views)
-                h('div', { className: 'absolute top-3 left-3 right-3 flex items-center justify-between z-10 pointer-events-none' },
-                  h('div', { className: 'flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/80 backdrop-blur-md border border-white/20 text-[10px] font-bold text-white shadow-lg' },
-                    h('span', { className: 'w-1.5 h-1.5 rounded-full bg-[#00F6A7]' }),
-                    post.productName
-                  ),
-                  h('div', { className: 'px-2.5 py-1 rounded-full bg-black/80 backdrop-blur-md border border-white/20 text-[10px] font-mono text-white/90 font-bold' },
-                    `${post.views || '42.8K'} views`
-                  )
-                )
-              ),
-
-              // 3. INSTAGRAM ACTION BAR (LIKE, COMMENT, SHARE, GIFT, BOOKMARK)
-              h('div', { className: 'flex items-center justify-between pt-1' },
-                h('div', { className: 'flex items-center gap-4' },
-                  
-                  // Like Button (Heart)
-                  h('button', {
-                    type: 'button',
-                    onClick: () => handleTogglePostLike(post.id),
-                    className: `flex items-center gap-1.5 text-xs font-bold transition transform active:scale-125 ${isLiked ? 'text-rose-500' : 'text-white/80 hover:text-white'}`
-                  },
-                    h('i', {
-                      'data-lucide': 'heart',
-                      className: `w-6 h-6 ${isLiked ? 'fill-rose-500 stroke-rose-500' : 'stroke-current'}`
-                    }),
-                    h('span', { className: 'font-mono text-xs' }, (post.upvotes || 0).toLocaleString())
-                  ),
-
-                  // Comment Button (Speech Bubble)
-                  h('button', {
-                    type: 'button',
-                    onClick: () => toggleComments(post.id),
-                    className: 'flex items-center gap-1.5 text-xs font-bold text-white/80 hover:text-[#00F6A7] transition'
-                  },
-                    h('i', { 'data-lucide': 'message-circle', className: 'w-6 h-6' }),
-                    h('span', { className: 'font-mono text-xs' }, commentsList.length)
-                  ),
-
-                  // Share Button (Paper Plane)
-                  h('button', {
-                    type: 'button',
-                    onClick: () => handleSharePost(post),
-                    className: 'flex items-center gap-1.5 text-xs font-bold text-white/80 hover:text-[#00C8FF] transition'
-                  },
-                    h('i', { 'data-lucide': 'send', className: 'w-5 h-5' }),
-                    post.shares && h('span', { className: 'font-mono text-xs' }, post.shares)
-                  ),
-
-                  // Gift KashCoin Tip Button (Colorful Emoji)
-                  h('button', {
-                    type: 'button',
-                    onClick: () => requireAuth('send gift', () => setIsGiftModalOpen(true)),
-                    className: 'px-3 py-1 rounded-full bg-gradient-to-r from-amber-500/20 to-amber-400/20 border border-amber-400/40 text-amber-300 hover:bg-amber-400/30 text-xs font-black flex items-center gap-1.5 transition active:scale-95 shadow-sm'
-                  },
-                    h('span', { className: 'text-sm' }, '🎁'),
-                    h('span', null, 'Gift')
-                  )
-                ),
-
-                // Bookmark / Save Button
-                h('button', {
-                  type: 'button',
-                  onClick: () => handleToggleSavePost(post.id),
-                  className: `transition transform active:scale-125 ${isSaved ? 'text-amber-400' : 'text-white/60 hover:text-white'}`
-                },
-                  h('i', {
-                    'data-lucide': 'bookmark',
-                    className: `w-6 h-6 ${isSaved ? 'fill-amber-400 stroke-amber-400' : 'stroke-current'}`
-                  })
-                )
-              ),
-
-              // 4. LIKES COUNT LINE
-              h('div', { className: 'text-xs font-bold text-white' },
-                `Liked by ${(post.upvotes || 0).toLocaleString()} viewers`
-              ),
-
-              // 5. CAPTION & HASHTAGS
-              h('div', { className: 'text-xs md:text-sm text-white/90 leading-relaxed' },
-                h('span', { className: 'font-black text-white mr-2' }, post.handle),
-                h('span', null, post.content)
-              ),
-
-              // 6. COMMENTS SECTION & INLINE COMMENT COMPOSER
-              h('div', { className: 'space-y-3 pt-2 border-t border-white/10' },
-                
-                // Toggle / Comments Count
-                commentsList.length > 0 && h('button', {
-                  type: 'button',
-                  onClick: () => toggleComments(post.id),
-                  className: 'text-xs text-white/50 hover:text-white font-medium'
-                }, isCommentsOpen ? 'Hide comments' : `View all ${commentsList.length} comments`),
-
-                // Comments List (when expanded)
-                isCommentsOpen && commentsList.length > 0 && h('div', { className: 'space-y-2.5 max-h-48 overflow-y-auto no-scrollbar pr-1' },
-                  commentsList.map(c => h('div', { key: c.id, className: 'flex items-start gap-2.5 text-xs' },
-                    h('img', {
-                      src: c.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=100&q=80',
-                      alt: c.author,
-                      className: 'w-6 h-6 rounded-full object-cover border border-white/20 flex-shrink-0 mt-0.5'
-                    }),
-                    h('div', { className: 'flex-1 min-w-0 leading-snug' },
-                      h('span', { className: 'font-extrabold text-white mr-1.5' }, c.author),
-                      h('span', { className: 'text-white/80' }, c.text),
-                      h('div', { className: 'text-[10px] text-white/40 font-mono mt-0.5' }, c.timestamp)
+                    // Bookmark / Save button
+                    h('button', {
+                      type: 'button',
+                      onClick: (e) => {
+                        e.stopPropagation();
+                        handleToggleSavePost(post.id);
+                      },
+                      title: savedPosts[post.id] ? 'Remove from Saved' : 'Save to Bookmarks',
+                      className: `flex items-center gap-1 text-xs font-semibold transition p-1 ${savedPosts[post.id] ? 'text-purple-400 font-bold' : 'text-white/40 hover:text-white'}`
+                    },
+                      h('i', {
+                        'data-lucide': 'bookmark',
+                        className: `w-3.5 h-3.5 ${savedPosts[post.id] ? 'fill-purple-400 text-purple-400' : 'stroke-current'}`
+                      })
                     )
-                  ))
-                ),
+                  ),
 
-                // Inline Comment Composer Form
-                h('form', {
-                  onSubmit: (e) => handleAddPostComment(e, post.id),
-                  className: 'flex items-center gap-2 pt-1'
-                },
-                  h('img', {
-                    src: currentUser ? currentUser.avatar : 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=100&q=80',
-                    alt: currentUser ? currentUser.name : 'You',
-                    className: 'w-6 h-6 rounded-full object-cover border border-white/20 flex-shrink-0'
-                  }),
-                  h('input', {
-                    type: 'text',
-                    placeholder: currentUser ? `Add a comment as ${currentUser.name}...` : 'Add a comment...',
-                    value: postCommentInputs[post.id] || '',
-                    onChange: (e) => setPostCommentInputs({ ...postCommentInputs, [post.id]: e.target.value }),
-                    className: 'flex-1 bg-transparent text-xs text-white placeholder-white/40 outline-none focus:border-b border-[#00F6A7]/40 py-1 transition'
-                  }),
+                  // Quick Share Icon
                   h('button', {
-                    type: 'submit',
-                    disabled: !postCommentInputs[post.id] || !postCommentInputs[post.id].trim(),
-                    className: 'text-xs font-bold text-[#00F6A7] hover:brightness-125 disabled:opacity-30 disabled:cursor-not-allowed transition'
-                  }, 'Post')
-                ),
-
-                // Quick One-Click Reaction Emojis
-                h('div', { className: 'flex items-center gap-1.5 pt-1 text-sm' },
-                  ['🔥', '❤️', '👏', '🚀', '💎', '⚡'].map(emoji => h('button', {
-                    key: emoji,
                     type: 'button',
-                    onClick: () => handlePostReactionEmoji(post.id, emoji),
-                    className: 'px-2 py-0.5 rounded-full bg-white/5 hover:bg-white/15 border border-white/10 transition active:scale-125 text-xs'
-                  }, emoji))
+                    onClick: (e) => {
+                      e.stopPropagation();
+                      handleSharePost(post);
+                    },
+                    className: 'text-white/40 hover:text-white transition p-1'
+                  },
+                    h('i', { 'data-lucide': 'share-2', className: 'w-3.5 h-3.5' })
+                  )
                 )
+              );
+            })
+          ),
+
+          // Empty State if no posts match current tab (e.g. Saved or Following)
+          filteredPosts.length === 0 && h('div', { className: 'p-12 text-center space-y-4 rounded-3xl bg-[#0E0E12]/60 border border-white/10 my-4' },
+            h('div', { className: 'w-16 h-16 rounded-full bg-white/5 border border-white/10 flex items-center justify-center mx-auto text-2xl text-white/50' },
+              activeMainTab === 'saved' ? '🔖' : (activeMainTab === 'following' ? '👥' : '🔍')
+            ),
+            h('div', { className: 'space-y-1' },
+              h('h3', { className: 'text-base font-extrabold text-white' },
+                activeMainTab === 'saved' ? 'No Saved Videos Yet' : (activeMainTab === 'following' ? 'No Broadcasts From Followed Channels' : 'No Broadcasts Found')
+              ),
+              h('p', { className: 'text-xs text-white/60 max-w-sm mx-auto' },
+                activeMainTab === 'saved' ? 'Click the bookmark icon on any broadcast or announcement to save it here for later.' : 'Follow more ecosystem creators or check out the Live TV stage.'
               )
-            );
-          })
+            ),
+            h('button', {
+              type: 'button',
+              onClick: () => { setActiveMainTab('tv'); setActiveProductId('all'); },
+              className: 'px-5 py-2 rounded-full bg-white text-black font-black text-xs hover:bg-neutral-200 transition shadow-lg inline-flex items-center gap-1.5'
+            },
+              h('i', { 'data-lucide': 'tv', className: 'w-3.5 h-3.5' }),
+              'Explore NEU TV Live'
+            )
+          )
         )
 
       ),
@@ -1830,41 +2587,43 @@
       // -------------------------------------------------------------
       // 3. RIGHT SIDEBAR — DISCORD COMMUNITY & LIVE CHAT (NEU ECOSYSTEM)
       // -------------------------------------------------------------
-      h('aside', { className: 'w-80 md:w-96 h-screen flex-shrink-0 border-l border-white/10 hidden xl:flex flex-col bg-[#0B1220]/95 backdrop-blur-2xl z-40 sticky top-0 shadow-2xl overflow-hidden' },
+      h('aside', { className: 'w-80 md:w-96 h-screen flex-shrink-0 border-l border-white/10 hidden xl:flex flex-col bg-[#0A0A0C]/95 backdrop-blur-2xl z-40 sticky top-0 shadow-2xl overflow-hidden' },
 
         // Check if user has joined this community
         (() => {
           const isCommunityJoined = !!joinedCommunities[activeCommunityServerId];
 
+          const brandTheme = getCommunityBrandTheme(activeCommunityServerId);
+
           // ── STATE A: FIRST-TIME USER "JOIN COMMUNITY" WELCOME SCREEN ──
           if (!isCommunityJoined) {
-            return h('div', { className: 'flex-1 overflow-y-auto p-6 flex flex-col justify-between space-y-6 no-scrollbar bg-gradient-to-b from-[#0B1220] via-[#111B33]/80 to-[#060A12]' },
+            return h('div', { className: `flex-1 overflow-y-auto p-6 flex flex-col justify-between space-y-6 no-scrollbar ${brandTheme.coverBg}` },
               
-              // Top Server Identity Card
+              // Top Server Identity Card (Clean Logo & Content)
               h('div', { className: 'text-center space-y-3 pt-2' },
-                h('div', { className: 'w-16 h-16 rounded-2xl bg-[#111B33] border border-[#00F6A7]/40 shadow-[0_0_20px_rgba(0,246,167,0.25)] flex items-center justify-center mx-auto p-2 overflow-hidden shadow-lg' },
+                h('div', { className: 'w-16 h-16 rounded-2xl bg-neutral-900 border border-white/20 flex items-center justify-center mx-auto p-2 overflow-hidden shadow-xl' },
                   (() => {
                     const prod = PRODUCTS.find(p => p.id === activeCommunityServerId);
                     if (prod && prod.logo) {
                       return h('img', { src: prod.logo, alt: prod.name, className: 'w-full h-full object-contain' });
                     }
-                    return h('span', { className: 'text-2xl font-black italic text-transparent bg-clip-text bg-gradient-to-r from-[#00F6A7] to-[#00C8FF]' }, (activeCommunityHub.name || 'NEU')[0]);
+                    return h('span', { className: 'text-2xl font-black italic text-white' }, (activeCommunityHub.name || 'NEU')[0]);
                   })()
                 ),
                 h('div', { className: 'space-y-1.5' },
                   h('div', { className: 'flex items-center justify-center gap-1.5' },
                     h('h2', { className: 'text-base md:text-lg font-black text-white tracking-tight' }, `${activeCommunityHub.name} Hub`),
-                    h('span', { className: 'text-[9px] px-2 py-0.5 rounded-full bg-[#00F6A7]/20 text-[#00F6A7] font-extrabold border border-[#00F6A7]/30' }, 'Verified')
+                    h('span', { className: 'text-[9px] px-2 py-0.5 rounded-full bg-white/10 text-white font-extrabold border border-white/15' }, 'Verified')
                   ),
                   h('p', { className: 'text-xs text-white/70 font-medium max-w-xs mx-auto leading-relaxed' }, activeCommunityHub.tagline || 'The official community room for The New Economy.'),
                   h('div', { className: 'text-[10px] text-white/70 font-semibold mt-1 flex items-center justify-center gap-2' },
                     h('span', { className: 'flex items-center gap-1 text-white/80' },
-                      h('i', { 'data-lucide': 'users', className: 'w-3 h-3 text-[#00F6A7]' }),
+                      h('i', { 'data-lucide': 'users', className: 'w-3 h-3 text-white' }),
                       activeCommunityHub.memberCount || '40,000+ Members'
                     ),
                     h('span', { className: 'text-white/30' }, '•'),
-                    h('span', { className: 'flex items-center gap-1 text-[#00F6A7] font-bold' },
-                      h('span', { className: 'w-1.5 h-1.5 rounded-full bg-[#00F6A7] animate-pulse' }),
+                    h('span', { className: 'flex items-center gap-1 text-white font-bold' },
+                      h('span', { className: 'w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse' }),
                       `${activeChannelObj.activeNow || 100}+ online`
                     )
                   )
@@ -1872,7 +2631,7 @@
               ),
 
               // Locked Channels Preview
-              h('div', { className: 'p-4 rounded-2xl bg-[#111B33]/60 border border-white/10 space-y-2.5 shadow-inner' },
+              h('div', { className: 'p-4 rounded-2xl bg-[#141418]/60 border border-white/10 space-y-2.5 shadow-inner' },
                 h('div', { className: 'text-[10px] font-extrabold uppercase tracking-wider text-white/40 flex items-center justify-between' },
                   h('span', null, 'Community Channels'),
                   h('span', { className: 'text-[9px] text-amber-400 font-bold flex items-center gap-1' },
@@ -1886,7 +2645,7 @@
                     h('span', { className: 'text-white/40' }, '#'),
                     h('span', null, chan.name.replace('#', ''))
                   ),
-                  h('span', { className: 'text-[10px] text-[#00F6A7] font-medium' }, `${chan.activeNow || 0} active`)
+                  h('span', { className: 'text-[10px] text-white font-medium' }, `${chan.activeNow || 0} active`)
                 ))
               ),
 
@@ -1898,7 +2657,7 @@
                   'Instant access to community chat and discussions',
                   'Send and receive live KashCoin gifts on broadcasts'
                 ]).map((perk, pIdx) => h('div', { key: pIdx, className: 'flex items-start gap-2 text-xs text-white/80' },
-                  h('i', { 'data-lucide': 'check-circle-2', className: 'w-3.5 h-3.5 text-[#00F6A7] flex-shrink-0 mt-0.5' }),
+                  h('i', { 'data-lucide': 'check-circle-2', className: 'w-3.5 h-3.5 text-white flex-shrink-0 mt-0.5' }),
                   h('span', { className: 'leading-snug' }, perk)
                 ))
               ),
@@ -1907,7 +2666,7 @@
               h('div', { className: 'space-y-2.5 pt-2' },
                 h('button', {
                   onClick: () => handleJoinCommunity(activeCommunityServerId),
-                  className: 'w-full py-3.5 rounded-2xl bg-gradient-to-r from-[#00F6A7] to-[#00C8FF] hover:brightness-110 text-black font-black text-xs transition shadow-2xl flex items-center justify-center gap-2 transform active:scale-95'
+                  className: 'w-full py-3.5 rounded-2xl bg-white hover:bg-neutral-200 text-black font-black text-xs transition shadow-2xl flex items-center justify-center gap-2 transform active:scale-95'
                 },
                   h('i', { 'data-lucide': 'user-plus', className: 'w-4 h-4' }),
                   h('span', null, `Join ${activeCommunityHub.name} Community`)
@@ -2037,12 +2796,12 @@
         },
           h('div', { className: 'flex items-center justify-between pb-3 border-b border-white/10' },
             h('div', { className: 'flex items-center gap-2.5' },
-              h('div', { className: 'w-10 h-10 rounded-2xl bg-gradient-to-r from-amber-400 to-amber-500 text-black flex items-center justify-center text-xl shadow-lg' },
+              h('div', { className: 'w-10 h-10 rounded-2xl bg-[#0070F3] text-white flex items-center justify-center text-xl shadow-xl' },
                 '🎁'
               ),
               h('div', null,
                 h('h2', { className: 'text-lg font-bold text-white tracking-tight' }, 'Live Gift Store'),
-                h('p', { className: 'text-xs text-amber-400 font-semibold' }, `Your Balance: ${coinBalance.toLocaleString()} KashCoins`)
+                h('p', { className: 'text-xs text-[#38B6FF] font-bold' }, `Your Balance: ${coinBalance.toLocaleString()} KashCoins`)
               )
             ),
             h('button', { onClick: () => setIsGiftModalOpen(false), className: 'text-white/40 hover:text-white text-sm font-bold' }, '✕')
@@ -2055,14 +2814,14 @@
               return h('button', {
                 key: gift.id,
                 onClick: () => handleSendGift(gift),
-                className: `p-4 rounded-2xl border text-center transition flex flex-col items-center justify-between space-y-2 ${canAfford ? 'bg-white/5 border-white/15 hover:border-amber-400/50 hover:bg-amber-500/10 cursor-pointer shadow-md' : 'bg-white/[0.02] border-white/5 opacity-40 cursor-not-allowed'}`
+                className: `p-4 rounded-2xl border text-center transition flex flex-col items-center justify-between space-y-2 ${canAfford ? 'bg-white/5 border-white/15 hover:border-[#0070F3] hover:bg-[#0070F3]/20 cursor-pointer shadow-md' : 'bg-white/[0.02] border-white/5 opacity-40 cursor-not-allowed'}`
               },
                 h('div', { className: 'w-14 h-14 rounded-2xl bg-white/10 flex items-center justify-center text-3xl shadow-inner' },
                   gift.emoji || '🎁'
                 ),
                 h('div', null,
                   h('div', { className: 'font-bold text-xs text-white' }, gift.name),
-                  h('div', { className: 'text-[11px] text-amber-400 font-extrabold mt-0.5 font-mono' }, gift.label)
+                  h('div', { className: 'text-[11px] text-[#38B6FF] font-black mt-0.5 font-mono' }, gift.label)
                 )
               );
             })
@@ -2095,7 +2854,7 @@
 
       // Watch Video Modal (Supports YouTube Embeds & Direct MP4s)
       selectedVideo && h('div', { className: 'fixed inset-0 z-[100] bg-black/90 backdrop-blur-2xl flex items-center justify-center p-4 animate-fadeIn select-none' },
-        h('div', { className: 'rounded-3xl w-full max-w-3xl overflow-hidden border border-white/20 bg-[#0B1220] shadow-[0_30px_90px_rgba(0,0,0,0.95)] flex flex-col animate-scaleUp' },
+        h('div', { className: 'rounded-3xl w-full max-w-3xl overflow-hidden border border-white/20 bg-[#0A0A0C] shadow-[0_30px_90px_rgba(0,0,0,0.95)] flex flex-col animate-scaleUp' },
           h('div', { className: 'relative aspect-video bg-black' },
             selectedVideo.youtubeId || (selectedVideo.videoUrl && selectedVideo.videoUrl.includes('youtube')) ? h('iframe', {
               src: selectedVideo.youtubeId ? `https://www.youtube-nocookie.com/embed/${selectedVideo.youtubeId}?autoplay=1&mute=0&controls=1&rel=0&modestbranding=1` : selectedVideo.videoUrl,
@@ -2112,7 +2871,7 @@
 
           h('div', { className: 'p-6 space-y-3' },
             h('div', { className: 'flex items-center justify-between' },
-              h('span', { className: 'px-3 py-1 rounded-full bg-[#00F6A7]/10 text-[#00F6A7] border border-[#00F6A7]/30 text-xs font-black' }, selectedVideo.productName || selectedVideo.platformName || 'Ecosystem'),
+              h('span', { className: 'px-3 py-1 rounded-full bg-white/10 text-white border border-white/15 text-xs font-black' }, selectedVideo.productName || selectedVideo.platformName || 'Ecosystem'),
               h('span', { className: 'text-xs text-white/60 font-mono font-bold' }, `${selectedVideo.views} views`)
             ),
             h('h2', { className: 'text-lg md:text-xl font-black text-white leading-snug' }, selectedVideo.title),
@@ -2121,18 +2880,12 @@
               h('span', null, 'Creator Spotlight: ', h('strong', { className: 'text-white font-extrabold' }, selectedVideo.influencer)),
               h('button', {
                 onClick: () => {
-                  setCentralTv({
-                    title: selectedVideo.title,
-                    description: selectedVideo.description,
-                    youtubeId: selectedVideo.youtubeId || 'xHU5MHuUSKI',
-                    viewers: 42800,
-                    likes: 12400
-                  });
+                  // Same path as a feed video, so the server records the
+                  // takeover and the stage knows what to return to.
+                  takeStage(selectedVideo);
                   setSelectedVideo(null);
-                  window.scrollTo({ top: 0, behavior: 'smooth' });
-                  showToast('Now broadcasting on main stage! 📺');
                 },
-                className: 'px-3.5 py-1.5 rounded-full bg-gradient-to-r from-[#00F6A7] to-[#00C8FF] text-black font-black text-xs hover:brightness-110 transition flex items-center gap-1.5 shadow-md'
+                className: 'px-3.5 py-1.5 rounded-full bg-white hover:bg-neutral-200 text-black font-black text-xs transition flex items-center gap-1.5 shadow-md'
               },
                 h('i', { 'data-lucide': 'tv', className: 'w-3.5 h-3.5' }),
                 'Stream on Central TV Stage'

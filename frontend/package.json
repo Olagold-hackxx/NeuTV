@@ -1,0 +1,16 @@
+{
+  "name": "neutv-frontend",
+  "version": "2.0.0",
+  "private": true,
+  "description": "NEU TV viewer app. No bundler; Tailwind is compiled ahead of time.",
+  "scripts": {
+    "build:css": "tailwindcss -i ./src/tailwind.css -o ./src/app.build.css --minify",
+    "watch:css": "tailwindcss -i ./src/tailwind.css -o ./src/app.build.css --watch",
+    "build": "npm run build:config && npm run build:css && npm run build:dist",
+    "build:config": "node build-config.mjs",
+    "build:dist": "node build-dist.mjs"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "^4.3.3"
+  }
+}

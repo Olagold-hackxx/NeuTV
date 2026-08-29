@@ -11,6 +11,7 @@
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { realRuntime } from '../../platform/runtime.mjs';
+import { openServiceStore } from '../../platform/db/index.mjs';
 import { createHub } from '../../platform/sse.mjs';
 import { loopbackClient } from '../../contracts/client.mjs';
 import { PROD_COST } from '../../platform/password.mjs';
@@ -30,6 +31,7 @@ import { createLiveService } from '../live/service.mjs';
 import { createLiveRouter } from '../live/router.mjs';
 import { openLiveStore } from '../live/store.mjs';
 import { createAdminService } from '../admin/service.mjs';
+import { createMediaStorage, mediaBaseFor } from '../admin/storage/index.mjs';
 import { createAdminRouter } from '../admin/router.mjs';
 import { openAdminStore } from '../admin/store.mjs';
 import { createModerationService } from '../moderation/service.mjs';
@@ -41,16 +43,24 @@ import { openModerationStore } from '../moderation/store.mjs';
 // directories got committed.
 const SERVICES_DIR = join(dirname(fileURLToPath(import.meta.url)), '..');
 
-export function compose({
+// Async because opening a store now runs migrations, and a half-migrated
+// database is not a state anything should be allowed to serve from.
+export async function compose({
   runtime = realRuntime(),
   dataDir = SERVICES_DIR,
   memory = false,                 // tests build the whole graph in memory
+  databaseUrl = process.env.DATABASE_URL,
   adminEmails = [],
   passwordCost = PROD_COST,
   uploadsRoot = null,
-  mediaBase = '/media',
+  mediaBase = mediaBaseFor(),
+  storage = null,
 } = {}) {
-  const file = (service, name) => (memory ? ':memory:' : `${dataDir}/${service}/data/${name}.db`);
+  // One Postgres database when DATABASE_URL is set, otherwise a SQLite file per
+  // service. Each service gets its own Postgres SCHEMA, which is the same
+  // isolation a private SQLite file gave it: social and live both own a table
+  // called "comments" and must not see each other's.
+  const open = (openFn, service) => openServiceStore(openFn, service, { databaseUrl, dataDir, memory });
   const hub = createHub(runtime);
 
   // Registry is filled below; the client closes over it so services created
@@ -62,17 +72,17 @@ export function compose({
 
   const identity = createIdentityService({
     runtime, catalog, adminEmails, passwordCost,
-    store: openIdentityStore(file('identity', 'identity')),
+    store: await open(openIdentityStore, 'identity'),
   });
 
   const moderation = createModerationService({
     runtime,
-    store: openModerationStore(file('moderation', 'moderation')),
+    store: await open(openModerationStore, 'moderation'),
   });
 
   const wallet = createWalletService({
     runtime,
-    store: openWalletStore(file('wallet', 'wallet')),
+    store: await open(openWalletStore, 'wallet'),
     // The wallet does not know the live stage exists. The gift banner on the
     // broadcast is this wire, and nothing else.
     events: { emit: (type, payload) => { if (type === 'gift') live.onGift(payload); } },
@@ -80,21 +90,32 @@ export function compose({
 
   const social = createSocialService({
     runtime, catalog, moderation: client,
-    store: openSocialStore(file('social', 'social')),
+    store: await open(openSocialStore, 'social'),
   });
+  // The designed feed is loaded once, here, rather than as a side effect of
+  // constructing the service.
+  await social.seed();
 
   const live = createLiveService({
     runtime, catalog, hub,
     moderation: client,
     programmeClient: client,
+    socialClient: client,
     giftPort: { topGifters: (target, opts) => wallet.topGifters(target, opts) },
-    store: openLiveStore(file('live', 'live')),
+    store: await open(openLiveStore, 'live'),
   });
 
+  const uploads = uploadsRoot || `${dataDir}/admin/data/uploads`;
   const admin = createAdminService({
     runtime, catalog, mediaBase,
-    store: openAdminStore(file('admin', 'admin')),
-    uploadsRoot: uploadsRoot || `${dataDir}/admin/data/uploads`,
+    store: await open(openAdminStore, 'admin'),
+    // Local disk unless NEUTV_MEDIA_DRIVER says otherwise; the service only
+    // ever sees "something with save() on it".
+    storage: storage || createMediaStorage(process.env, { uploadsRoot: uploads }),
+    uploadsRoot: uploads,
+    // Broadcast segments are transient and windowed, so they live beside the
+    // uploads rather than in them.
+    segmentsRoot: `${dataDir}/admin/data/live-segments`,
     // CRM read ports. Each is a narrow, read-only view another service chose to
     // expose - not a database handle.
     ports: {
@@ -103,6 +124,8 @@ export function compose({
       moderation: { summary: () => moderation.summary(), queue: (o) => moderation.queue(o) },
       engagement: { summary: () => social.engagementSummary() },
     },
+    // A live event going on or off air reaches viewers over SSE, so the stage
+    // switches without anyone reloading.
     events: { emit: (type, payload) => hub.publish(type, payload) },
   });
 
@@ -124,8 +147,8 @@ export function compose({
     services,
     routers: registry,
     client,
-    close() {
-      for (const s of Object.values(services)) s.close?.();
+    async close() {
+      for (const s of Object.values(services)) await s.close?.();
     },
   };
 }

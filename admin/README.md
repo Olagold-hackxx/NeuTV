@@ -4,24 +4,42 @@ The NEU TV back office: video library, programming and CRM. Next.js 16 (App
 Router), React 19, TypeScript.
 
 ```bash
-npm run admin          # dev,  http://localhost:4174
+npm run admin          # dev,  http://localhost:4174   <- use this while working
 npm run admin:build    # production build
 npm run admin:start    # production server
 ```
+
+**Use `npm run admin` (dev) while the app is being changed.** In production mode
+a rebuild changes the build id, and any tab left open from the previous build
+keeps asking for chunks that no longer exist: client-side navigation fails while
+a refresh works, because the refresh fetches the new build. Dev mode has no such
+skew and recompiles on change.
+
+`app/error.tsx` now catches that case and says what happened instead of leaving
+the browser to show a bare "this page couldn't load", and offers a real reload -
+a re-render cannot recover a failed chunk fetch, only a fresh document can.
 
 It needs the API running (`npm start`, port 4173). Point it elsewhere with
 `NEUTV_API_BASE`.
 
 ## Sign in
 
-Back-office access is granted by deployment, not by signing up:
+There is no sign-up form here, and that is deliberate: nobody should be able to
+create an administrator through a public page.
 
 ```bash
-NEUTV_ADMIN_EMAILS=you@example.com npm start     # in backend/
+# in backend/
+echo 'NEUTV_ADMIN_EMAILS=you@example.com' >> .env
+npm run admin:create -- --email you@example.com --generate
 ```
 
-Sign up once with that email, then log in here. A non-admin account is rejected
-at the login form rather than on the first admin route it happens to hit.
+`NEUTV_ADMIN_EMAILS` says who may be an administrator. `admin:create` sets that
+account's password and prints it once; re-running it resets the password and
+revokes every live session. It refuses any email not on that list, so it cannot
+mint an administrator the deployment has not authorised.
+
+A non-admin account is rejected at the login form here, rather than on the first
+admin route it happens to hit.
 
 ## The admin token never reaches the browser
 
@@ -47,6 +65,7 @@ events in a browser.
 | `/` | Live dashboard: what is on air, library, viewers, spend, moderation, ledger health |
 | `/videos` | Library, and the form that registers a new video |
 | `/videos/[id]` | Upload the file, change status or product, put it on air, archive it |
+| `/live` | Schedule an event, reveal or rotate its stream key, go on air |
 | `/programme` | Set the main broadcast, with the history of what held it |
 | `/viewers` | Roster joined to what each account has spent |
 | `/moderation` | The review queue: everything flagged or blocked |

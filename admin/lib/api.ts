@@ -11,7 +11,7 @@
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import type {
-  CrmOverview, ModerationItem, Product, ProgrammeState, SessionUser, Video,
+  CrmOverview, LiveEvent, ModerationItem, Product, ProgrammeState, SessionUser, Video,
 } from './types';
 
 export const API_BASE = process.env.NEUTV_API_BASE ?? 'http://localhost:4173';
@@ -94,6 +94,8 @@ export const getProgramme = () => call<ProgrammeState>('/admin/programme');
 export const getViewers = () => call<{ viewers: Viewer[] }>('/admin/crm/viewers');
 export const getModerationQueue = () => call<{ queue: ModerationItem[] }>('/admin/crm/moderation');
 export const getProducts = () => call<{ products: Product[] }>('/catalog/products');
+export const getLiveEvents = () => call<{ events: LiveEvent[] }>('/admin/live-events');
+export const getLiveEvent = (id: string) => call<{ event: LiveEvent }>(`/admin/live-events/${encodeURIComponent(id)}`);
 
 // Re-exported so pages import their types from one place.
 import type { Viewer } from './types';

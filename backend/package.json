@@ -4,10 +4,12 @@
   "private": true,
   "description": "NEU TV (Central Stream) backend. Zero-dependency Node, services-first.",
   "type": "module",
-  "engines": { "node": ">=22.5.0" },
+  "engines": {
+    "node": ">=22.5.0"
+  },
   "scripts": {
-    "start": "node --no-warnings=ExperimentalWarning services/gateway/server.mjs",
-    "seed": "node --no-warnings=ExperimentalWarning scripts/extract-seed.mjs",
+    "start": "node --no-warnings=ExperimentalWarning --env-file-if-exists=.env services/gateway/server.mjs",
+    "seed:videos": "node --no-warnings=ExperimentalWarning --env-file-if-exists=.env scripts/seed-videos.mjs",
     "test": "node --no-warnings=ExperimentalWarning --test services/*/test/*.test.mjs",
     "test:catalog": "node --no-warnings=ExperimentalWarning --test services/catalog/test/*.test.mjs",
     "test:identity": "node --no-warnings=ExperimentalWarning --test services/identity/test/*.test.mjs",
@@ -18,6 +20,12 @@
     "test:moderation": "node --no-warnings=ExperimentalWarning --test services/moderation/test/*.test.mjs",
     "test:gateway": "node --no-warnings=ExperimentalWarning --test services/gateway/test/*.test.mjs",
     "eval": "node --no-warnings=ExperimentalWarning scripts/run-evals.mjs",
-    "verify": "npm run seed && npm test && npm run eval"
+    "verify": "npm test && npm run eval",
+    "admin:create": "node --no-warnings=ExperimentalWarning --env-file-if-exists=.env scripts/create-admin.mjs",
+    "migrate:postgres": "node --no-warnings=ExperimentalWarning --env-file-if-exists=.env scripts/migrate-to-postgres.mjs",
+    "test:pg": "TEST_DATABASE_URL=${TEST_DATABASE_URL:-postgres://localhost:5432/neutv_test} npm test"
+  },
+  "dependencies": {
+    "pg": "^8.23.0"
   }
 }

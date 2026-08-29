@@ -1,0 +1,18 @@
+/* Tailwind source.
+ *
+ * Compiled ahead of time by the CLI into app.build.css. The app used to load
+ * https://cdn.tailwindcss.com, which ships ~400KB of JavaScript that compiles
+ * this stylesheet in the browser on every page load, and which prints its own
+ * "not for production" warning.
+ *
+ * @source tells the scanner where class names live. Every interpolated
+ * className in app.js resolves to literal strings inside a ternary, so the
+ * scanner sees them - there is no `text-${colour}` style construction anywhere,
+ * which would be invisible to a build-time scan.
+ */
+
+@import "tailwindcss";
+
+@source "./app.js";
+@source "./neutv-api.js";
+@source "../index.html";

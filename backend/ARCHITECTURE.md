@@ -79,9 +79,11 @@ the grey band has a better destination than a model's guess - the CRM review
 queue, where a person decides. Adding inference to a system that does not need
 it buys latency, cost, and non-reproducibility.
 
-The seed is the clearest case of the same principle: the content lives in a JS
-blob in the frontend, so a script parses it (`scripts/extract-seed.mjs`) rather
-than anyone retyping it. It is idempotent and checksummed, so drift is visible.
+The catalog seed is the clearest case of the same principle: it is committed,
+checksummed content rather than anything generated at runtime, so drift is
+visible. Videos have since moved out of it into the admin store, where an
+operator owns them; `scripts/seed-videos.mjs` was the one-time bridge, and it is
+idempotent so re-running it is a no-op.
 
 ## State decisions worth knowing
 

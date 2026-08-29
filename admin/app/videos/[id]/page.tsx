@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { getProducts, getProgramme, getVideo, ApiError } from '@/lib/api';
 import { bytes, duration, timestamp } from '@/lib/format';
 import { VideoPanel } from './video-panel';
+import { EditForm } from './edit-form';
 
 export const dynamic = 'force-dynamic';
 
@@ -35,7 +36,10 @@ export default async function VideoDetail({ params }: { params: Promise<{ id: st
       </div>
 
       <div className="grid grid-2" style={{ gridTemplateColumns: '1.4fr 1fr', alignItems: 'start' }}>
-        <VideoPanel video={video} products={products} isOnAir={isOnAir} />
+        <div className="stack" style={{ gap: 18 }}>
+          <EditForm video={video} isOnAir={isOnAir} />
+          <VideoPanel video={video} products={products} isOnAir={isOnAir} />
+        </div>
 
         <div className="panel">
           <div className="panel-head"><h2>Details</h2></div>

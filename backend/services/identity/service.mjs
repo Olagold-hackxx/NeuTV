@@ -4,7 +4,6 @@ import { validate } from '../../platform/validate.mjs';
 import { badRequest, unauthorized, notFound, conflict } from '../../platform/errors.mjs';
 import { createPasswordHasher, PROD_COST } from '../../platform/password.mjs';
 import { slugify } from '../../platform/runtime.mjs';
-import { openIdentityStore } from './store.mjs';
 import { scopesFor, scopeIdsFor } from './scopes.mjs';
 
 const DEFAULT_AVATAR = 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80';
@@ -33,7 +32,7 @@ const formatDisplayName = (raw) => {
 
 export function createIdentityService({
   runtime,
-  store = openIdentityStore(':memory:'),
+  store,
   catalog,                       // read through the contract, never a hub import
   passwordCost = PROD_COST,
   sessionTtlMs = SESSION_TTL_MS,
@@ -51,30 +50,30 @@ export function createIdentityService({
     return products.find((p) => p.id === productId) || null;
   };
 
-  const uniqueHandle = (base) => {
+  const uniqueHandle = async (base) => {
     const root = slugify(base) || 'viewer';
     let candidate = root;
     let n = 1;
-    while (store.get('SELECT id FROM users WHERE handle = ?', candidate)) {
+    while (await store.get('SELECT id FROM users WHERE handle = ?', candidate)) {
       candidate = `${root}${++n}`;
     }
     return candidate;
   };
 
-  const issueSession = (user, productId) => {
+  const issueSession = async (user, productId) => {
     const scopes = scopeIdsFor(productId);
     const token = runtime.token();
     const now = runtime.now();
-    store.run(
+    await store.run(
       'INSERT INTO sessions (token, user_id, product_id, scopes, created_at, expires_at) VALUES (?,?,?,?,?,?)',
       token, user.id, productId, JSON.stringify(scopes), now, now + sessionTtlMs,
     );
     return { token, scopes, expiresAt: now + sessionTtlMs };
   };
 
-  const createUser = ({ displayName, handle, email, passwordHash, badge, productId, authMethod, verified }) => {
+  const createUser = async ({ displayName, handle, email, passwordHash, badge, productId, authMethod, verified }) => {
     const id = `user_${runtime.uuid()}`;
-    store.run(
+    await store.run(
       `INSERT INTO users (id, handle, display_name, email, password_hash, avatar, badge, product_id, auth_method, verified, role, created_at)
        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
       id, handle, displayName, email, passwordHash, DEFAULT_AVATAR, badge, productId, authMethod, verified ? 1 : 0,
@@ -112,11 +111,17 @@ export function createIdentityService({
 
     // One-click SSO through an ecosystem product. A viewer who signs in twice
     // through the same product gets the same account, not a duplicate.
-    sso(input) {
+    //
+    // The password is required and verified. It used to be optional and was
+    // read only when creating the account, so signing in to an account that
+    // already existed took any password, or none: every handle on the site was
+    // a login, and handles are public. First sign-in through a product creates
+    // the account and sets the credential; every one after it has to match.
+    async sso(input) {
       const { productId, username, password } = validate(input, {
         productId: { type: 'string', required: true, max: 40 },
         username: { type: 'string', required: true, min: 2, max: 40 },
-        password: { type: 'string', required: false, max: 200 },
+        password: { type: 'string', required: true, min: 8, max: 200 },
       });
       const product = knownProduct(productId);
       if (!product) throw notFound(`"${productId}" is not an ecosystem product.`);
@@ -125,22 +130,36 @@ export function createIdentityService({
       const handle = slugify(username.replace(/^[@$]/, ''));
       if (!handle) throw badRequest('Username must contain at least one letter or digit.');
 
-      const existing = store.get(
+      const existing = await store.get(
         'SELECT * FROM users WHERE handle = ? AND product_id = ? AND auth_method = ?',
         handle, productId, 'sso',
       );
-      const user = existing || createUser({
+
+      // verify() is false for a null hash, so an account created before this
+      // path required a credential cannot be signed into rather than being
+      // open to anyone. That is the safe direction; such an account needs a
+      // reset, not a free pass.
+      //
+      // A handle that does not exist yet is created instead of rejected, which
+      // does tell a caller which handles are taken. That is inherent to
+      // create-on-first-use and is the trade this endpoint already made; the
+      // alternative is splitting it into separate register and sign-in routes.
+      if (existing && !hasher.verify(password, existing.password_hash)) {
+        throw unauthorized('Username or password is incorrect.');
+      }
+
+      const user = existing || await createUser({
         displayName,
-        handle: uniqueHandle(handle),
+        handle: await uniqueHandle(handle),
         email: null,
-        passwordHash: password ? hasher.hash(password) : null,
+        passwordHash: hasher.hash(password),
         badge: `${product.name} Verified`,
         productId,
         authMethod: 'sso',
         verified: true,
       });
 
-      const session = issueSession(user, productId);
+      const session = await issueSession(user, productId);
       return {
         user: publicUser(user),
         session,
@@ -150,7 +169,7 @@ export function createIdentityService({
       };
     },
 
-    signup(input) {
+    async signup(input) {
       const { name, email, password, platform } = validate(input, {
         name: { type: 'string', required: false, max: 40 },
         email: { type: 'string', required: true, max: 160, pattern: /^[^@\s]+@[^@\s.]+\.[^@\s]+$/ },
@@ -160,14 +179,14 @@ export function createIdentityService({
 
       const product = knownProduct(platform);
       if (!product) throw notFound(`"${platform}" is not an ecosystem product.`);
-      if (store.get('SELECT id FROM users WHERE email = ?', email.toLowerCase())) {
+      if (await store.get('SELECT id FROM users WHERE email = ?', email.toLowerCase())) {
         throw conflict('That email already has a NEU Passport. Sign in instead.');
       }
 
       const base = name || email.split('@')[0];
-      const user = createUser({
+      const user = await createUser({
         displayName: formatDisplayName(base),
-        handle: uniqueHandle(base),
+        handle: await uniqueHandle(base),
         email: email.toLowerCase(),
         passwordHash: hasher.hash(password),
         badge: `${product.name} Member`,
@@ -178,17 +197,17 @@ export function createIdentityService({
 
       return {
         user: publicUser(user),
-        session: issueSession(user, platform),
+        session: await issueSession(user, platform),
         celebration: { name: user.display_name, badge: user.badge, platform: 'NEU TV', coins: 0 },
       };
     },
 
-    signin(input) {
+    async signin(input) {
       const { email, password } = validate(input, {
         email: { type: 'string', required: true, max: 160 },
         password: { type: 'string', required: true, max: 200 },
       });
-      const user = store.get('SELECT * FROM users WHERE email = ?', email.toLowerCase());
+      const user = await store.get('SELECT * FROM users WHERE email = ?', email.toLowerCase());
       // Same error either way: a distinct "no such account" reply is an account
       // enumeration oracle.
       if (!user || !hasher.verify(password, user.password_hash)) {
@@ -196,16 +215,16 @@ export function createIdentityService({
       }
       return {
         user: publicUser(user),
-        session: issueSession(user, user.product_id),
+        session: await issueSession(user, user.product_id),
         celebration: { name: user.display_name, badge: user.badge, platform: 'NEU TV', coins: 0 },
       };
     },
 
     // Resolves a bearer token to an auth context. Returns null rather than
     // throwing so the gateway can serve 'optional' routes to guests.
-    authenticate(token) {
+    async authenticate(token) {
       if (!token) return null;
-      const row = store.get(
+      const row = await store.get(
         `SELECT s.token, s.scopes, s.product_id, s.expires_at, s.revoked_at, u.*
          FROM sessions s JOIN users u ON u.id = s.user_id
          WHERE s.token = ?`, token,
@@ -223,9 +242,9 @@ export function createIdentityService({
       };
     },
 
-    logout(auth) {
+    async logout(auth) {
       if (!auth) throw unauthorized();
-      store.run('UPDATE sessions SET revoked_at = ? WHERE token = ? AND revoked_at IS NULL', runtime.now(), auth.token);
+      await store.run('UPDATE sessions SET revoked_at = ? WHERE token = ? AND revoked_at IS NULL', runtime.now(), auth.token);
       return { loggedOut: true, at: runtime.now() };
     },
 
@@ -240,32 +259,58 @@ export function createIdentityService({
       return { authenticated: true, guest: false, user: auth.user, productId: auth.productId, role: auth.role, scopes: auth.scopes };
     },
 
+    // Set or replace an account's password. Operations only: there is no route
+    // for this in the contract, and there deliberately is not one. It is
+    // reachable from scripts/create-admin.mjs, which needs filesystem access to
+    // the database - a level of access that already implies full control.
+    async resetPassword(email, password) {
+      const normalized = String(email || '').trim().toLowerCase();
+      const { password: checked } = validate({ password }, {
+        password: { type: 'string', required: true, min: 8, max: 200 },
+      });
+      const user = await store.get('SELECT * FROM users WHERE email = ?', normalized);
+      if (!user) throw notFound(`No account for ${normalized}.`);
+      await store.run('UPDATE users SET password_hash = ? WHERE id = ?', hasher.hash(checked), user.id);
+      // Every existing session is invalidated: a password reset that leaves old
+      // sessions alive has not actually locked anyone out.
+      const revoked = await store.run(
+        'UPDATE sessions SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL',
+        runtime.now(), user.id,
+      );
+      return { user: publicUser(user), sessionsRevoked: revoked.changes };
+    },
+
     // --- read ports for the admin CRM (see services/admin/ports.mjs) ------
 
-    viewerSummary() {
+    async viewerSummary() {
       const week = runtime.now() - 7 * 24 * 60 * 60 * 1000;
+      const [total, recent, admins, byProduct, sessions] = await Promise.all([
+        store.get('SELECT COUNT(*) AS n FROM users'),
+        store.get('SELECT COUNT(*) AS n FROM users WHERE created_at >= ?', week),
+        store.get("SELECT COUNT(*) AS n FROM users WHERE role = 'admin'"),
+        store.all('SELECT product_id, COUNT(*) AS n FROM users GROUP BY product_id'),
+        store.get('SELECT COUNT(*) AS n FROM sessions WHERE revoked_at IS NULL AND expires_at > ?', runtime.now()),
+      ]);
       return {
-        total: store.get('SELECT COUNT(*) AS n FROM users').n,
-        newLast7d: store.get('SELECT COUNT(*) AS n FROM users WHERE created_at >= ?', week).n,
-        admins: store.get("SELECT COUNT(*) AS n FROM users WHERE role = 'admin'").n,
-        byProduct: Object.fromEntries(
-          store.all('SELECT product_id, COUNT(*) AS n FROM users GROUP BY product_id').map((r) => [r.product_id, r.n]),
-        ),
-        activeSessions: store.get('SELECT COUNT(*) AS n FROM sessions WHERE revoked_at IS NULL AND expires_at > ?', runtime.now()).n,
+        total: total.n,
+        newLast7d: recent.n,
+        admins: admins.n,
+        byProduct: Object.fromEntries(byProduct.map((r) => [r.product_id, r.n])),
+        activeSessions: sessions.n,
       };
     },
 
-    viewerList({ limit = 50 } = {}) {
-      return store.all(
-        `SELECT id, display_name AS name, handle, badge, product_id AS productId, role,
-                auth_method AS authMethod, verified, created_at AS createdAt
+    async viewerList({ limit = 50 } = {}) {
+      return (await store.all(
+        `SELECT id, display_name AS name, handle, badge, product_id AS "productId", role,
+                auth_method AS "authMethod", verified, created_at AS "createdAt"
          FROM users ORDER BY created_at DESC LIMIT ?`, Math.min(limit, 200),
-      ).map((r) => ({ ...r, verified: Boolean(r.verified) }));
+      )).map((r) => ({ ...r, verified: Boolean(r.verified) }));
     },
 
     // Housekeeping for the gateway's periodic sweep.
-    purgeExpiredSessions() {
-      const res = store.run('DELETE FROM sessions WHERE expires_at <= ?', runtime.now());
+    async purgeExpiredSessions() {
+      const res = await store.run('DELETE FROM sessions WHERE expires_at <= ?', runtime.now());
       return { purged: res.changes };
     },
 

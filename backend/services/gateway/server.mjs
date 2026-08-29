@@ -27,8 +27,8 @@ const REPO_ROOT = join(BACKEND_ROOT, '..');
 const FRONTEND_ROOT = process.env.NEUTV_FRONTEND_ROOT || join(REPO_ROOT, 'frontend');
 const MAX_JSON_BYTES = 1024 * 1024; // 1 MB; uploads take the raw path instead
 
-export function createGateway(options = {}) {
-  const app = compose(options);
+export async function createGateway(options = {}) {
+  const app = await compose(options);
   const limiter = createLimiter(app.runtime);
   const uploadsRoot = options.uploadsRoot || join(BACKEND_ROOT, 'services', 'admin', 'data', 'uploads');
   const staticRoot = options.staticRoot || FRONTEND_ROOT;
@@ -86,8 +86,18 @@ export function createGateway(options = {}) {
     req.on('error', reject);
   });
 
-  const server = createServer(async (req, res) => {
-    const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+  const handleRequest = async (req, res) => {
+    // Outside the try below, and it has to stay inside one: this is the first
+    // thing that touches attacker-controlled input, and new URL() throws on a
+    // path the parser will happily deliver. A request for "//" took the whole
+    // process down - one unhandled TypeError, every viewer disconnected.
+    let url;
+    try {
+      url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+    } catch {
+      res.writeHead(400, { 'content-type': 'application/json; charset=utf-8' });
+      return res.end(JSON.stringify({ error: { code: 'bad_request', message: 'Malformed request URL.' } }));
+    }
     const path = url.pathname;
 
     res.setHeader('access-control-allow-origin', corsOrigin);
@@ -130,7 +140,7 @@ export function createGateway(options = {}) {
     } catch (err) {
       return sendError(res, err);
     }
-  });
+  };
 
   async function handleApi(req, res, url, apiPath) {
     const { route, pathExists, allowed } = ownerOf(req.method, apiPath);
@@ -147,7 +157,7 @@ export function createGateway(options = {}) {
     // --- session ---------------------------------------------------------
     const header = req.headers.authorization || '';
     const token = header.startsWith('Bearer ') ? header.slice(7).trim() : (url.searchParams.get('token') || null);
-    const auth = app.services.identity.authenticate(token);
+    const auth = await app.services.identity.authenticate(token);
 
     const level = route.auth;
     if ((level === 'required' || level === 'admin') && !auth) throw unauthorized();
@@ -162,8 +172,25 @@ export function createGateway(options = {}) {
       limiter.check(`${route.service}:${route.path}:${who}`, hit.route.limit);
     }
 
-    // --- SSE -------------------------------------------------------------
+    // --- streaming responses ---------------------------------------------
+    //
+    // Two shapes share the 'stream' flag and they are not interchangeable:
+    //   { stream: fn }  an SSE subscription the gateway keeps open
+    //   { file: {...} } a file to send, used by live broadcast segments
+    // Dispatch first, then decide, so a file route never gets SSE headers.
     if (hit?.route?.stream) {
+      const result = await dispatch(router, {
+        method: req.method, path: apiPath, query: parseQuery(url.search),
+        body: {}, auth, headers: req.headers,
+      });
+
+      if (result?.file) {
+        // A live segment is immutable once written and named by sequence, so it
+        // caches hard; the manifest is what changes.
+        return serveFile(req, res, result.file.absolute, { cache: 'public, max-age=31536000, immutable' })
+          || send(res, 404, { error: { code: 'not_found', message: 'Segment gone.' } });
+      }
+
       res.writeHead(200, {
         'content-type': 'text/event-stream',
         'cache-control': 'no-cache, no-transform',
@@ -171,10 +198,6 @@ export function createGateway(options = {}) {
         'x-accel-buffering': 'no',
       });
       res.write(': connected\n\n');
-      const result = await dispatch(router, {
-        method: req.method, path: apiPath, query: parseQuery(url.search),
-        body: {}, auth, headers: req.headers,
-      });
       const unsubscribe = result.stream((frame) => res.write(frame));
       const beat = setInterval(() => res.write(': keepalive\n\n'), 25_000);
       req.on('close', () => { clearInterval(beat); unsubscribe(); });
@@ -197,6 +220,8 @@ export function createGateway(options = {}) {
     return send(res, result.status ?? 200, result.body ?? null, result.headers);
   }
 
+  const server = createServer(handleRequest);
+
   return { server, app, limiter };
 }
 
@@ -204,7 +229,8 @@ export function createGateway(options = {}) {
 const isMain = process.argv[1] && process.argv[1].endsWith('server.mjs');
 if (isMain) {
   const port = Number(process.env.PORT || 4173);
-  const { server, app } = createGateway({
+  // Top-level await: the process must not listen until every migration has run.
+  const { server, app } = await createGateway({
     adminEmails: (process.env.NEUTV_ADMIN_EMAILS || '').split(',').map((s) => s.trim()).filter(Boolean),
   });
 
@@ -217,11 +243,13 @@ if (isMain) {
     console.log(`NEU TV gateway on http://localhost:${port}`);
     console.log(`  contract   ${CONTRACT_VERSION}  |  catalog ${app.services.catalog.checksum}`);
     console.log(`  services   ${SERVICES.join(', ')}`);
+    console.log(`  database   ${process.env.DATABASE_URL ? 'postgres' : 'sqlite (per service)'}`);
+    console.log(`  media      ${(process.env.NEUTV_MEDIA_DRIVER || 'local')}${process.env.NEUTV_MEDIA_BASE_URL ? ` -> ${process.env.NEUTV_MEDIA_BASE_URL}` : ''}`);
     console.log(`  frontend   ${FRONTEND_ROOT}`);
     console.log(`  admins     ${process.env.NEUTV_ADMIN_EMAILS || '(none set - export NEUTV_ADMIN_EMAILS to enable the back office)'}`);
   });
 
-  const shutdown = () => { server.close(); app.close(); process.exit(0); };
+  const shutdown = async () => { server.close(); await app.close(); process.exit(0); };
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
 }

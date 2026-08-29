@@ -18,7 +18,7 @@ let gateway; let base; let uploads;
 
 before(async () => {
   uploads = mkdtempSync(join(tmpdir(), 'neutv-gw-'));
-  gateway = createGateway({
+  gateway = await createGateway({
     runtime: fakeRuntime(), memory: true, passwordCost: TEST_COST,
     // Each test that needs an admin signs up its own account, so every one of
     // those emails has to be in the admin list.
@@ -28,7 +28,7 @@ before(async () => {
   base = `http://127.0.0.1:${gateway.server.address().port}`;
 });
 
-after(() => { gateway.server.close(); gateway.app.close(); });
+after(async () => { gateway.server.close(); await gateway.app.close(); });
 
 const call = async (path, opts = {}) => {
   const res = await fetch(base + path, opts);
@@ -59,7 +59,7 @@ test('health reports the contract and what is wired', async () => {
 test('bootstrap serves the whole frontend payload to a guest', async () => {
   const { status, body } = await call('/api/v1/catalog/bootstrap');
   assert.equal(status, 200);
-  assert.equal(body.PRODUCTS.length, 5);
+  assert.equal(body.PRODUCTS.length, 6, 'five ecosystem products plus NEU TV itself');
   assert.ok(body.INITIAL_POSTS.length > 0);
 });
 
@@ -254,4 +254,13 @@ test('a 500 never leaks internals to the caller', async () => {
   const { status, body } = await call('/api/v1/catalog/hubs/definitely-not-a-hub');
   assert.equal(status, 404);
   assert.ok(!JSON.stringify(body).includes('at '), 'no stack trace in the response');
+});
+
+test('a malformed request URL is a 400, not a dead process', async () => {
+  // new URL() throws on paths the HTTP parser accepts. This ran before the
+  // handler's try block, so "//" crashed the gateway and disconnected everyone.
+  const { status } = await call('//');
+  assert.equal(status, 400);
+  // Still serving afterwards is the entire point of the test.
+  assert.equal((await call('/health')).status, 200);
 });

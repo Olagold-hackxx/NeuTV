@@ -86,22 +86,158 @@
     token: function () { return token; },
 
     /**
-     * Replace window.CentralData with the live catalog.
-     * Resolves to { live: boolean } so the caller knows which source rendered.
+     * Build window.CentralData from the API.
+     *
+     * This used to merge over a 34KB blob bundled into the page, which meant
+     * the site rendered a hardcoded copy of the catalog whether or not the
+     * backend agreed with it - and an operator could publish a video in the
+     * back office and never see it appear. There is no second copy now: the
+     * catalog service supplies the editorial content and the admin library
+     * supplies the videos, and both arrive over the wire.
+     *
+     * Resolves to { live: boolean }; it never rejects, so a caller can render
+     * an honest error state instead of handling a throw.
      */
     hydrate: function () {
       return get('/catalog/bootstrap', { auth: false })
         .then(function (data) {
-          window.CentralData = Object.assign({}, window.CentralData, data);
-          window.NEUTV_LIVE = true;
-          return { live: true, checksum: data.checksum };
+          // The library is what the back office publishes. It is fetched
+          // alongside the catalog rather than after it, and a failure here is
+          // not fatal: the page still has its editorial content.
+          return get('/videos?limit=200', { auth: false })
+            .catch(function () { return { videos: [] }; })
+            .then(function (library) {
+              var videos = (library && library.videos) || [];
+              // The catalog lands first so the mappers below can resolve a
+              // productId to its display name against it.
+              window.CentralData = data;
+              window.CentralData = Object.assign({}, data, {
+                LIBRARY: videos,
+                // On-demand shelves render straight from the published library,
+                // so publishing a video in the back office puts it on the site.
+                // The catalog's own VOD list is the fallback only while the
+                // library is empty - a fresh database, before it is seeded.
+                VOD_LIBRARY: videos.length ? videos.map(NeuTV.toVodItem) : (data.VOD_LIBRARY || []),
+                // Published videos are announcements: they render as cards in
+                // the same feed as the designed posts, newest first. They had a
+                // shelf of their own for a while, which just meant the same
+                // videos appeared twice on one page.
+                LIBRARY_POSTS: videos.map(NeuTV.toFeedPost),
+                // The catalog's two rows of made-up cards - fifteen titles with
+                // invented view and like counts and no media behind any of them
+                // - are not replaced by anything. Nothing renders a shelf now.
+                INITIAL_MEDIA_ROWS: [],
+              });
+              window.NEUTV_LIVE = true;
+              return { live: true, checksum: data.checksum, library: videos.length };
+            });
         })
         .catch(function (err) {
-          // The inline blob in index.html stays exactly as it was.
           window.NEUTV_LIVE = false;
-          if (window.console) console.warn('[NeuTV] backend unreachable, using bundled data:', err.message);
+          if (window.console) console.error('[NeuTV] the API is unreachable:', err.message);
           return { live: false, error: err.message };
         });
+    },
+
+    /**
+     * A library video as the announcements feed renders it.
+     *
+     * The feed is already a feed of video cards - the designed posts carry
+     * videoTitle, duration, youtubeId and an MP4 - so a published video belongs
+     * there rather than on a shelf of its own.
+     *
+     * No views, upvotes or shares are invented. The card shows a number only
+     * when one exists, which for a freshly published video is not yet.
+     */
+    toFeedPost: function (video) {
+      var item = NeuTV.toVodItem(video);
+      var isYouTube = Boolean(video.youtubeId);
+      var name = NeuTV.productName(video.productId);
+      return {
+        id: video.id,
+        author: 'NEU TV',
+        handle: '@neutv',
+        avatar: NeuTV.productLogo('neutv') || NeuTV.productLogo(video.productId),
+        verified: true,
+        productId: video.productId,
+        productName: name,
+        categoryTag: '📺 ' + name,
+        role: 'NEU TV Library',
+        content: video.description || video.title,
+        videoTitle: video.title,
+        duration: item.duration,
+        timestamp: NeuTV.relativeTime(video.createdAt),
+        // A YouTube video has no direct file, so the card shows its poster and
+        // plays on the main stage, where the embed lives.
+        videoMp4: isYouTube ? null : (item.videoUrl || null),
+        youtubeId: video.youtubeId || null,
+        mediaUrl: item.thumbnail || null,
+        createdAt: video.createdAt,
+        fromLibrary: true,
+      };
+    },
+
+    /** "3h ago" from a millisecond timestamp; the feed shows a relative age. */
+    relativeTime: function (ms) {
+      var seconds = Math.max(0, Math.round((Date.now() - (ms || 0)) / 1000));
+      if (seconds < 60) return 'Just now';
+      var units = [['m', 60], ['h', 3600], ['d', 86400]];
+      for (var i = units.length - 1; i >= 0; i--) {
+        if (seconds >= units[i][1]) return Math.floor(seconds / units[i][1]) + units[i][0] + ' ago';
+      }
+      return 'Just now';
+    },
+
+    /** Product logo from the hydrated catalog. */
+    productLogo: function (productId) {
+      var products = (window.CentralData && window.CentralData.PRODUCTS) || [];
+      for (var i = 0; i < products.length; i++) {
+        if (products[i].id === productId) return products[i].logo;
+      }
+      return null;
+    },
+
+    /** Product display name from the hydrated catalog, falling back to the id. */
+    productName: function (productId) {
+      var products = (window.CentralData && window.CentralData.PRODUCTS) || [];
+      for (var i = 0; i < products.length; i++) {
+        if (products[i].id === productId) return products[i].name;
+      }
+      return productId;
+    },
+
+    /**
+     * Resolve a playback path against the API host.
+     *
+     * An uploaded video's playbackUrl is "/media/<file>" - relative, because
+     * the gateway usually serves the page as well. Once the page is static on
+     * one host and the API is on another, that path resolves against the page
+     * and 404s on the CDN. Absolute URLs (an external source, or a real CDN via
+     * NEUTV_MEDIA_BASE_URL) are already right and are left alone.
+     */
+    absoluteMedia: function (url) {
+      if (!url) return url;
+      if (/^https?:\/\//.test(url) || url.indexOf('//') === 0) return url;
+      var base = window.NEUTV_API_BASE || '';
+      return url.charAt(0) === '/' ? base + url : url;
+    },
+
+    toVodItem: function (video) {
+      var seconds = video.durationSeconds || 0;
+      var minutes = Math.floor(seconds / 60);
+      return {
+        id: video.id,
+        title: video.title,
+        description: video.description || '',
+        platformId: video.productId,
+        productId: video.productId,
+        duration: seconds
+          ? String(minutes).padStart(2, '0') + ':' + String(seconds % 60).padStart(2, '0')
+          : '',
+        thumbnail: video.posterUrl || '',
+        videoUrl: NeuTV.absoluteMedia(video.playbackUrl) || '',
+        youtubeId: video.youtubeId || null,
+      };
     },
 
     health: function () { return fetch((window.NEUTV_API_BASE || '') + '/health').then(function (r) { return r.json(); }); },
@@ -229,6 +365,12 @@
             try { handlers[type](JSON.parse(event.data), event); } catch (e) { /* a bad frame must not kill the stream */ }
           });
         });
+
+        // EventSource reconnects on its own, roughly every three seconds, for
+        // as long as the page is open. That is deliberately left alone: it is
+        // what carries a viewer across an API deploy. The stream drops when the
+        // process restarts, the browser retries, and the ticker picks up again
+        // a few seconds later without anyone reloading.
         return function () { source.close(); };
       },
 
@@ -280,8 +422,23 @@
       moderationQueue: function (limit) { return get('/admin/crm/moderation' + (limit ? '?limit=' + limit : '')); },
     },
 
+    /** Public: the published library. Drafts and archived videos never appear. */
+    videos: {
+      list: function (opts) {
+        var o = opts || {};
+        var q = [];
+        if (o.productId) q.push('productId=' + encodeURIComponent(o.productId));
+        if (o.limit) q.push('limit=' + o.limit);
+        return get('/videos' + (q.length ? '?' + q.join('&') : ''), { auth: false });
+      },
+      get: function (id) { return get('/videos/' + encodeURIComponent(id), { auth: false }); },
+    },
+
     /** Public: what the stage reverts to. */
     programme: function () { return get('/programme/current', { auth: false }); },
+
+    /** Public: the live event on air, if any. Never carries a stream key. */
+    liveEvent: function () { return get('/live-event/current', { auth: false }); },
   };
 
   window.NeuTV = NeuTV;

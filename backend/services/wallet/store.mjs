@@ -1,4 +1,4 @@
-import { openStore } from '../../platform/store.mjs';
+import { openStore } from '../../platform/db/index.mjs';
 
 const MIGRATIONS = {
   '001_wallet': `
@@ -30,4 +30,4 @@ const MIGRATIONS = {
   `,
 };
 
-export const openWalletStore = (file) => openStore(file, MIGRATIONS);
+export const openWalletStore = (target, options) => openStore(target, MIGRATIONS, options);

@@ -1,15 +1,10 @@
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,700;1,800;1,900&family=Space+Grotesk:wght@500;600;700;800&display=swap');
-
 :root {
-  --neu-cyan: #00F6A7;
-  --neu-sky: #00C8FF;
-  --neu-cobalt: #4D6BFF;
-  --neu-midnight: #0B1220;
-  --neu-obsidian: #111B33;
-  --neu-dark-base: #060A12;
-  --border-glass: rgba(255, 255, 255, 0.1);
-  --border-neu: rgba(0, 246, 167, 0.25);
-  --stream-live: #ff2a5f;
+  --neu-blue-accent: #0070F3;
+  --neu-dark-base: #000000;
+  --neu-card-bg: #0C0C0E;
+  --neu-panel-bg: #08080A;
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-accent: rgba(255, 255, 255, 0.15);
 }
 
 html, body {
@@ -18,73 +13,52 @@ html, body {
   overflow: hidden;
   margin: 0;
   padding: 0;
-  background-color: var(--neu-dark-base);
-  background-image: 
-    radial-gradient(circle at 50% 0%, rgba(0, 200, 255, 0.08) 0%, transparent 60%),
-    radial-gradient(circle at 10% 40%, rgba(0, 246, 167, 0.04) 0%, transparent 40%),
-    radial-gradient(circle at 90% 70%, rgba(77, 107, 255, 0.05) 0%, transparent 50%);
+  background-color: #000000;
   color: #f5f5f7;
   font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
-/* NEU TV Logo Gradient Utilities */
+/* Subtle Neutral Utilities */
 .neu-gradient-text {
-  background: linear-gradient(135deg, #00F6A7 0%, #00C8FF 52%, #4D6BFF 100%);
+  background: #ffffff;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
 
-.neu-gradient-border {
-  border-image: linear-gradient(135deg, #00F6A7, #00C8FF, #4D6BFF) 1;
-}
-
 .neu-pill-active {
-  background: linear-gradient(135deg, rgba(0, 246, 167, 0.15), rgba(0, 200, 255, 0.15));
-  border: 1px solid rgba(0, 246, 167, 0.4);
-  color: #00F6A7;
+  background: #ffffff;
+  color: #000000;
+  font-weight: 800;
 }
 
 .neu-horizon-beam {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 140px;
-  background: radial-gradient(ellipse 70% 100px at 50% 0%, rgba(0, 200, 255, 0.18), rgba(0, 246, 167, 0.08), transparent 70%);
-  pointer-events-none;
-  z-index: 1;
+  display: none !important;
 }
 
 /* Glassmorphism Panels & Cards */
 .glass-nav {
-  background: rgba(11, 18, 32, 0.88);
+  background: rgba(10, 10, 12, 0.95);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.8);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.9);
 }
 
 .glass-card {
-  background: rgba(17, 27, 51, 0.65);
+  background: rgba(14, 14, 16, 0.85);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 18px 50px -20px rgba(0, 0, 0, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.8);
   transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .glass-card:hover {
-  border-color: rgba(0, 200, 255, 0.35);
-  transform: translateY(-3px) scale(1.01);
-  box-shadow: inset 0 1px 0 rgba(0, 246, 167, 0.25), 0 24px 60px -15px rgba(0, 0, 0, 0.95);
-}
-
-.glass-card:hover {
-  border-color: rgba(255, 255, 255, 0.3);
-  transform: translateY(-3px) scale(1.01);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 24px 60px -15px rgba(0, 0, 0, 0.95);
+  border-color: rgba(255, 255, 255, 0.20);
+  transform: translateY(-2px);
+  box-shadow: 0 16px 40px -10px rgba(0, 0, 0, 0.95);
 }
 
 /* TWITTER / X.COM STYLE TWEET CARD */
@@ -219,6 +193,92 @@ html, body {
   animation: live-pulse 2s infinite ease-in-out;
 }
 
+/* ═══════════════════════════════════════════════════════════ */
+/* NEU LOGO CUBE SIGNAL & RED BANNER ANIMATIONS */
+/* ═══════════════════════════════════════════════════════════ */
+@keyframes neu-cube-signal-n {
+  0%, 100% {
+    transform: translateY(0) scale(1);
+    filter: brightness(0.95);
+  }
+  6%, 22% {
+    transform: translateY(-4px) scale(1.08);
+    filter: brightness(1.35) drop-shadow(0 4px 12px rgba(0, 102, 255, 0.75));
+  }
+  30% {
+    transform: translateY(0) scale(1);
+    filter: brightness(1);
+  }
+}
+
+@keyframes neu-cube-signal-e {
+  0%, 100% {
+    transform: translateY(0) scale(1);
+    filter: brightness(0.95);
+  }
+  24%, 40% {
+    transform: translateY(-4px) scale(1.08);
+    filter: brightness(1.35) drop-shadow(0 4px 12px rgba(0, 102, 255, 0.75));
+  }
+  48% {
+    transform: translateY(0) scale(1);
+    filter: brightness(1);
+  }
+}
+
+@keyframes neu-cube-signal-u {
+  0%, 100% {
+    transform: translateY(0) scale(1);
+    filter: brightness(0.95);
+  }
+  42%, 58% {
+    transform: translateY(-4px) scale(1.08);
+    filter: brightness(1.35) drop-shadow(0 4px 12px rgba(0, 102, 255, 0.75));
+  }
+  66% {
+    transform: translateY(0) scale(1);
+    filter: brightness(1);
+  }
+}
+
+@keyframes neu-red-banner-pulse {
+  0%, 55% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: brightness(1);
+  }
+  68%, 88% {
+    opacity: 0.15;
+    transform: translateY(1px) scale(0.97);
+    filter: brightness(0.6);
+  }
+  98%, 100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: brightness(1.15) drop-shadow(0 0 10px rgba(229, 9, 20, 0.6));
+  }
+}
+
+.neu-anim-cube-n {
+  animation: neu-cube-signal-n 3s infinite cubic-bezier(0.34, 1.56, 0.64, 1);
+  will-change: transform, filter;
+}
+
+.neu-anim-cube-e {
+  animation: neu-cube-signal-e 3s infinite cubic-bezier(0.34, 1.56, 0.64, 1);
+  will-change: transform, filter;
+}
+
+.neu-anim-cube-u {
+  animation: neu-cube-signal-u 3s infinite cubic-bezier(0.34, 1.56, 0.64, 1);
+  will-change: transform, filter;
+}
+
+.neu-anim-red-bar {
+  animation: neu-red-banner-pulse 3s infinite ease-in-out;
+  will-change: transform, opacity, filter;
+}
+
 /* Custom Scrollbars */
 ::-webkit-scrollbar {
   height: 6px;
@@ -296,4 +356,34 @@ html, body {
   pointer-events: none;
   animation: auth-float-pop 3.2s cubic-bezier(0.2, 0.8, 0.4, 1) forwards;
   z-index: 55;
+}
+
+/* ---------------------------------------------------------------------------
+   Card entrance animations.
+
+   app.js applies .animate-fadeIn to every feed card and .animate-scaleUp to
+   modals, but neither was ever defined here and neither exists in Tailwind
+   core (which ships only spin, ping, pulse and bounce). Both classes have been
+   inert since they were written; these are the definitions they expected.
+   --------------------------------------------------------------------------- */
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes scaleUp {
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+.animate-fadeIn  { animation: fadeIn 0.45s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.animate-scaleUp { animation: scaleUp 0.28s cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+/* Anyone who has asked the OS not to animate things should be believed. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-fadeIn,
+  .animate-scaleUp,
+  .animate-marquee,
+  .animate-live { animation: none !important; }
 }
