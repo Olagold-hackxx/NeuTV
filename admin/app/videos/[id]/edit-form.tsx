@@ -145,6 +145,16 @@ export function EditForm({ video, isOnAir }: { video: Video; isOnAir: boolean })
               id="posterUrl" type="url" value={posterUrl} placeholder="https://…" disabled={pending}
               onChange={(e) => setPosterUrl(e.target.value)}
             />
+            {/* Nothing generates a thumbnail from an uploaded file, so without
+                this the card on the site falls back to a frame of the video
+                itself. That works, but it is whatever the first frame happens
+                to be - often black. */}
+            {!posterUrl.trim() ? (
+              <p className="hint">
+                No poster. The site will show a frame from the video instead, which
+                is usually the opening black frame.
+              </p>
+            ) : null}
           </div>
         </div>
 

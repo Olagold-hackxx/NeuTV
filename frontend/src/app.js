@@ -2383,12 +2383,33 @@
                   + (isDeepLinked ? 'ring-2 ring-white/70 ring-offset-2 ring-offset-black' : '')
               },
                 // 1. 16:9 Widescreen Video Thumbnail with Duration Badge
+                //
+                // A poster is optional, and an uploaded video has none unless
+                // someone typed a URL for it - so this rendered <img src={null}>
+                // and every upload showed a broken-image icon. Where there is a
+                // file to play, the video itself is the preview: preload the
+                // metadata and seek a fraction in, and the browser paints a real
+                // frame without anything having to generate a thumbnail.
                 h('div', { className: 'relative w-full aspect-video rounded-2xl overflow-hidden bg-neutral-900 shadow-md' },
-                  h('img', {
-                    src: post.mediaUrl,
-                    alt: post.videoTitle || post.productName,
-                    className: 'w-full h-full object-cover group-hover:scale-105 transition-transform duration-300'
-                  }),
+                  post.mediaUrl
+                    ? h('img', {
+                        src: post.mediaUrl,
+                        alt: post.videoTitle || post.productName,
+                        loading: 'lazy',
+                        className: 'w-full h-full object-cover group-hover:scale-105 transition-transform duration-300'
+                      })
+                    : post.videoMp4
+                      ? h('video', {
+                          src: post.videoMp4 + '#t=0.1',
+                          preload: 'metadata',
+                          muted: true,
+                          playsInline: true,
+                          tabIndex: -1,
+                          className: 'w-full h-full object-cover pointer-events-none group-hover:scale-105 transition-transform duration-300'
+                        })
+                      : h('div', { className: 'w-full h-full flex items-center justify-center text-white/20' },
+                          h('i', { 'data-lucide': 'clapperboard', className: 'w-8 h-8' })
+                        ),
                   // Dark gradient overlay on hover
                   h('div', { className: 'absolute inset-0 bg-black/10 group-hover:bg-black/0 transition duration-300' }),
                   
