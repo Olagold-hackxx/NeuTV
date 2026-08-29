@@ -105,16 +105,33 @@ export function Studio({ event }: { event: LiveEvent }) {
           });
       };
 
+      // On air BEFORE the first chunk exists.
+      //
+      // This used to record first and go live afterwards, so every segment
+      // recorded in between was posted to an event that was still scheduled.
+      // The API now refuses those, but the ordering was the actual bug: if
+      // going live fails - an event with no playback URL, another broadcast
+      // already on air - there must be no recorder running and no camera light
+      // on, and the operator has to be told rather than left watching a preview
+      // of a broadcast that never started.
+      if (!event.isLive) {
+        const res = await startLiveEvent(event.id);
+        if (!res.ok) throw new Error(res.error ?? 'Could not put the event on air.');
+      }
+
       // The stream ending at the source (the user clicks "Stop sharing") has to
       // end the broadcast too, or we keep uploading nothing.
       stream.getVideoTracks()[0]?.addEventListener('ended', () => { void end(); });
 
       recorder.start(CHUNK_MS);
       setRecording(true);
-      if (!event.isLive) await startLiveEvent(event.id);
       router.refresh();
     } catch (err) {
+      // Whatever failed, leave nothing running behind it.
+      recorderRef.current?.state === 'recording' && recorderRef.current.stop();
+      recorderRef.current = null;
       stopTracks();
+      setRecording(false);
       setError(err instanceof Error ? err.message : 'Could not start capture.');
     }
   };

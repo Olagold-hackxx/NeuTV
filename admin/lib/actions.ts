@@ -8,7 +8,7 @@ import { revalidatePath } from 'next/cache';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { ApiError, call, SESSION_COOKIE } from './api';
-import type { LiveEvent, SessionUser, Video } from './types';
+import type { LiveEvent, SessionUser, Video, VideoPatch } from './types';
 
 export interface ActionResult {
   ok: boolean;
@@ -94,13 +94,15 @@ export async function createVideo(_prev: ActionResult | null, form: FormData): P
   }
 }
 
-export async function updateVideo(id: string, patch: Partial<Video>): Promise<ActionResult> {
+export async function updateVideo(id: string, patch: VideoPatch): Promise<ActionResult> {
   try {
-    await call(`/admin/videos/${encodeURIComponent(id)}`, { method: 'PUT', body: patch });
+    const res = await call<{ video: Video }>(`/admin/videos/${encodeURIComponent(id)}`, { method: 'PUT', body: patch });
     revalidatePath('/videos');
     revalidatePath(`/videos/${id}`);
-    revalidatePath('/');
-    return { ok: true };
+    // A published video is on the viewer app's shelves, and the one on air is on
+    // its front page, so an edit has to invalidate more than this section.
+    revalidatePath('/', 'layout');
+    return { ok: true, details: res.video };
   } catch (err) {
     return fail(err);
   }
@@ -147,6 +149,29 @@ export async function scheduleLiveEvent(_prev: ActionResult | null, form: FormDa
     const res = await call<{ event: LiveEvent; instructions: string }>('/admin/live-events', { method: 'POST', body });
     revalidatePath('/live');
     revalidatePath('/');
+    return { ok: true, details: res.event };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+/**
+ * Edit an event that is not on air: how it is fed, and where viewers watch.
+ *
+ * The panel used to render the playback URL read-only while telling the
+ * operator to add one, and `source` was fixed at creation - so an event
+ * scheduled as external with no URL could neither start nor be repaired.
+ */
+export async function updateLiveEvent(
+  id: string,
+  patch: { source?: 'browser' | 'external'; playbackUrl?: string; title?: string; posterUrl?: string },
+): Promise<ActionResult> {
+  try {
+    const res = await call<{ event: LiveEvent }>(`/admin/live-events/${encodeURIComponent(id)}`, {
+      method: 'PUT', body: patch,
+    });
+    revalidatePath('/live');
+    revalidatePath('/', 'layout');
     return { ok: true, details: res.event };
   } catch (err) {
     return fail(err);

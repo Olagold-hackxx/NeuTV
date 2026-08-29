@@ -86,7 +86,7 @@ export async function createGateway(options = {}) {
     req.on('error', reject);
   });
 
-  const server = createServer(async (req, res) => {
+  const handleRequest = async (req, res) => {
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
     const path = url.pathname;
 
@@ -130,7 +130,7 @@ export async function createGateway(options = {}) {
     } catch (err) {
       return sendError(res, err);
     }
-  });
+  };
 
   async function handleApi(req, res, url, apiPath) {
     const { route, pathExists, allowed } = ownerOf(req.method, apiPath);
@@ -209,6 +209,8 @@ export async function createGateway(options = {}) {
     });
     return send(res, result.status ?? 200, result.body ?? null, result.headers);
   }
+
+  const server = createServer(handleRequest);
 
   return { server, app, limiter };
 }

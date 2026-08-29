@@ -98,9 +98,20 @@ export async function openStore(target, migrations, options = {}) {
  * Postgres with no schema, wrote to public.users, and created an account the
  * gateway could not see.
  */
-export function storeTarget(service, { databaseUrl = process.env.DATABASE_URL, dataDir, memory = false } = {}) {
+export function storeTarget(service, {
+  databaseUrl = process.env.DATABASE_URL,
+  dataDir,
+  memory = false,
+  // How many Postgres connections THIS service may hold. Seven services on the
+  // default of 10 is 70 sockets per process, which a long-lived server can
+  // afford and a serverless deployment cannot: every warm instance opens its
+  // own set, and the database's connection limit is reached long before the
+  // traffic justifies it. Serverless sets NEUTV_PG_POOL_MAX=1 and leans on a
+  // pooler (pgbouncer, Neon, Supabase) in front instead.
+  poolMax = Number(process.env.NEUTV_PG_POOL_MAX) || 10,
+} = {}) {
   if (memory) return { target: ':memory:', options: {} };
-  if (databaseUrl) return { target: databaseUrl, options: { schema: service } };
+  if (databaseUrl) return { target: databaseUrl, options: { schema: service, max: poolMax } };
   return { target: `${dataDir}/${service}/data/${service}.db`, options: {} };
 }
 

@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
-import { cancelLiveEvent, rotateStreamKey, startLiveEvent, stopLiveEvent } from '@/lib/actions';
+import { cancelLiveEvent, rotateStreamKey, startLiveEvent, stopLiveEvent, updateLiveEvent } from '@/lib/actions';
 import type { LiveEvent } from '@/lib/types';
 
 export function LiveEventPanel({ event, compact = false }: { event: LiveEvent; compact?: boolean }) {
@@ -12,6 +12,11 @@ export function LiveEventPanel({ event, compact = false }: { event: LiveEvent; c
   // The key is a bearer credential for an encoder, so it stays hidden until
   // someone deliberately reveals it.
   const [keyVisible, setKeyVisible] = useState(false);
+  // How this event is fed, and where viewers watch. Editable because an event
+  // scheduled without a playback source is otherwise stuck: it cannot start,
+  // and it could not be repaired.
+  const [source, setSource] = useState<'browser' | 'external'>(event.source);
+  const [playback, setPlayback] = useState(event.playbackUrl ?? event.youtubeId ?? '');
 
   const run = (fn: () => Promise<{ ok: boolean; error?: string }>) => {
     setError(null);
@@ -59,9 +64,49 @@ export function LiveEventPanel({ event, compact = false }: { event: LiveEvent; c
           </div>
 
           <div className="field">
-            <label>Playback</label>
-            <input readOnly value={event.playbackUrl ?? event.youtubeId ?? '— not set, so it cannot go on air'} />
+            <label htmlFor={`source-${event.id}`}>How is this fed?</label>
+            <select
+              id={`source-${event.id}`} value={source} disabled={pending || event.isLive}
+              onChange={(e) => setSource(e.target.value as 'browser' | 'external')}
+            >
+              <option value="browser">From this browser (the studio below)</option>
+              <option value="external">From an external stream</option>
+            </select>
+            <p className="hint">
+              {source === 'browser'
+                ? 'No playback URL needed: the studio captures this tab and pushes it to viewers.'
+                : 'Stream wherever you already do, then paste the public playback URL below.'}
+            </p>
           </div>
+
+          {source === 'external' ? (
+            <div className="field">
+              <label htmlFor={`playback-${event.id}`}>Playback source</label>
+              <input
+                id={`playback-${event.id}`} value={playback} disabled={pending || event.isLive}
+                placeholder="https://…/live.m3u8  or  a YouTube video id"
+                onChange={(e) => setPlayback(e.target.value)}
+              />
+              <p className="hint">
+                An HLS <code>.m3u8</code> URL from your encoder or CDN, or an
+                11-character YouTube Live video id. Set <code>NEUTV_LIVE_DRIVER</code>
+                to <code>mux</code> or <code>cloudflare</code> and this is minted for you.
+              </p>
+            </div>
+          ) : null}
+
+          {!event.isLive
+            && (source !== event.source || playback !== (event.playbackUrl ?? event.youtubeId ?? '')) ? (
+              <button
+                type="button" className="btn btn-sm" disabled={pending} style={{ marginBottom: 14 }}
+                onClick={() => run(() => updateLiveEvent(event.id, {
+                  source,
+                  ...(source === 'external' && playback.trim() ? { playbackUrl: playback.trim() } : {}),
+                }))}
+              >
+                {pending ? 'Saving…' : 'Save playback settings'}
+              </button>
+            ) : null}
         </>
       ) : (
         <div className="stat-note" style={{ marginBottom: 12 }}>
@@ -83,7 +128,7 @@ export function LiveEventPanel({ event, compact = false }: { event: LiveEvent; c
         ) : (
           <button
             type="button" className="btn btn-primary"
-            disabled={pending || (!event.playbackUrl && !event.youtubeId)}
+            disabled={pending || (event.source !== 'browser' && !event.playbackUrl && !event.youtubeId)}
             onClick={() => run(() => startLiveEvent(event.id))}
           >
             {pending ? 'Going live…' : 'Go on air'}
@@ -104,9 +149,10 @@ export function LiveEventPanel({ event, compact = false }: { event: LiveEvent; c
         ) : null}
       </div>
 
-      {!event.playbackUrl && !event.youtubeId ? (
+      {event.source !== 'browser' && !event.playbackUrl && !event.youtubeId ? (
         <p className="hint" style={{ marginTop: 10 }}>
-          Add a playback source before going on air, or viewers would see nothing.
+          This event has no playback source, so it cannot go on air. Paste one
+          above, or switch it to a browser broadcast and use the studio.
         </p>
       ) : null}
     </>

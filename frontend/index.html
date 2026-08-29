@@ -39,8 +39,20 @@
     </div>
   </div>
 
+  <!-- Where the API lives. Generated at build time from NEUTV_API_BASE; empty
+       when the gateway serves this page itself, so the API is same-origin.
+       Must load before the client reads it. -->
+  <script src="./src/config.js?v=2.0"></script>
+
   <!-- The app. There is no bundled catalog: every product, hub, shelf and
-       video on this page arrives from the API through hydrate() below. -->
+       video on this page arrives from the API through hydrate() below.
+
+       bridge.js must load before app.js: app.js reads window.NeuTVBridge once,
+       at the top of its IIFE, and falls back to a no-op stub if it is missing.
+       It was missing - the tag was never added - so all 18 of its API calls
+       (wallet, likes, comments, tips, and adopting the stage an admin put on
+       air) resolved to null and the page ran entirely on local state. -->
+  <script src="./src/bridge.js?v=2.0"></script>
   <script src="./src/catalog.js?v=2.0"></script>
   <script src="./src/app.js?v=2.0"></script>
 

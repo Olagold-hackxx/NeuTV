@@ -22,8 +22,8 @@
     // fallback when it is not.
     const {
       PRODUCTS, PRODUCT_COMMUNITY_HUBS, INITIAL_CENTRAL_TV, SAMPLE_LIVE_COMMENTS,
-      INITIAL_MEDIA_ROWS, INITIAL_POSTS, TRENDING_TOPICS, PLATFORMS,
-      SCHEDULE_ITEMS, VOD_LIBRARY, CREATOR_SPOTLIGHTS,
+      INITIAL_POSTS, TRENDING_TOPICS, PLATFORMS,
+      SCHEDULE_ITEMS, VOD_LIBRARY, CREATOR_SPOTLIGHTS, LIBRARY_POSTS,
     } = CATALOG.read();
 
     // Refresh Lucide icons on every state change
@@ -131,6 +131,7 @@
         isSegmented: event.source === 'browser',
       };
       setLiveEvent(card);
+      setLiveError(null);
       setMainBroadcast(card);
       // Don't yank the screen away from someone mid-video; they return to the
       // live event when their takeover ends.
@@ -161,14 +162,20 @@
     const [stageOverride, setStageOverride] = useState(null);
     // The live event on air, if any. It outranks the programmed video.
     const [liveEvent, setLiveEvent] = useState(null);
+    // Why a live broadcast is not playing, when it is not playing.
+    const [liveError, setLiveError] = useState(null);
     const [isMuted, setIsMuted] = useState(true);
     const [qualityMode, setQualityMode] = useState('1080p');
     const [isMiniPlayer, setIsMiniPlayer] = useState(false);
     const [selectedVideo, setSelectedVideo] = useState(null);
 
     // Feed & Content State
-    const [mediaRows, setMediaRows] = useState(INITIAL_MEDIA_ROWS);
-    const [posts, setPosts] = useState(INITIAL_POSTS);
+    // Published videos are announcements too. The library and the designed
+    // posts are one feed, newest first, rather than a shelf above a feed
+    // showing the same videos twice.
+    const [posts, setPosts] = useState(() =>
+      [...LIBRARY_POSTS, ...INITIAL_POSTS]
+        .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)));
     const [isCreatePostOpen, setIsCreatePostOpen] = useState(false);
 
     // RIGHT SIDEBAR COMMUNITY CHAT ROOM & MEMBERSHIP STATE
@@ -451,6 +458,7 @@
               showToast('🔴 ' + payload.event.title + ' is live');
             } else if (payload.status === 'ended') {
               setLiveEvent(null);
+              setLiveError(null);
               setStageOverride(null);
               setCentralTv(mainBroadcast);
               showToast('The live broadcast has ended');
@@ -539,6 +547,10 @@
 
     const [selectedSSO, setSelectedSSO] = useState(null);
     const [ssoForm, setSsoForm] = useState({ username: '', password: '' });
+    // Why a sign-in was refused, and whether one is in flight. Both gates share
+    // them: only one can be open at a time.
+    const [ssoError, setSsoError] = useState(null);
+    const [ssoPending, setSsoPending] = useState(false);
     const [authMode, setAuthMode] = useState('signup');
     const [authForm, setAuthForm] = useState({ name: '', email: '', password: '', platform: 'worldstreet' });
     const [authPoppingEmojis, setAuthPoppingEmojis] = useState([]);
@@ -592,45 +604,50 @@
       const platObj = (PRODUCTS || []).find(p => p.id === platformId) || PRODUCTS[0];
       setSelectedSSO(platObj);
       setSsoForm({ username: '', password: '' });
+      setSsoError(null);
     };
 
     // SSO Credential Submission Handler
+    //
+    // This used to sign the viewer in locally - set the user, close the gate,
+    // fire the confetti - and then call the API as an afterthought whose result
+    // it ignored. A rejected password therefore still produced a signed-in UI.
+    // Authentication is the one thing that cannot be optimistic: nothing here
+    // happens until the server says who this is.
     const handleSSOSubmit = (e) => {
       e.preventDefault();
-      const username = ssoForm.username.trim() || 'Alex Trader';
-      const formattedName = username.startsWith('@') || username.startsWith('$') ? username : `@${username}`;
-      const badgeText = `${selectedSSO ? selectedSSO.name : 'Ecosystem'} Verified`;
-      
-      setCurrentUser({
-        id: 'user_' + Date.now(),
-        name: formattedName,
-        avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80',
-        badge: badgeText
-      });
-      setIsGateOpen(false);
-      setIsGuest(false);
-      setSelectedSSO(null);
-      setSsoForm({ username: '', password: '' });
+      const username = ssoForm.username.trim();
+      const password = ssoForm.password;
+      if (!username || !password) return setSsoError('Enter your ecosystem handle and password.');
 
-      // Trigger Celebration Animation (No coin bonus)
-      setCelebrationModal({
-        name: formattedName,
-        badge: badgeText,
-        coins: 0,
-        platform: selectedSSO ? selectedSSO.name : 'NEU TV'
-      });
-      triggerConfettiShower();
+      const product = selectedSSO || { id: 'worldstreet', name: 'NEU TV' };
+      setSsoError(null);
+      setSsoPending(true);
 
-      // The server issues the session and owns the account identity, so adopt
-      // what it returns rather than keeping the locally invented user.
-      const productId = selectedSSO ? selectedSSO.id : 'worldstreet';
-      BRIDGE.sync(api => api.identity.sso(productId, username, ssoForm.password || undefined))
-        .then(res => {
-          if (!res) return;
-          setCurrentUser({ id: res.user.id, name: res.user.name, avatar: res.user.avatar, badge: res.user.badge });
-          setCelebrationModal(prev => prev ? { ...prev, name: res.user.name, badge: res.user.badge } : prev);
-          refreshWallet();
+      BRIDGE.sync(
+        api => api.identity.sso(product.id, username, password),
+        err => setSsoError(err && err.status === 401
+          ? 'That handle and password do not match.'
+          : (err && err.message) || 'Could not reach the network.'),
+      ).then(res => {
+        setSsoPending(false);
+        // sync() resolves null when the call failed or the backend is down.
+        // Either way this viewer is not signed in, and the gate stays open.
+        // The offline case never reaches onError, so it needs its own message
+        // rather than a button that quietly goes back to idle.
+        if (!res) return setSsoError(prev => prev || 'Could not reach the network. Try again.');
+
+        setCurrentUser({ id: res.user.id, name: res.user.name, avatar: res.user.avatar, badge: res.user.badge });
+        setIsGateOpen(false);
+        setIsGuest(false);
+        setSelectedSSO(null);
+        setSsoForm({ username: '', password: '' });
+        setCelebrationModal({
+          name: res.user.name, badge: res.user.badge, coins: 0, platform: product.name,
         });
+        triggerConfettiShower();
+        refreshWallet();
+      });
     };
 
     // Logout Handler
@@ -645,40 +662,34 @@
     };
 
     // Email / Form Auth Submit Handler
+    // Same rule as the SSO gate: the server decides, and until it has, nobody
+    // is signed in. This used to open the gate and celebrate first, so a
+    // rejected sign-in left the viewer looking authenticated with a toast
+    // behind it.
     const handleAuthSubmit = (e) => {
       e.preventDefault();
-      const name = authForm.name.trim() || (authForm.email ? authForm.email.split('@')[0] : 'Alex Trader');
-      const platObj = (PRODUCTS || []).find(p => p.id === authForm.platform) || PRODUCTS[0] || { id: 'worldstreet', name: 'WorldStreet' };
-      const badgeText = `${platObj.name} Member`;
-      const formattedName = name.startsWith('@') ? name : `@${name}`;
-      
-      setCurrentUser({
-        id: 'user_' + Date.now(),
-        name: formattedName,
-        avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80',
-        badge: badgeText
-      });
-      setIsGateOpen(false);
-      setIsGuest(false);
-
-      // Trigger Celebration Animation (No coin bonus)
-      setCelebrationModal({
-        name: formattedName,
-        badge: badgeText,
-        coins: 0,
-        platform: 'NEU TV'
-      });
-      triggerConfettiShower();
+      const name = authForm.name.trim() || (authForm.email ? authForm.email.split('@')[0] : '');
+      setSsoError(null);
+      setSsoPending(true);
 
       BRIDGE.sync(
         api => (authMode === 'signup'
           ? api.identity.signup({ name, email: authForm.email, password: authForm.password, platform: authForm.platform })
           : api.identity.signin(authForm.email, authForm.password)),
-        err => { if (err) showToast(err.message || 'Could not reach the network.'); },
+        err => setSsoError(err && err.status === 401
+          ? 'That email and password do not match.'
+          : (err && err.message) || 'Could not reach the network.'),
       ).then(res => {
-        if (!res) return;
+        setSsoPending(false);
+        if (!res) return setSsoError(prev => prev || 'Could not reach the network. Try again.');
+
         setCurrentUser({ id: res.user.id, name: res.user.name, avatar: res.user.avatar, badge: res.user.badge });
-        setCelebrationModal(prev => prev ? { ...prev, name: res.user.name, badge: res.user.badge } : prev);
+        setIsGateOpen(false);
+        setIsGuest(false);
+        setCelebrationModal({
+          name: res.user.name, badge: res.user.badge, coins: 0, platform: 'NEU TV',
+        });
+        triggerConfettiShower();
         refreshWallet();
       });
     };
@@ -849,17 +860,6 @@
         el.scrollBy({ left: amount, behavior: 'smooth' });
       }
     };
-
-    // Filter Video Rows based on Active Product Selection
-    const filteredRows = useMemo(() => {
-      return mediaRows.map(row => {
-        let items = [...(row.items || [])];
-        if (activeProductId !== 'all') {
-          items = items.filter(item => item.productId === activeProductId);
-        }
-        return { ...row, items };
-      }).filter(row => row.items.length > 0);
-    }, [mediaRows, activeProductId]);
 
     // Filter Posts based on Active Product Selection, Following, and Search
     const filteredPosts = useMemo(() => {
@@ -1143,12 +1143,18 @@
                   )
                 ),
 
+                // A refused sign-in says so here, and the gate stays open.
+                ssoError ? h('div', {
+                  className: 'px-3.5 py-2.5 rounded-2xl bg-red-500/10 border border-red-500/30 text-[11px] text-red-300'
+                }, ssoError) : null,
+
                 // Submit Button
                 h('button', {
                   type: 'submit',
-                  className: 'w-full py-3.5 rounded-full bg-white hover:bg-white/90 text-black font-black text-xs md:text-sm transition shadow-2xl flex items-center justify-center gap-2 transform active:scale-98 mt-2'
+                  disabled: ssoPending,
+                  className: 'w-full py-3.5 rounded-full bg-white hover:bg-white/90 disabled:opacity-60 text-black font-black text-xs md:text-sm transition shadow-2xl flex items-center justify-center gap-2 transform active:scale-98 mt-2'
                 },
-                  h('span', null, `Authorize & Sign In with ${selectedSSO.name}`),
+                  h('span', null, ssoPending ? 'Verifying…' : `Authorize & Sign In with ${selectedSSO.name}`),
                   h('i', { 'data-lucide': 'arrow-right', className: 'w-4 h-4 stroke-[3]' })
                 )
               )
@@ -1248,13 +1254,19 @@
                   h('span', { className: 'text-xs leading-snug' }, 'I agree to the Terms of Service & Privacy Policy.')
                 ),
 
+                // A refused sign-in says so here, and the gate stays open.
+                ssoError ? h('div', {
+                  className: 'px-3.5 py-2.5 rounded-2xl bg-red-500/10 border border-red-500/30 text-[11px] text-red-300'
+                }, ssoError) : null,
+
                 // Primary Submit Button with Filled Icon
                 h('button', {
                   type: 'submit',
-                  className: 'w-full py-3.5 rounded-full bg-white hover:bg-white/90 text-black font-black text-xs md:text-sm transition shadow-2xl flex items-center justify-center gap-2 transform active:scale-98 mt-1'
+                  disabled: ssoPending,
+                  className: 'w-full py-3.5 rounded-full bg-white hover:bg-white/90 disabled:opacity-60 text-black font-black text-xs md:text-sm transition shadow-2xl flex items-center justify-center gap-2 transform active:scale-98 mt-1'
                 },
                   h('span', null,
-                    authMode === 'signup' ? 'Create NEU Passport' : 'Sign In to NEU TV'
+                    ssoPending ? 'Verifying…' : (authMode === 'signup' ? 'Create NEU Passport' : 'Sign In to NEU TV')
                   ),
                   h('i', { 'data-lucide': 'arrow-right', className: 'w-4 h-4 stroke-[3]' })
                 )
@@ -1668,8 +1680,15 @@
                     el._neuSegEvent = liveEvent.id;
                     if (window.NeuTVSegmentPlayer && window.NeuTVSegmentPlayer.supported()) {
                       el._neuSegStop = window.NeuTVSegmentPlayer.play(el, liveEvent.id, {
-                        onError: () => {},
+                        // Swallowing this left a black rectangle under a LIVE
+                        // badge with no way to tell a broadcast that had not
+                        // started from a browser that cannot play WebM at all.
+                        onError: (err) => setLiveError(err && err.message
+                          ? err.message
+                          : 'This broadcast could not be played here.'),
                       });
+                    } else {
+                      setLiveError('This browser cannot play a studio broadcast. Try Chrome, Edge or Firefox.');
                     }
                   },
                   poster: liveEvent.posterUrl || undefined,
@@ -1693,6 +1712,21 @@
                   controls: false,
                   className: 'w-full h-full object-cover border-0'
                 })
+            // A live event fed by a plain video URL - an MP4 on a CDN, which is
+            // what most "paste the playback URL" events actually are. Without
+            // this branch it fell through to the linear channel below and the
+            // viewer watched the ordinary loop under a LIVE badge.
+            : (!stageOverride && liveEvent && liveEvent.videoUrl && !liveEvent.youtubeId)
+              ? h('video', {
+                  key: 'live-src-' + liveEvent.id,
+                  src: liveEvent.videoUrl,
+                  poster: liveEvent.posterUrl || undefined,
+                  autoPlay: true,
+                  muted: isMuted,
+                  playsInline: true,
+                  controls: false,
+                  className: 'w-full h-full object-cover border-0'
+                })
             : stageOverride && stageOverride.videoUrl
               ? h('video', {
                   key: stageOverride.id,
@@ -1706,14 +1740,35 @@
                   onEnded: () => returnToMainBroadcast(true),
                   className: 'w-full h-full object-contain bg-black border-0'
                 })
-              : h('iframe', {
-                  src: `https://www.youtube-nocookie.com/embed/${centralTv.youtubeId || 'SqBx7QADBes'}?autoplay=1&mute=${isMuted ? 1 : 0}&loop=${stageOverride ? 0 : 1}&playlist=${centralTv.youtubeId || 'SqBx7QADBes'}&controls=${stageOverride ? 1 : 0}&disablekb=1&modestbranding=1&enablejsapi=1&rel=0&iv_load_policy=3&playsinline=1`,
-                  title: centralTv.title || 'NEU TV Live Broadcast',
-                  allow: 'autoplay; fullscreen; picture-in-picture; encrypted-media',
-                  allowFullScreen: true,
-                  className: 'w-full h-full object-cover border-0 scale-[1.02] '
-                    + (stageOverride ? '' : 'pointer-events-none')
-                }),
+              // The linear channel. The id used to fall back to a hardcoded
+              // 'SqBx7QADBes' whenever centralTv had none, which meant every
+              // failure upstream - an unplayable live event, an empty programme
+              // - looked like a healthy broadcast of that one video. If there is
+              // nothing to play, say so.
+              : centralTv.youtubeId
+                ? h('iframe', {
+                    src: `https://www.youtube-nocookie.com/embed/${centralTv.youtubeId}?autoplay=1&mute=${isMuted ? 1 : 0}&loop=${stageOverride ? 0 : 1}&playlist=${centralTv.youtubeId}&controls=${stageOverride ? 1 : 0}&disablekb=1&modestbranding=1&enablejsapi=1&rel=0&iv_load_policy=3&playsinline=1`,
+                    title: centralTv.title || 'NEU TV Live Broadcast',
+                    allow: 'autoplay; fullscreen; picture-in-picture; encrypted-media',
+                    allowFullScreen: true,
+                    className: 'w-full h-full object-cover border-0 scale-[1.02] '
+                      + (stageOverride ? '' : 'pointer-events-none')
+                  })
+                : centralTv.videoUrl
+                  ? h('video', {
+                      key: 'central-' + (centralTv.id || 'main'),
+                      src: centralTv.videoUrl,
+                      poster: centralTv.posterUrl || undefined,
+                      autoPlay: true, muted: isMuted, loop: !stageOverride,
+                      playsInline: true, controls: false,
+                      className: 'w-full h-full object-cover border-0'
+                    })
+                  : h('div', { className: 'w-full h-full flex flex-col items-center justify-center gap-2 text-center px-6' },
+                      h('i', { 'data-lucide': 'tv', className: 'w-8 h-8 text-white/20' }),
+                      h('div', { className: 'text-sm font-bold text-white/70' }, 'Nothing is on air'),
+                      h('div', { className: 'text-[11px] text-white/40 max-w-sm' },
+                        'No live event is running and no programme has been set in the back office.')
+                    ),
 
             // While an event is on air, say so. This is a real broadcast, not
             // the looping linear channel.
@@ -1723,6 +1778,14 @@
               h('span', { className: 'w-1.5 h-1.5 rounded-full bg-red-500 animate-live flex-shrink-0' }),
               h('span', { className: 'text-[10px] md:text-xs font-black text-red-400 tracking-wide flex-shrink-0' }, 'LIVE'),
               h('span', { className: 'text-[10px] md:text-xs font-bold text-white truncate' }, liveEvent.title)
+            ),
+
+            // A live event that cannot play here must say why. Silence looks
+            // identical to a broadcast that simply has not started.
+            !stageOverride && liveEvent && liveError && h('div', {
+              className: 'absolute inset-x-0 bottom-0 z-40 px-4 py-2.5 bg-black/85 backdrop-blur-md border-t border-red-500/40 text-center'
+            },
+              h('span', { className: 'text-[11px] font-semibold text-red-300' }, liveError)
             ),
 
             // While a takeover is playing, say what is on and offer the way back.
@@ -1978,10 +2041,7 @@
                 className: `px-3.5 py-1.5 rounded-full text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap shadow-sm ${activeProductId === 'all' ? 'bg-white text-black font-extrabold shadow-md' : 'bg-[#111B33] border border-white/15 text-white/70 hover:text-white'}`
               }, '✨ All'),
 
-              [
-                { id: 'neutv', name: 'NEU TV' },
-                ...PRODUCTS
-              ].map(prod => {
+              PRODUCTS.map(prod => {
                 const isSelected = activeProductId === prod.id;
                 return h('button', {
                   key: prod.id,
@@ -2077,17 +2137,33 @@
                 },
                 title: 'Play on the main stage'
               },
-                // Direct Autoplaying Video Stream
-                h('video', {
-                  src: post.videoMp4,
-                  poster: post.mediaUrl,
-                  autoPlay: true,
-                  muted: true,
-                  loop: true,
-                  playsInline: true,
-                  controls: true,
-                  className: 'w-full h-full object-cover border-0'
-                }),
+                // Direct Autoplaying Video Stream.
+                //
+                // A YouTube-backed post has no file to autoplay, and an empty
+                // <video src> renders as a dead black rectangle. Those show
+                // their poster instead; clicking still promotes them to the
+                // main stage, which is where the embed plays.
+                post.videoMp4
+                  ? h('video', {
+                      src: post.videoMp4,
+                      poster: post.mediaUrl,
+                      autoPlay: true,
+                      muted: true,
+                      loop: true,
+                      playsInline: true,
+                      controls: true,
+                      className: 'w-full h-full object-cover border-0'
+                    })
+                  : post.mediaUrl
+                    ? h('img', {
+                        src: post.mediaUrl,
+                        alt: post.videoTitle || post.content,
+                        loading: 'lazy',
+                        className: 'w-full h-full object-cover border-0'
+                      })
+                    : h('div', { className: 'w-full h-full flex items-center justify-center text-white/20' },
+                        h('i', { 'data-lucide': 'clapperboard', className: 'w-8 h-8' })
+                      ),
 
                 // The explicit affordance. The whole frame is clickable, but a
                 // preview that silently does something on click is a guess; a
@@ -2107,7 +2183,7 @@
                     post.productName
                   ),
                   h('div', { className: 'px-2.5 py-1 rounded-full bg-black/80 backdrop-blur-md border border-white/20 text-[10px] font-mono text-white/90 font-bold' },
-                    `${post.views || '42.8K'} views`
+                    post.views ? `${post.views} views` : (post.duration || '')
                   )
                 )
               ),

@@ -51,6 +51,8 @@
       CREATOR_SPOTLIGHTS: data.CREATOR_SPOTLIGHTS || [],
       /** The published admin library, exactly as the back office holds it. */
       LIBRARY: data.LIBRARY || [],
+      /** Those same videos, shaped as announcement cards for the feed. */
+      LIBRARY_POSTS: data.LIBRARY_POSTS || [],
       /** true once the API has supplied the catalog. */
       isLive: Boolean(window.NEUTV_LIVE)
     };
