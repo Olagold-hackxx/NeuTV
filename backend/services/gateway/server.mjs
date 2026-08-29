@@ -87,7 +87,17 @@ export async function createGateway(options = {}) {
   });
 
   const handleRequest = async (req, res) => {
-    const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+    // Outside the try below, and it has to stay inside one: this is the first
+    // thing that touches attacker-controlled input, and new URL() throws on a
+    // path the parser will happily deliver. A request for "//" took the whole
+    // process down - one unhandled TypeError, every viewer disconnected.
+    let url;
+    try {
+      url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+    } catch {
+      res.writeHead(400, { 'content-type': 'application/json; charset=utf-8' });
+      return res.end(JSON.stringify({ error: { code: 'bad_request', message: 'Malformed request URL.' } }));
+    }
     const path = url.pathname;
 
     res.setHeader('access-control-allow-origin', corsOrigin);

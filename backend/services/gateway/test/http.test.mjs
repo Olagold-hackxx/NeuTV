@@ -255,3 +255,12 @@ test('a 500 never leaks internals to the caller', async () => {
   assert.equal(status, 404);
   assert.ok(!JSON.stringify(body).includes('at '), 'no stack trace in the response');
 });
+
+test('a malformed request URL is a 400, not a dead process', async () => {
+  // new URL() throws on paths the HTTP parser accepts. This ran before the
+  // handler's try block, so "//" crashed the gateway and disconnected everyone.
+  const { status } = await call('//');
+  assert.equal(status, 400);
+  // Still serving afterwards is the entire point of the test.
+  assert.equal((await call('/health')).status, 200);
+});
