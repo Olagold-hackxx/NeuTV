@@ -13,22 +13,59 @@ const build = async (over = {}) => {
   const runtime = fakeRuntime();
   const catalog = createCatalogService({ runtime });
   const store = await testStore(openIdentityStore);
-  return { runtime, identity: createIdentityService({ runtime, catalog, store, passwordCost: TEST_COST, ...over }) };
+  return { runtime, store, identity: createIdentityService({ runtime, catalog, store, passwordCost: TEST_COST, ...over }) };
 };
+
+// SSO needs a credential like every other way in. These tests predate that and
+// used to call it with nothing at all.
+const PASSWORD = 'ecosystem-pin-2026';
 
 test('SSO through a product issues a session and the product badge', async () => {
   const { identity } = await build();
-  const res = await identity.sso({ productId: 'worldstreet', username: 'Alex Trader' });
+  const res = await identity.sso({ productId: 'worldstreet', username: 'Alex Trader', password: PASSWORD });
   assert.equal(res.user.name, '@Alex Trader');
   assert.equal(res.user.badge, 'WorldStreet Verified');
   assert.equal(res.user.verified, true);
   assert.ok(res.session.token);
 });
 
+test('SSO to an existing account refuses the wrong password', async () => {
+  const { identity } = await build();
+  const first = await identity.sso({ productId: 'worldstreet', username: 'Alex', password: PASSWORD });
+  assert.ok(first.session.token);
+
+  // The whole point: a handle is public, so it must not be a login on its own.
+  await assert.rejects(
+    () => identity.sso({ productId: 'worldstreet', username: 'Alex', password: 'not-the-password' }),
+    (e) => e.status === 401,
+  );
+});
+
+test('SSO refuses to sign in with no password at all', async () => {
+  const { identity } = await build();
+  await identity.sso({ productId: 'worldstreet', username: 'Alex', password: PASSWORD });
+  await assert.rejects(
+    () => identity.sso({ productId: 'worldstreet', username: 'Alex' }),
+    (e) => e.status === 400,
+  );
+});
+
+test('an SSO account with no stored credential cannot be signed into', async () => {
+  const { identity, store } = await build();
+  const { user } = await identity.sso({ productId: 'ark', username: 'legacy', password: PASSWORD });
+  // Simulates a row from before this path required a credential.
+  await store.run('UPDATE users SET password_hash = NULL WHERE id = ?', user.id);
+  await assert.rejects(
+    () => identity.sso({ productId: 'ark', username: 'legacy', password: PASSWORD }),
+    (e) => e.status === 401,
+    'a null hash must fail closed, not wave everyone through',
+  );
+});
+
 test('signing in twice through the same product returns the same account', async () => {
   const { identity } = await build();
-  const first = await identity.sso({ productId: 'worldstreet', username: 'Alex' });
-  const second = await identity.sso({ productId: 'worldstreet', username: 'Alex' });
+  const first = await identity.sso({ productId: 'worldstreet', username: 'Alex', password: PASSWORD });
+  const second = await identity.sso({ productId: 'worldstreet', username: 'Alex', password: PASSWORD });
   assert.equal(second.user.id, first.user.id);
   assert.equal(second.returning, true);
   assert.notEqual(second.session.token, first.session.token, 'but a fresh session each time');
@@ -36,7 +73,7 @@ test('signing in twice through the same product returns the same account', async
 
 test('nobody gets a starter balance: the celebration says zero coins', async () => {
   const { identity } = await build();
-  assert.equal((await identity.sso({ productId: 'ark', username: 'zed' })).celebration.coins, 0);
+  assert.equal((await identity.sso({ productId: 'ark', username: 'zed', password: PASSWORD })).celebration.coins, 0);
   assert.equal((await identity.signup({ email: 'a@neu.tv', password: 'longenough1' })).celebration.coins, 0);
   assert.equal(await identity.consent('ark').grantsCoins, 0);
 });
@@ -53,7 +90,7 @@ test('consent lists the common scopes plus the ones that product adds', async ()
 
 test('the session carries exactly the scopes the viewer consented to', async () => {
   const { identity } = await build();
-  const res = await identity.sso({ productId: 'market', username: 'elena' });
+  const res = await identity.sso({ productId: 'market', username: 'elena', password: PASSWORD });
   assert.deepEqual(res.session.scopes, scopeIdsFor('market'));
   assert.deepEqual((await identity.authenticate(res.session.token)).scopes, scopeIdsFor('market'));
 });
@@ -62,8 +99,8 @@ test('an unknown product cannot be used to sign in', async () => {
   const { identity } = await build();
   // Username is deliberately valid, so this asserts the product check and not
   // the length check that would otherwise short-circuit it at 400.
-  await assert.rejects(() => identity.sso({ productId: 'fakebank', username: 'alex' }), (e) => e.status === 404);
-  await assert.rejects(() => identity.sso({ productId: 'worldstreet', username: 'x' }), (e) => e.status === 400, 'short username is still 400');
+  await assert.rejects(() => identity.sso({ productId: 'fakebank', username: 'alex', password: PASSWORD }), (e) => e.status === 404);
+  await assert.rejects(() => identity.sso({ productId: 'worldstreet', username: 'x', password: PASSWORD }), (e) => e.status === 400, 'short username is still 400');
   // consent() reads only the catalog, so it stays synchronous and throws.
   assert.throws(() => identity.consent('fakebank'), (e) => e.status === 404);
 });
@@ -117,7 +154,7 @@ test('handles never collide', async () => {
 
 test('logout revokes the session immediately', async () => {
   const { identity } = await build();
-  const res = await identity.sso({ productId: 'ark', username: 'zed' });
+  const res = await identity.sso({ productId: 'ark', username: 'zed', password: PASSWORD });
   const auth = await identity.authenticate(res.session.token);
   await identity.logout(auth);
   assert.equal(await identity.authenticate(res.session.token), null);
@@ -125,7 +162,7 @@ test('logout revokes the session immediately', async () => {
 
 test('an expired session stops authenticating without anything sweeping it', async () => {
   const { runtime, identity } = await build({ sessionTtlMs: 1000 });
-  const res = await identity.sso({ productId: 'ark', username: 'zed' });
+  const res = await identity.sso({ productId: 'ark', username: 'zed', password: PASSWORD });
   assert.ok(await identity.authenticate(res.session.token));
   runtime.advance(1001);
   assert.equal(await identity.authenticate(res.session.token), null);
@@ -150,7 +187,7 @@ test('the admin role comes from deployment config, never from self-service', asy
   const { identity } = await build({ adminEmails: ['boss@neu.tv'] });
   assert.equal((await identity.signup({ email: 'boss@neu.tv', password: 'longenough1' })).user.role, 'admin');
   assert.equal((await identity.signup({ email: 'random@neu.tv', password: 'longenough1' })).user.role, 'viewer');
-  assert.equal((await identity.sso({ productId: 'ark', username: 'boss' })).user.role, 'viewer', 'SSO cannot mint an admin');
+  assert.equal((await identity.sso({ productId: 'ark', username: 'boss', password: PASSWORD })).user.role, 'viewer', 'SSO cannot mint an admin');
 });
 
 test('scope helpers stay in step with the product list', async () => {

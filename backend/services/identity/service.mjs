@@ -111,11 +111,17 @@ export function createIdentityService({
 
     // One-click SSO through an ecosystem product. A viewer who signs in twice
     // through the same product gets the same account, not a duplicate.
+    //
+    // The password is required and verified. It used to be optional and was
+    // read only when creating the account, so signing in to an account that
+    // already existed took any password, or none: every handle on the site was
+    // a login, and handles are public. First sign-in through a product creates
+    // the account and sets the credential; every one after it has to match.
     async sso(input) {
       const { productId, username, password } = validate(input, {
         productId: { type: 'string', required: true, max: 40 },
         username: { type: 'string', required: true, min: 2, max: 40 },
-        password: { type: 'string', required: false, max: 200 },
+        password: { type: 'string', required: true, min: 8, max: 200 },
       });
       const product = knownProduct(productId);
       if (!product) throw notFound(`"${productId}" is not an ecosystem product.`);
@@ -128,11 +134,25 @@ export function createIdentityService({
         'SELECT * FROM users WHERE handle = ? AND product_id = ? AND auth_method = ?',
         handle, productId, 'sso',
       );
+
+      // verify() is false for a null hash, so an account created before this
+      // path required a credential cannot be signed into rather than being
+      // open to anyone. That is the safe direction; such an account needs a
+      // reset, not a free pass.
+      //
+      // A handle that does not exist yet is created instead of rejected, which
+      // does tell a caller which handles are taken. That is inherent to
+      // create-on-first-use and is the trade this endpoint already made; the
+      // alternative is splitting it into separate register and sign-in routes.
+      if (existing && !hasher.verify(password, existing.password_hash)) {
+        throw unauthorized('Username or password is incorrect.');
+      }
+
       const user = existing || await createUser({
         displayName,
         handle: await uniqueHandle(handle),
         email: null,
-        passwordHash: password ? hasher.hash(password) : null,
+        passwordHash: hasher.hash(password),
         badge: `${product.name} Verified`,
         productId,
         authMethod: 'sso',
