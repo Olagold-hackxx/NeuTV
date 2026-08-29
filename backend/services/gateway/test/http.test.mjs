@@ -59,7 +59,7 @@ test('health reports the contract and what is wired', async () => {
 test('bootstrap serves the whole frontend payload to a guest', async () => {
   const { status, body } = await call('/api/v1/catalog/bootstrap');
   assert.equal(status, 200);
-  assert.equal(body.PRODUCTS.length, 5);
+  assert.equal(body.PRODUCTS.length, 6, 'five ecosystem products plus NEU TV itself');
   assert.ok(body.INITIAL_POSTS.length > 0);
 });
 

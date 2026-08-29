@@ -207,3 +207,40 @@ test('the source is visible publicly so a player knows how to fetch it', async (
   assert.equal(current.source, 'browser');
   assert.equal(current.playbackUrl, null, 'a player must fall back to segments');
 });
+
+// --- fixing an event that cannot go on air ---------------------------------
+
+test('an external event with no playback source can be switched to the studio', async () => {
+  const { events } = await build();
+  const { event } = await events.create(ADMIN, { title: 'Live From The Studio', source: 'external' });
+  assert.equal(event.source, 'external');
+  assert.equal(event.playbackUrl, null);
+  // As created it is unstartable, and before source was editable it was also
+  // unfixable: cancel and start again was the only way out.
+  await assert.rejects(() => events.start(event.id), (e) => e.status === 409);
+
+  const res = await events.update(event.id, { source: 'browser' });
+  assert.equal(res.event.source, 'browser');
+  assert.equal((await events.start(event.id)).event.status, 'live', 'a browser event needs no URL');
+});
+
+test('a playback URL can be added to an event that was missing one', async () => {
+  const { events } = await build();
+  const { event } = await events.create(ADMIN, { title: 'Market Open', source: 'external' });
+  await events.update(event.id, { playbackUrl: 'https://stream.example.com/live/abc.m3u8' });
+  assert.equal((await events.start(event.id)).event.status, 'live');
+});
+
+test('a YouTube id is accepted as the playback source', async () => {
+  const { events } = await build();
+  const { event } = await events.create(ADMIN, { title: 'Simulcast', source: 'external' });
+  const res = await events.update(event.id, { playbackUrl: 'SqBx7QADBes' });
+  assert.equal(res.event.youtubeId, 'SqBx7QADBes');
+  assert.equal(res.event.playbackUrl, null, 'a YouTube event plays through the embed');
+});
+
+test('an event cannot be left external with nothing to play', async () => {
+  const { events } = await build();
+  const { event } = await events.create(ADMIN, { title: 'Studio', source: 'browser' });
+  await assert.rejects(() => events.update(event.id, { source: 'external' }), (e) => e.status === 400);
+});

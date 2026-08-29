@@ -48,6 +48,27 @@ export function createLiveSegments({
      * @param {boolean} init true for the header segment, which is kept forever
      */
     async append(eventId, { stream, contentType, contentLength, init = false }) {
+      // Shape of the id first: a traversal attempt must be rejected as
+      // malformed before it is used to look anything up, so the answer cannot
+      // depend on whether the attacker guessed a real event.
+      const dir = eventDir(eventId);
+
+      // Only a browser broadcast that is actually on air takes segments.
+      //
+      // Without this the route wrote video for any event id at all: a studio
+      // whose "go live" had failed kept recording into an event that was still
+      // scheduled, and 8.6MB of a broadcast nobody could watch accumulated on
+      // disk while the operator watched a preview that looked fine. Refusing
+      // here is what turns that silence into an error the studio can show.
+      const event = await store.get('SELECT status, source FROM live_events WHERE id = ?', eventId);
+      if (!event) throw notFound(`No live event "${eventId}".`);
+      if (event.source !== 'browser') {
+        throw conflict('That event is fed by an external encoder, so it does not accept segments from a browser.');
+      }
+      if (event.status !== 'live') {
+        throw conflict(`That event is "${event.status}", not on air. Go live before broadcasting into it.`);
+      }
+
       const mime = String(contentType || '').split(';')[0].trim().toLowerCase();
       if (!SEGMENT_MIMES.includes(mime)) {
         throw badRequest(`Unsupported segment type "${contentType}".`, { allowed: SEGMENT_MIMES });
@@ -56,7 +77,6 @@ export function createLiveSegments({
         throw badRequest(`Segment exceeds ${maxSegmentBytes} bytes.`);
       }
 
-      const dir = eventDir(eventId);
       mkdirSync(dir, { recursive: true });
 
       const last = await store.get('SELECT MAX(seq) AS seq FROM live_segments WHERE event_id = ?', eventId);

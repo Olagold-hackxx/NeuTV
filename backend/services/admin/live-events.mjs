@@ -136,6 +136,7 @@ export function createLiveEvents({ runtime, store, catalog, ingest, events }) {
         title: { type: 'string', required: false, min: 2, max: 160 },
         description: { type: 'string', required: false, max: 2_000 },
         productId: { type: 'string', required: false, max: 40 },
+        source: { type: 'string', required: false, enum: ['external', 'browser'] },
         playbackUrl: { type: 'string', required: false, max: 600 },
         posterUrl: { type: 'string', required: false, max: 600 },
         scheduledFor: { type: 'int', required: false, min: 0 },
@@ -143,14 +144,34 @@ export function createLiveEvents({ runtime, store, catalog, ingest, events }) {
       if (v.productId && !knownProduct(v.productId)) throw badRequest(`"${v.productId}" is not an ecosystem product.`);
       const playback = v.playbackUrl ? validatePlayback(v.playbackUrl) : null;
 
+      // How an event is fed is editable, and it has to be.
+      //
+      // An event scheduled as "external" with no playback URL could not start -
+      // start() refuses it - and could not be converted to a browser broadcast
+      // either, because source was fixed at creation. The only way out was to
+      // cancel it and start again, which is not a thing an operator should have
+      // to work out from a 409.
+      const source = v.source ?? row.source ?? 'external';
+      // A browser broadcast is fed by the studio, so it needs no URL. An
+      // external one is nothing without somewhere to point viewers.
+      const nextPlayback = playback ? playback.playbackUrl : row.playback_url;
+      const nextYouTube = playback ? playback.youtubeId : row.youtube_id;
+      if (source === 'external' && !nextPlayback && !nextYouTube) {
+        throw badRequest(
+          'An external event needs a playback URL or a YouTube id. '
+          + 'Switch it to a browser broadcast if you want to stream from the studio instead.',
+        );
+      }
+
       await store.run(
-        `UPDATE live_events SET title=?, description=?, product_id=?, playback_url=?, youtube_id=?,
+        `UPDATE live_events SET title=?, description=?, product_id=?, source=?, playback_url=?, youtube_id=?,
                                 poster_url=?, scheduled_for=?, updated_at=? WHERE id=?`,
         v.title ?? row.title,
         v.description ?? row.description,
         v.productId ?? row.product_id,
-        playback ? playback.playbackUrl : row.playback_url,
-        playback ? playback.youtubeId : row.youtube_id,
+        source,
+        nextPlayback,
+        nextYouTube,
         v.posterUrl ?? row.poster_url,
         v.scheduledFor ?? row.scheduled_for,
         runtime.now(), eventId,

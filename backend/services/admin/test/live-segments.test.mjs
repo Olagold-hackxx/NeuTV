@@ -12,12 +12,23 @@ import { createLiveSegments } from '../live-segments.mjs';
 const EVENT = 'evt_broadcast1';
 const bytes = (n, fill = 7) => Readable.from([Buffer.alloc(n, fill)]);
 
+// Segments are only accepted for a browser event that is on air, so every
+// harness needs a row to broadcast into.
+const putEvent = (store, { id = EVENT, status = 'live', source = 'browser' } = {}) => store.run(
+  `INSERT INTO live_events (id, title, description, product_id, status, source, driver,
+                            stream_key, created_by, created_at, updated_at)
+   VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+  id, 'Broadcast', '', 'worldstreet', status, source, 'manual', 'key', 'admin-1', 0, 0,
+);
+
 const build = async (over = {}) => {
   const root = mkdtempSync(join(tmpdir(), 'neutv-segments-'));
+  const store = await testStore(openAdminStore);
+  await putEvent(store);
   const segments = createLiveSegments({
-    runtime: fakeRuntime(), store: await testStore(openAdminStore), root, ...over,
+    runtime: fakeRuntime(), store, root, ...over,
   });
-  return { segments, root };
+  return { segments, root, store };
 };
 
 test('the first chunk is the init segment and gets sequence 0', async () => {
@@ -118,7 +129,9 @@ test('an event id cannot escape the segment root', async () => {
 });
 
 test('two broadcasts do not see each other', async () => {
-  const { segments } = await build();
+  const { segments, store } = await build();
+  await putEvent(store, { id: 'evt_a' });
+  await putEvent(store, { id: 'evt_b' });
   await segments.append('evt_a', { stream: bytes(16), contentType: 'video/webm', init: true });
   await segments.append('evt_b', { stream: bytes(16), contentType: 'video/webm', init: true });
   await segments.append('evt_a', { stream: bytes(16), contentType: 'video/webm' });
@@ -134,4 +147,35 @@ test('purging a finished broadcast removes the index and the files', async () =>
   assert.equal(res.purged, 2);
   assert.equal((await segments.manifest(EVENT)).segments.length, 0);
   assert.ok(!existsSync(join(root, EVENT)));
+});
+
+
+// --- who may broadcast into an event ---------------------------------------
+
+test('an event that is not on air refuses segments', async () => {
+  const { segments, store } = await build();
+  await store.run("UPDATE live_events SET status = 'scheduled' WHERE id = ?", EVENT);
+  // The studio used to record happily into a scheduled event: megabytes of a
+  // broadcast nobody could watch, and no error anywhere to say so.
+  await assert.rejects(
+    () => segments.append(EVENT, { stream: bytes(512), contentType: 'video/webm', contentLength: 512, init: true }),
+    (e) => e.status === 409,
+  );
+});
+
+test('an externally fed event refuses browser segments', async () => {
+  const { segments, store } = await build();
+  await store.run("UPDATE live_events SET source = 'external' WHERE id = ?", EVENT);
+  await assert.rejects(
+    () => segments.append(EVENT, { stream: bytes(512), contentType: 'video/webm', contentLength: 512, init: true }),
+    (e) => e.status === 409,
+  );
+});
+
+test('an unknown event is a 404, not a new directory on disk', async () => {
+  const { segments } = await build();
+  await assert.rejects(
+    () => segments.append('evt_nosuchthing', { stream: bytes(512), contentType: 'video/webm', contentLength: 512, init: true }),
+    (e) => e.status === 404,
+  );
 });

@@ -1,7 +1,7 @@
 {
   "contractVersion": "1.0.0",
   "source": "committed catalog content (editorial); videos live in the admin store",
-  "checksum": "a594026e97b4b2a6",
+  "checksum": "fb84f5f8c8eaeb2c",
   "content": {
     "AGGREGATED_HASHTAG_POSTS": [
       {
@@ -672,6 +672,13 @@
         "logo": "https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&w=150&q=80",
         "name": "Tsion Cars",
         "officialUrl": "https://www.tsionark.com/tsioncars"
+      },
+      {
+        "badge": "Network",
+        "id": "neutv",
+        "logo": "data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2064%2064%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22g%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%2300F6A7%22%2F%3E%3Cstop%20offset%3D%220.5%22%20stop-color%3D%22%2300C8FF%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%234D6BFF%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%2264%22%20height%3D%2264%22%20rx%3D%2216%22%20fill%3D%22%230B1220%22%2F%3E%3Ctext%20x%3D%2232%22%20y%3D%2243%22%20font-family%3D%22Helvetica%2CArial%2Csans-serif%22%20font-size%3D%2234%22%20font-weight%3D%22900%22%20font-style%3D%22italic%22%20text-anchor%3D%22middle%22%20fill%3D%22url(%23g)%22%3EN%3C%2Ftext%3E%3C%2Fsvg%3E",
+        "name": "NEU TV",
+        "officialUrl": "https://www.tsionark.com"
       }
     ],
     "PRODUCT_COMMUNITY_HUBS": {
@@ -758,6 +765,29 @@
           "Exclusive New Economy deal drops and masterclasses"
         ],
         "tagline": "Onchain peer-to-peer commerce protocol & digital storefronts."
+      },
+      "neutv": {
+        "admins": [
+          {
+            "name": "NEU Media Network"
+          }
+        ],
+        "channels": [
+          {
+            "activeNow": 0,
+            "id": "neutv-c1",
+            "name": "#neutv-live",
+            "topic": "Reactions and discussion for whatever is on the main stage"
+          }
+        ],
+        "name": "NEU TV",
+        "officialUrl": "https://www.tsionark.com",
+        "perks": [
+          "Live reactions and KashCoin gifting on the main broadcast",
+          "Programme announcements as they go on air",
+          "Direct line to the NEU Media Network team"
+        ],
+        "tagline": "The 24/7 linear broadcast at the centre of The New Economy."
       },
       "tsion": {
         "admins": [

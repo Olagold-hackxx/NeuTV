@@ -169,33 +169,91 @@ export function createAdminService({
         title: { type: 'string', required: false, min: 2, max: 160 },
         description: { type: 'string', required: false, max: 2_000 },
         productId: { type: 'string', required: false, max: 40 },
+        kind: { type: 'string', required: false, enum: ['upload', 'external'] },
         status: { type: 'string', required: false, enum: STATUSES },
         sourceUrl: { type: 'string', required: false, max: 600 },
         youtubeId: { type: 'string', required: false, max: 40 },
         posterUrl: { type: 'string', required: false, max: 600 },
+        duration: { type: 'string', required: false, max: 20 },
         durationSeconds: { type: 'int', required: false, min: 0, max: 86_400 },
       });
       if (v.productId && !knownProduct(v.productId)) throw badRequest(`"${v.productId}" is not an ecosystem product.`);
+
+      // A video plays from exactly one place: an uploaded file, an external URL,
+      // or a YouTube id. Editing the source therefore replaces it rather than
+      // adding to it - leaving the old one behind is how a video ends up
+      // playing the URL an operator thought they had just swapped out. The
+      // player prefers a youtubeId over a source URL, so a stale one wins
+      // silently, which is the worst version of that bug.
+      const wantsSourceChange = ['kind', 'sourceUrl', 'youtubeId'].some((k) => k in input);
+      const kind = v.kind ?? row.kind;
+      const source = {
+        file_path: row.file_path,
+        file_size: row.file_size,
+        content_type: row.content_type,
+        source_url: row.source_url,
+        youtube_id: row.youtube_id,
+      };
+      // The file's own columns travel with file_path, so a video that no longer
+      // plays from disk cannot still report a size for it.
+      const dropFile = () => Object.assign(source, { file_path: null, file_size: null, content_type: null });
+
+      if (wantsSourceChange) {
+        if (kind === 'upload') {
+          // Back to a file. The bytes already uploaded, if any, stay the source;
+          // the external addresses stop being how this video is reached.
+          source.source_url = null;
+          source.youtube_id = null;
+        } else if (v.youtubeId) {
+          source.youtube_id = v.youtubeId;
+          source.source_url = null;
+          dropFile();
+        } else if (v.sourceUrl) {
+          source.source_url = v.sourceUrl;
+          source.youtube_id = null;
+          dropFile();
+        } else if (v.kind === 'external') {
+          throw badRequest('An external video needs a sourceUrl or a youtubeId.');
+        }
+      }
+
+      const playable = Boolean(source.file_path || source.source_url || source.youtube_id);
+
+      // Whatever is on air has to keep playing. Switching the main broadcast to
+      // a file that has not been uploaded yet would leave the main page with a
+      // dead player, so it is refused the same way archiving it is.
+      if (!playable) {
+        const current = await store.get('SELECT video_id FROM programme WHERE id = 1');
+        if (current && current.video_id === videoId) {
+          throw conflict('That video is the main broadcast. Set another programme before leaving it with nothing to play.');
+        }
+      }
+
       // Publishing something with nothing to play is the mistake this catches.
-      if (v.status === 'published' && !row.file_path && !row.source_url && !row.youtube_id) {
-        throw conflict('Cannot publish a video with no file and no source URL.');
+      const status = v.status ?? row.status;
+      if (status === 'published' && !playable) {
+        if (v.status === 'published') throw conflict('Cannot publish a video with no file and no source URL.');
+        // Not asked for: the edit itself removed what was playing. Demote rather
+        // than leave a published video that 404s for every viewer.
       }
 
       const next = {
         title: v.title ?? row.title,
         description: v.description ?? row.description,
         product_id: v.productId ?? row.product_id,
-        status: v.status ?? row.status,
-        source_url: v.sourceUrl ?? row.source_url,
-        youtube_id: v.youtubeId ?? row.youtube_id,
+        kind,
+        status: playable ? status : 'draft',
+        duration_secs: v.durationSeconds ?? (v.duration ? parseDuration(v.duration) : row.duration_secs),
         poster_url: v.posterUrl ?? row.poster_url,
-        duration_secs: v.durationSeconds ?? row.duration_secs,
+        ...source,
       };
       await store.run(
-        `UPDATE videos SET title=?, description=?, product_id=?, status=?, source_url=?, youtube_id=?,
-                           poster_url=?, duration_secs=?, updated_at=? WHERE id=?`,
-        next.title, next.description, next.product_id, next.status, next.source_url,
-        next.youtube_id, next.poster_url, next.duration_secs, runtime.now(), videoId,
+        `UPDATE videos SET title=?, description=?, product_id=?, kind=?, status=?, source_url=?, youtube_id=?,
+                           file_path=?, file_size=?, content_type=?, poster_url=?, duration_secs=?,
+                           updated_at=? WHERE id=?`,
+        next.title, next.description, next.product_id, next.kind, next.status, next.source_url,
+        next.youtube_id, next.file_path, next.file_size, next.content_type,
+        next.poster_url, next.duration_secs, runtime.now(), videoId,
       );
       return { video: publicVideo(await getRow(videoId), mediaBase) };
     },

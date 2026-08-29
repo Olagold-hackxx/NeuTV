@@ -184,6 +184,94 @@ test('an external video needs somewhere to play from', async () => {
   );
 });
 
+// --- editing a video that is already live ---------------------------------
+
+test('editing the title leaves the source alone', async () => {
+  const { admin } = await build();
+  const { video } = await external(admin);
+  const res = await admin.updateVideo(video.id, { title: 'Closing Bell' });
+  assert.equal(res.video.title, 'Closing Bell');
+  assert.equal(res.video.playbackUrl, 'https://cdn.neu.tv/bell.mp4');
+  assert.equal(res.video.status, 'ready', 'an unrelated edit does not touch publish state');
+});
+
+test('swapping the URL replaces the source rather than stacking on it', async () => {
+  const { admin } = await build();
+  const { video } = await external(admin, { youtubeId: 'abc123xyz' });
+  assert.equal(video.youtubeId, 'abc123xyz');
+
+  const res = await admin.updateVideo(video.id, { sourceUrl: 'https://cdn.neu.tv/replacement.mp4' });
+  assert.equal(res.video.playbackUrl, 'https://cdn.neu.tv/replacement.mp4');
+  assert.equal(res.video.youtubeId, null, 'the old YouTube id would otherwise keep winning in the player');
+});
+
+test('a published video can switch to a YouTube id and stays published', async () => {
+  const { admin } = await build();
+  const { video } = await external(admin);
+  await admin.updateVideo(video.id, { status: 'published' });
+
+  const res = await admin.updateVideo(video.id, { youtubeId: 'SqBx7QADBes' });
+  assert.equal(res.video.youtubeId, 'SqBx7QADBes');
+  assert.equal(res.video.playbackUrl, null, 'a YouTube video has no direct URL');
+  assert.equal(res.video.status, 'published');
+});
+
+test('switching an external video to an uploaded file makes it await bytes', async () => {
+  const { admin } = await build();
+  const { video } = await external(admin);
+  await admin.updateVideo(video.id, { status: 'published' });
+
+  const res = await admin.updateVideo(video.id, { kind: 'upload' });
+  assert.equal(res.video.kind, 'upload');
+  assert.equal(res.video.hasFile, false);
+  assert.equal(res.video.playbackUrl, null, 'the external URL is no longer how it is reached');
+  assert.equal(res.video.status, 'draft', 'nothing to play, so it cannot stay published');
+});
+
+test('a video switched to upload plays from the file once it lands', async () => {
+  const { admin } = await build();
+  const { video } = await external(admin);
+  await admin.updateVideo(video.id, { kind: 'upload' });
+
+  const res = await admin.uploadFile(video.id, { stream: Readable.from(['bytes']), contentType: 'video/mp4' });
+  assert.equal(res.video.hasFile, true);
+  assert.equal(res.video.status, 'ready');
+  assert.match(res.video.playbackUrl, /\/media\//);
+});
+
+test('an uploaded video switched to an external URL stops reporting a file', async () => {
+  const { admin } = await build();
+  const { video } = await admin.createVideo(ADMIN, { title: 'Studio Session', kind: 'upload' });
+  await admin.uploadFile(video.id, { stream: Readable.from(['bytes']), contentType: 'video/mp4' });
+
+  const res = await admin.updateVideo(video.id, { kind: 'external', sourceUrl: 'https://cdn.neu.tv/studio.mp4' });
+  assert.equal(res.video.kind, 'external');
+  assert.equal(res.video.hasFile, false);
+  assert.equal(res.video.fileSize, null, 'a size for a file it no longer plays would be a lie');
+  assert.equal(res.video.playbackUrl, 'https://cdn.neu.tv/studio.mp4');
+});
+
+test('going external with nowhere to play is refused', async () => {
+  const { admin } = await build();
+  const { video } = await admin.createVideo(ADMIN, { title: 'Studio Session', kind: 'upload' });
+  await assert.rejects(() => admin.updateVideo(video.id, { kind: 'external' }), (e) => e.status === 400);
+});
+
+test('the video on air cannot be edited into having nothing to play', async () => {
+  const { admin } = await build();
+  const { video } = await external(admin);
+  await admin.setProgramme(ADMIN, { videoId: video.id });
+  await assert.rejects(() => admin.updateVideo(video.id, { kind: 'upload' }), (e) => e.status === 409);
+  assert.equal((await admin.currentProgramme()).video.playbackUrl, 'https://cdn.neu.tv/bell.mp4');
+});
+
+test('a length can be edited as a display string, the way it is entered', async () => {
+  const { admin } = await build();
+  const { video } = await external(admin);
+  const res = await admin.updateVideo(video.id, { duration: '1:02:33' });
+  assert.equal(res.video.durationSeconds, 3753);
+});
+
 test('an unknown video is a 404 on every path that touches it', async () => {
   const { admin } = await build();
   await assert.rejects(() => admin.getVideo('vid_nope'), (e) => e.status === 404);

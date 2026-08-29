@@ -16,7 +16,7 @@ test('bootstrap carries every key the frontend reads from window.CentralData', (
     'HASHTAG_FEEDS', 'AGGREGATED_HASHTAG_POSTS', 'SAMPLE_LIVE_COMMENTS', 'TRENDING_TOPICS']) {
     assert.ok(data[key], `bootstrap is missing ${key}`);
   }
-  assert.equal(data.PRODUCTS.length, 5, 'the five ecosystem products');
+  assert.equal(data.PRODUCTS.length, 6, 'the five ecosystem products plus the network itself');
 });
 
 test('bootstrap reports the API contract version, not the seed version', () => {
@@ -26,8 +26,11 @@ test('bootstrap reports the API contract version, not the seed version', () => {
   assert.ok(data.checksum, 'and its checksum, so content drift is visible');
 });
 
-test('the five product ids are exactly the ecosystem the PRD names', () => {
-  assert.deepEqual(build().productIds().sort(), ['ark', 'linkpay', 'market', 'tsioncars', 'worldstreet']);
+test('the product ids are the ecosystem the PRD names, plus the network', () => {
+  // "neutv" is not one of the five ecosystem products: it is NEU TV itself, so
+  // a video made by the network has somewhere to belong instead of being filed
+  // under whichever product happens to be first in the list.
+  assert.deepEqual(build().productIds().sort(), ['ark', 'linkpay', 'market', 'neutv', 'tsioncars', 'worldstreet']);
 });
 
 test('logo paths point at real brand assets, not placeholders', () => {
