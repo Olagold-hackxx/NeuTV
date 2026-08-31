@@ -51,11 +51,21 @@ case (`AS ruleIds` comes back as `ruleids`) - bugs SQLite is happy to hide.
 
 ## Video storage
 
+Three drivers, one interface. Pick one; they are not layered and none of them
+is a prerequisite for another.
+
 ```bash
 NEUTV_MEDIA_DRIVER=local                    # default: disk, served at /media
+NEUTV_MEDIA_DRIVER=cloudinary               # Cloudinary, which transcodes too
 NEUTV_MEDIA_DRIVER=s3                       # any S3-compatible bucket
 NEUTV_MEDIA_BASE_URL=https://cdn.neu.tv     # serve playback from the edge
 ```
+
+The Cloudinary driver uploads with one signed multipart POST, signed with a sha1
+over the sorted parameters. The API secret is never transmitted, only the digest.
+It records the `public_id` and format Cloudinary reports rather than what was
+sent, because Cloudinary transcodes and its numbers are the ones that describe
+the file people will actually fetch.
 
 The S3 driver speaks the S3 REST API directly, signing with SigV4 built from
 `node:crypto`. It works against Cloudflare R2, AWS S3, Backblaze B2, DigitalOcean

@@ -1,7 +1,8 @@
 // Media storage selection.
 //
-//   NEUTV_MEDIA_DRIVER=local   files on disk, served by the gateway at /media
-//   NEUTV_MEDIA_DRIVER=s3      any S3-compatible bucket, served by a CDN
+//   NEUTV_MEDIA_DRIVER=local       files on disk, served by the gateway at /media
+//   NEUTV_MEDIA_DRIVER=s3          any S3-compatible bucket, served by a CDN
+//   NEUTV_MEDIA_DRIVER=cloudinary  Cloudinary, which transcodes as well as stores
 //
 // Local is the default so a checkout works with no accounts and no credentials.
 // Switching to a CDN is configuration, not a code change: the admin service
@@ -9,12 +10,27 @@
 
 import { createStorage } from './local.mjs';
 import { createS3Storage } from './s3.mjs';
+import { createCloudinaryStorage } from './cloudinary.mjs';
 
-export { createStorage, createS3Storage };
+export { createStorage, createS3Storage, createCloudinaryStorage };
 export { ALLOWED_TYPES, DEFAULT_MAX_BYTES } from './local.mjs';
 
 export function createMediaStorage(env = process.env, { uploadsRoot } = {}) {
   const driver = (env.NEUTV_MEDIA_DRIVER || 'local').toLowerCase();
+
+  if (driver === 'cloudinary') {
+    const missing = ['NEUTV_CLOUDINARY_CLOUD_NAME', 'NEUTV_CLOUDINARY_API_KEY', 'NEUTV_CLOUDINARY_API_SECRET']
+      .filter((key) => !env[key]);
+    if (missing.length) {
+      throw new Error(`NEUTV_MEDIA_DRIVER=cloudinary needs: ${missing.join(', ')}`);
+    }
+    return createCloudinaryStorage({
+      cloudName: env.NEUTV_CLOUDINARY_CLOUD_NAME,
+      apiKey: env.NEUTV_CLOUDINARY_API_KEY,
+      apiSecret: env.NEUTV_CLOUDINARY_API_SECRET,
+      folder: env.NEUTV_CLOUDINARY_FOLDER || 'videos',
+    });
+  }
 
   if (driver === 's3') {
     const missing = ['NEUTV_S3_ENDPOINT', 'NEUTV_S3_BUCKET', 'NEUTV_S3_ACCESS_KEY_ID', 'NEUTV_S3_SECRET_ACCESS_KEY']

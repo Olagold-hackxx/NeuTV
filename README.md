@@ -29,7 +29,8 @@ permissive CORS and why the client takes an API base URL.
 Railway, Fly, Render, a container. It must stay a process, not a function: the
 live event stream is a held-open SSE connection, and broadcasting from the admin
 studio writes segments to local disk. Needs `DATABASE_URL` (Postgres) and, for
-uploaded video that outlives one host, `NEUTV_MEDIA_DRIVER=s3`.
+uploaded video that outlives one host, a media driver that is not `local` -
+`cloudinary` or `s3`, whichever you already pay for.
 
 **Viewer app** (`frontend/`) — a Vercel static project. Root `vercel.json`
 already points at it: it builds Tailwind and generates `src/config.js` from

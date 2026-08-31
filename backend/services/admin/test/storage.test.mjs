@@ -1,6 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { Readable } from 'node:stream';
+import { createHash } from 'node:crypto';
 import { createS3Storage } from '../storage/s3.mjs';
+import { createCloudinaryStorage, signParams } from '../storage/cloudinary.mjs';
 import { createMediaStorage, mediaBaseFor } from '../storage/index.mjs';
 
 const s3For = (capture, over = {}) => createS3Storage({
@@ -81,4 +84,87 @@ test('selecting s3 without credentials fails loudly at boot, not at upload', () 
 
 test('a CDN hostname replaces the gateway media route', () => {
   assert.equal(mediaBaseFor({ NEUTV_MEDIA_BASE_URL: 'https://cdn.neu.tv/' }), 'https://cdn.neu.tv');
+});
+
+// --- Cloudinary -------------------------------------------------------------
+
+const cloudinaryFetch = (capture, reply) => async (url, init) => {
+  capture.url = String(url);
+  capture.init = init;
+  // Drain the streamed multipart body so the test sees what was really sent.
+  const chunks = [];
+  if (init?.body) for await (const c of init.body) chunks.push(Buffer.from(c));
+  capture.body = Buffer.concat(chunks);
+  return reply ?? {
+    ok: true, status: 200,
+    text: async () => JSON.stringify({ public_id: 'videos/vid_x', format: 'mp4', bytes: 2048 }),
+  };
+};
+
+test('a Cloudinary upload is signed and streamed as multipart', async () => {
+  const capture = {};
+  const storage = createCloudinaryStorage({
+    cloudName: 'neutv', apiKey: 'key-1', apiSecret: 'secret-1',
+    fetchImpl: cloudinaryFetch(capture), now: () => 1700000000, boundary: () => 'BOUND',
+  });
+  const res = await storage.save('vid_x', 'video/mp4', Readable.from([Buffer.alloc(2048, 3)]), { declaredLength: 2048 });
+
+  assert.equal(capture.url, 'https://api.cloudinary.com/v1_1/neutv/video/upload');
+  assert.match(capture.init.headers['content-type'], /^multipart\/form-data; boundary=BOUND$/);
+
+  const body = capture.body.toString('latin1');
+  assert.match(body, /name="public_id"\r\n\r\nvideos\/vid_x/);
+  assert.match(body, /name="signature"/);
+  assert.ok(!body.includes('secret-1'), 'the API secret is never transmitted, only the digest');
+  assert.equal(capture.body.length, Number(capture.init.headers['content-length']),
+    'the declared length has to match the bytes actually sent, or the upload hangs');
+
+  // What Cloudinary reports is what gets recorded, because it transcodes.
+  assert.deepEqual(res, { path: 'videos/vid_x.mp4', size: 2048, contentType: 'video/mp4', ext: 'mp4' });
+});
+
+test('the Cloudinary signature covers the parameters and excludes the file', () => {
+  // sorted "k=v" pairs, joined by &, secret appended, sha1 - computed here
+  // independently of the implementation.
+  const expected = createHash('sha1').update('public_id=sample&timestamp=1315060510' + 'abcd').digest('hex');
+  assert.equal(signParams({ timestamp: '1315060510', public_id: 'sample' }, 'abcd'), expected);
+
+  // api_key, file and resource_type are sent but must not change the digest.
+  assert.equal(
+    signParams({ public_id: 'a', timestamp: '1', api_key: 'k', file: 'f', resource_type: 'video' }, 's'),
+    signParams({ public_id: 'a', timestamp: '1' }, 's'),
+  );
+  // A different secret must produce a different signature.
+  assert.notEqual(signParams({ public_id: 'a', timestamp: '1' }, 's'), signParams({ public_id: 'a', timestamp: '1' }, 't'));
+});
+
+test('Cloudinary needs a length, and honours the type allowlist and size cap', async () => {
+  const storage = createCloudinaryStorage({
+    cloudName: 'neutv', apiKey: 'k', apiSecret: 's', maxBytes: 1024, fetchImpl: cloudinaryFetch({}),
+  });
+  const body = () => Readable.from([Buffer.alloc(8)]);
+  await assert.rejects(() => storage.save('vid_x', 'video/mp4', body(), {}), (e) => e.status === 400);
+  await assert.rejects(() => storage.save('vid_x', 'text/plain', body(), { declaredLength: 8 }), (e) => e.status === 400);
+  await assert.rejects(() => storage.save('vid_x', 'video/mp4', body(), { declaredLength: 99999 }), (e) => e.status === 400);
+  await assert.rejects(() => storage.save('../escape', 'video/mp4', body(), { declaredLength: 8 }), (e) => e.status === 400);
+});
+
+test('a Cloudinary refusal surfaces as unavailable, not as a successful upload', async () => {
+  const storage = createCloudinaryStorage({
+    cloudName: 'neutv', apiKey: 'k', apiSecret: 's',
+    fetchImpl: cloudinaryFetch({}, { ok: false, status: 401, text: async () => 'Invalid Signature' }),
+  });
+  await assert.rejects(
+    () => storage.save('vid_x', 'video/mp4', Readable.from([Buffer.alloc(8)]), { declaredLength: 8 }),
+    (e) => e.status === 503 && /Cloudinary refused/.test(e.message),
+  );
+});
+
+test('selecting cloudinary without credentials fails loudly at boot', () => {
+  assert.throws(() => createMediaStorage({ NEUTV_MEDIA_DRIVER: 'cloudinary' }), /needs: NEUTV_CLOUDINARY_CLOUD_NAME/);
+  const ok = createMediaStorage({
+    NEUTV_MEDIA_DRIVER: 'cloudinary',
+    NEUTV_CLOUDINARY_CLOUD_NAME: 'neutv', NEUTV_CLOUDINARY_API_KEY: 'k', NEUTV_CLOUDINARY_API_SECRET: 's',
+  });
+  assert.equal(ok.driver, 'cloudinary');
 });
