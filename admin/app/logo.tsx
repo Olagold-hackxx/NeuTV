@@ -1,36 +1,45 @@
 import Image from 'next/image';
 
 /**
- * The NEU TV mark: three cube tiles spelling N-E-U, then TV.
+ * The NEU TV mark: the supplied brand banner, used whole.
  *
- * The same lockup the viewer app uses. The back office is a different surface,
- * not a different product, and it was drawing gradient type where the brand has
- * actual letterforms.
+ * Same lockup as the viewer app. The back office is a different surface, not a
+ *
+ * The file used is neu-brand-banner-alpha.png, derived from the supplied
+ * neu-brand-banner.png. The original is 100% opaque with a black field baked
+ * in, which would show as a black rectangle against the #0B1220 surface. The
+ * derived version thresholds that field to transparency and leaves the artwork
+ * at full strength. The original is kept in frontend/assets/logos untouched.
+ *
+ * `compact` falls back to the N tile for places too narrow
+ * for the tagline to be legible.
  */
 
-const CUBES = [
-  { src: '/logos/neu-cube-n.png', letter: 'N' },
-  { src: '/logos/neu-cube-e.png', letter: 'E' },
-  { src: '/logos/neu-cube-u.png', letter: 'U' },
-];
+const RATIO = 410 / 180;
 
-export function Logo({ size = 24, showTv = true }: { size?: number; showTv?: boolean }) {
+export function Logo({ width = 150, compact = false }: { width?: number; compact?: boolean }) {
+  if (compact) {
+    return (
+      <Image
+        src="/logos/neu-cube-n.png"
+        alt="NEU TV"
+        width={28}
+        height={28}
+        priority
+        style={{ width: 28, height: 28, display: 'block', borderRadius: 5 }}
+      />
+    );
+  }
+
+  const height = Math.round(width / RATIO);
   return (
-    // Labelled once for the whole lockup, so a screen reader says "NEU TV"
-    // instead of spelling out three images.
-    <span className="row" role="img" aria-label="NEU TV" style={{ gap: 3 }}>
-      {CUBES.map((cube) => (
-        <Image
-          key={cube.letter}
-          src={cube.src}
-          alt=""
-          width={size}
-          height={size}
-          priority
-          style={{ width: size, height: size, display: 'block', borderRadius: 4 }}
-        />
-      ))}
-      {showTv ? <span className="brand-tv" style={{ marginLeft: 4 }}>TV</span> : null}
-    </span>
+    <Image
+      src="/logos/neu-brand-banner-alpha.png"
+      alt="NEU TV"
+      width={width}
+      height={height}
+      priority
+      style={{ width, height, display: 'block' }}
+    />
   );
 }

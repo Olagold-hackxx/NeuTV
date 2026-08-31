@@ -61,9 +61,9 @@ function RailBody({
     <div className="flex h-full flex-col gap-5 p-3">
       <div className={`flex items-center ${showLabels ? 'justify-between pl-2' : 'justify-center'}`}>
         {showLabels ? (
-          <Logo size="md" priority />
+          <Logo width={148} priority />
         ) : null}
-        {!showLabels ? <Logo size="sm" showTv={false} priority /> : null}
+        {!showLabels ? <Logo compact priority /> : null}
         {!inDrawer ? (
           <button
             type="button"

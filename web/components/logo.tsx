@@ -3,71 +3,65 @@ import Image from 'next/image';
 /**
  * The NEU TV mark.
  *
- * Three cube tiles spelling N-E-U, followed by TV. These are the brand's actual
- * letterforms — the mark the original app booted with — not type styled to look
- * like them. They were sitting unused in public/logos while the app drew
- * gradient text instead.
+ * neu-brand-banner.png is the finished lockup: the N-E-U cube tiles over the
+ * "NEW ECONOMY UNVEIL NETWORK" bar. It is used whole rather than rebuilt from
+ * the individual tiles, because a supplied lockup already has its spacing and
+ * proportions decided and re-typesetting it is how brands drift.
  *
- * The tiles are ~128px square PNGs, so they are requested at 2x the rendered
- * box and rely on Next's optimiser to serve the right size. `priority` on the
- * header instance keeps the mark from popping in after first paint.
+ *
+ * The file used is neu-brand-banner-alpha.png, derived from the supplied
+ * neu-brand-banner.png. The original is 100% opaque with a black field baked
+ * in, which would show as a black rectangle against the #0B1220 surface. The
+ * derived version thresholds that field to transparency and leaves the artwork
+ * at full strength. The original is kept in frontend/assets/logos untouched.
+ *
+ * Two sizes, and only two, because the banner carries a tagline that stops
+ * being legible below roughly 110px wide:
+ *
+ *   full     the banner, wherever there is horizontal room
+ *   compact  the N tile alone, for the 72px collapsed rail and anywhere the
+ *            banner would be too small to read
  */
 
-const CUBES = [
-  { src: '/logos/neu-cube-n.png', letter: 'N' },
-  { src: '/logos/neu-cube-e.png', letter: 'E' },
-  { src: '/logos/neu-cube-u.png', letter: 'U' },
-];
-
-type Size = 'sm' | 'md' | 'lg';
-
-const BOX: Record<Size, number> = { sm: 20, md: 26, lg: 34 };
-const TV: Record<Size, string> = {
-  sm: 'text-[10px] ml-1.5',
-  md: 'text-xs ml-2',
-  lg: 'text-sm ml-2.5',
-};
+const BANNER = { src: '/logos/neu-brand-banner-alpha.png', width: 410, height: 180 };
+const RATIO = BANNER.width / BANNER.height; // 2.28
 
 export function Logo({
-  size = 'md',
-  showTv = true,
+  width = 150,
+  compact = false,
   priority = false,
   className = '',
 }: {
-  size?: Size;
-  showTv?: boolean;
+  width?: number;
+  compact?: boolean;
   priority?: boolean;
   className?: string;
 }) {
-  const box = BOX[size];
+  if (compact) {
+    return (
+      <Image
+        src="/logos/neu-cube-n.png"
+        alt="NEU TV"
+        width={28}
+        height={28}
+        priority={priority}
+        className={`block rounded-[5px] ${className}`}
+        style={{ width: 28, height: 28 }}
+      />
+    );
+  }
+
+  const height = Math.round(width / RATIO);
 
   return (
-    // One accessible name for the whole lockup. The tiles themselves are
-    // decorative once the group is labelled, so a screen reader says "NEU TV"
-    // rather than spelling it out letter by letter.
-    <span className={`inline-flex items-center ${className}`} role="img" aria-label="NEU TV">
-      <span className="flex items-center gap-[3px]" aria-hidden>
-        {CUBES.map((cube) => (
-          <Image
-            key={cube.letter}
-            src={cube.src}
-            alt=""
-            width={box}
-            height={box}
-            priority={priority}
-            className="block rounded-[4px]"
-            style={{ width: box, height: box }}
-          />
-        ))}
-      </span>
-      {showTv ? (
-        <span
-          className={`font-extrabold uppercase tracking-[0.18em] text-sky ${TV[size]}`}
-          aria-hidden
-        >
-          TV
-        </span>
-      ) : null}
-    </span>
+    <Image
+      src={BANNER.src}
+      alt="NEU TV"
+      width={width}
+      height={height}
+      priority={priority}
+      className={`block ${className}`}
+      style={{ width, height }}
+    />
   );
 }
