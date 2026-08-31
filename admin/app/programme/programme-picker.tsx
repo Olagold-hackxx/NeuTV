@@ -39,7 +39,7 @@ export function ProgrammePicker({ videos, currentId }: { videos: Video[]; curren
         <select id="video" value={selected} onChange={(e) => setSelected(e.target.value)} disabled={pending}>
           {videos.map((v) => (
             <option key={v.id} value={v.id}>
-              {v.title} — {v.productId} · {duration(v.durationSeconds)}
+              {v.title} ({v.productId}, {duration(v.durationSeconds)})
               {v.id === currentId ? ' (on air)' : ''}
             </option>
           ))}
@@ -56,7 +56,7 @@ export function ProgrammePicker({ videos, currentId }: { videos: Video[]; curren
       </div>
 
       <button
-        type="button" className="btn btn-primary" style={{ width: '100%' }}
+        type="button" className="btn btn-primary btn-block"
         disabled={pending || selected === currentId}
         onClick={submit}
       >

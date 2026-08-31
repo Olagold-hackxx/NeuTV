@@ -17,7 +17,7 @@ export default async function ViewersPage() {
             wallet opens at zero — there is no sign-up bonus anywhere in the system.
           </p>
         </div>
-        <div className="mono">{viewers.length} accounts · {spenders} have spent</div>
+        <div className="mono">{viewers.length} accounts, {spenders} have spent</div>
       </div>
 
       <div className="panel">
@@ -28,8 +28,8 @@ export default async function ViewersPage() {
             <thead>
               <tr>
                 <th>Account</th><th>Product</th><th>Role</th><th>Sign-in</th>
-                <th style={{ textAlign: 'right' }}>Coins spent</th>
-                <th style={{ textAlign: 'right' }}>Gifts</th>
+                <th className="num-col">Coins spent</th>
+                <th className="num-col">Gifts</th>
                 <th>Joined</th>
               </tr>
             </thead>
@@ -59,8 +59,8 @@ export default async function ViewersPage() {
                       </span>
                     ) : null}
                   </td>
-                  <td className="num" style={{ textAlign: 'right' }}>{coins(v.coinsSpent)}</td>
-                  <td className="num" style={{ textAlign: 'right' }}>{v.gifts || '—'}</td>
+                  <td className="num num-col">{coins(v.coinsSpent)}</td>
+                  <td className="num num-col">{v.gifts || '—'}</td>
                   <td className="mono">{timestamp(v.createdAt)}</td>
                 </tr>
               ))}

@@ -11,8 +11,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { Video } from '@/lib/types';
-
-const ACCEPT = 'video/mp4,video/webm,video/quicktime,video/x-matroska';
+import { FileDrop } from '../file-drop';
 
 export function UploadField({ video }: { video: Video }) {
   const router = useRouter();
@@ -58,15 +57,16 @@ export function UploadField({ video }: { video: Video }) {
 
       <div className="field">
         <label htmlFor="file">{video.hasFile ? 'Replace the file' : 'Upload the file'}</label>
-        <input
-          id="file" type="file" accept={ACCEPT} disabled={progress !== null}
-          onChange={(e) => { const f = e.target.files?.[0]; if (f) upload(f); }}
+        <FileDrop
+          disabled={progress !== null}
+          prompt={video.hasFile ? 'Drop the replacement here' : 'Drop the video here'}
+          onFile={(f) => { if (f) upload(f); }}
         />
-        <p className="hint">MP4, WebM, MOV or MKV. Streams straight through to storage, so large files are fine.</p>
+        <p className="hint">The upload starts as soon as a file lands. It streams straight through to storage, so large files are fine.</p>
         {progress !== null ? (
           <div style={{ marginTop: 10 }}>
             <div className="bar"><span style={{ width: `${Math.round(progress * 100)}%` }} /></div>
-            <p className="hint">{Math.round(progress * 100)}% uploaded — leave this tab open.</p>
+            <p className="hint num">{Math.round(progress * 100)}% uploaded. Leave this tab open.</p>
           </div>
         ) : null}
       </div>

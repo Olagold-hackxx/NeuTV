@@ -16,6 +16,9 @@
     "admin": "npm run dev --prefix admin",
     "admin:build": "npm run build --prefix admin",
     "admin:start": "npm start --prefix admin",
+    "web": "npm run dev --prefix web",
+    "web:build": "npm run build --prefix web",
+    "web:start": "npm start --prefix web",
     "admin:create": "npm run admin:create --prefix backend --"
   }
 }

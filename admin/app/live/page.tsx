@@ -25,7 +25,7 @@ export default async function LivePage() {
         </div>
       </div>
 
-      <div className={`panel ${onAir ? 'onair' : 'onair-empty'}`} style={{ marginBottom: 20 }}>
+      <div className={`panel ${onAir ? 'onair-live' : 'onair-empty'}`} style={{ marginBottom: 20 }}>
         <div className="panel-body">
           <div className="row" style={{ marginBottom: 8 }}>
             {onAir ? <span className="live-dot" /> : null}
@@ -33,21 +33,21 @@ export default async function LivePage() {
           </div>
           {onAir ? (
             <>
-              <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: '-0.02em' }}>{onAir.title}</div>
+              <div className="headline">{onAir.title}</div>
               <div className="stat-note">
-                {onAir.productId} · started {timestamp(onAir.startedAt)} · peak {onAir.peakViewers} viewers
+                {onAir.productId}, started {timestamp(onAir.startedAt)}, peak {onAir.peakViewers} viewers
               </div>
             </>
           ) : (
             <div className="stat-note" style={{ maxWidth: '66ch' }}>
               No broadcast is running, so the stage is showing the programmed video.
-              Schedule an event below, point your encoder at it, and go on air.
+              Schedule an event, point your encoder at it, and go on air.
             </div>
           )}
         </div>
       </div>
 
-      <div className="grid grid-2" style={{ gridTemplateColumns: '1.5fr 1fr', alignItems: 'start' }}>
+      <div className="grid grid-split" style={{ alignItems: 'start' }}>
         <div className="stack" style={{ gap: 16 }}>
           {/* The studio broadcasts whatever is on air, or the next scheduled
               event if nothing is. */}
@@ -72,7 +72,7 @@ export default async function LivePage() {
             <div className="panel">
               <div className="panel-head"><h2>Past broadcasts</h2></div>
               <table>
-                <thead><tr><th>Event</th><th>Status</th><th>Started</th><th>Ended</th><th style={{ textAlign: 'right' }}>Peak</th></tr></thead>
+                <thead><tr><th>Event</th><th>Status</th><th>Started</th><th>Ended</th><th className="num-col">Peak</th></tr></thead>
                 <tbody>
                   {past.map((event) => (
                     <tr key={event.id}>
@@ -80,7 +80,7 @@ export default async function LivePage() {
                       <td><span className={`pill pill-${event.status === 'ended' ? 'archived' : 'draft'}`}>{event.status}</span></td>
                       <td className="mono">{timestamp(event.startedAt)}</td>
                       <td className="mono">{timestamp(event.endedAt)}</td>
-                      <td className="num" style={{ textAlign: 'right' }}>{event.peakViewers || '—'}</td>
+                      <td className="num num-col">{event.peakViewers || '—'}</td>
                     </tr>
                   ))}
                 </tbody>

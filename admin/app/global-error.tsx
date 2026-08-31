@@ -10,7 +10,7 @@ export default function GlobalError({ error, reset }: { error: Error & { digest?
     <html lang="en">
       <body style={{
         margin: 0, minHeight: '100vh', display: 'grid', placeItems: 'center',
-        background: '#060A12', color: '#f5f5f7',
+        background: '#060a12', color: '#edf1f7',
         fontFamily: '-apple-system, BlinkMacSystemFont, system-ui, sans-serif',
       }}>
         <div style={{ textAlign: 'center', padding: 32, maxWidth: 460 }}>
@@ -22,8 +22,8 @@ export default function GlobalError({ error, reset }: { error: Error & { digest?
             type="button"
             onClick={() => { reset(); window.location.reload(); }}
             style={{
-              padding: '10px 18px', borderRadius: 999, border: 'none', cursor: 'pointer',
-              background: 'linear-gradient(135deg,#00F6A7,#00C8FF)', color: '#04121a',
+              padding: '10px 18px', borderRadius: 8, border: 'none', cursor: 'pointer',
+              background: '#00f6a7', color: '#04211a',
               fontWeight: 800, fontSize: 13,
             }}
           >

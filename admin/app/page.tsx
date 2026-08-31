@@ -36,16 +36,13 @@ export default async function Dashboard() {
       <div className={`panel ${onAir ? 'onair' : 'onair-empty'}`} style={{ marginBottom: 20 }}>
         <div className="panel-body spread">
           <div>
-            <div className="row" style={{ marginBottom: 8 }}>
-              {onAir ? <span className="live-dot" /> : null}
-              <span className="stat-label">{onAir ? 'On air — main broadcast' : 'No main broadcast set'}</span>
-            </div>
+            <span className="stat-label">{onAir ? 'Main broadcast' : 'No main broadcast set'}</span>
             {onAir ? (
               <>
-                <div style={{ fontSize: 21, fontWeight: 800, letterSpacing: '-0.02em' }}>{onAir.title}</div>
+                <div className="headline">{onAir.title}</div>
                 <div className="stat-note">
-                  {onAir.productId} · set {timestamp(data.programme.programme?.setAt)}
-                  {data.programme.programme?.note ? ` · ${data.programme.programme.note}` : ''}
+                  {onAir.productId}, set {timestamp(data.programme.programme?.setAt)}
+                  {data.programme.programme?.note ? `. ${data.programme.programme.note}` : ''}
                 </div>
               </>
             ) : (
@@ -66,7 +63,7 @@ export default async function Dashboard() {
         <Stat
           label="Library"
           value={data.library.total}
-          note={`${data.library.published} published · ${data.library.drafts} draft · ${data.library.archived} archived`}
+          note={`${data.library.published} published, ${data.library.drafts} draft, ${data.library.archived} archived`}
         />
         <Stat
           label="Stored video"
@@ -76,7 +73,7 @@ export default async function Dashboard() {
         <Stat
           label="Viewers"
           value={data.viewers?.total ?? '—'}
-          note={data.viewers ? `${data.viewers.newLast7d} new this week · ${data.viewers.activeSessions} active sessions` : 'not reporting'}
+          note={data.viewers ? `${data.viewers.newLast7d} new this week, ${data.viewers.activeSessions} active sessions` : 'not reporting'}
         />
         <Stat
           label="KashCoin spent"
@@ -90,10 +87,10 @@ export default async function Dashboard() {
           <div className="panel-head"><h2>Moderation</h2><Link href="/moderation" className="btn btn-sm">Queue</Link></div>
           <div className="panel-body">
             {data.moderation ? (
-              <div className="stack" style={{ gap: 9 }}>
+              <div className="stack-loose">
                 <div className="spread"><span className="stat-note">Allowed</span><span className="num">{data.moderation.allow}</span></div>
-                <div className="spread"><span className="stat-note">Flagged for review</span><span className="num" style={{ color: 'var(--amber)' }}>{data.moderation.flag}</span></div>
-                <div className="spread"><span className="stat-note">Blocked</span><span className="num" style={{ color: 'var(--live)' }}>{data.moderation.block}</span></div>
+                <div className="spread"><span className="stat-note">Flagged for review</span><span className="num text-amber">{data.moderation.flag}</span></div>
+                <div className="spread"><span className="stat-note">Blocked</span><span className="num text-danger">{data.moderation.block}</span></div>
                 <div className="mono" style={{ marginTop: 4 }}>ruleset {data.moderation.rulesetVersion}</div>
               </div>
             ) : <div className="empty">Not reporting.</div>}
@@ -104,12 +101,12 @@ export default async function Dashboard() {
           <div className="panel-head"><h2>Feed</h2></div>
           <div className="panel-body">
             {data.engagement ? (
-              <div className="stack" style={{ gap: 9 }}>
+              <div className="stack-loose">
                 <div className="spread"><span className="stat-note">Posts</span><span className="num">{data.engagement.posts}</span></div>
                 <div className="spread"><span className="stat-note">Comments</span><span className="num">{data.engagement.comments}</span></div>
                 <div className="spread"><span className="stat-note">Upvotes</span><span className="num">{data.engagement.upvotes}</span></div>
                 {data.engagement.flagged > 0 ? (
-                  <div className="spread"><span className="stat-note">Flagged posts</span><span className="num" style={{ color: 'var(--amber)' }}>{data.engagement.flagged}</span></div>
+                  <div className="spread"><span className="stat-note">Flagged posts</span><span className="num text-amber">{data.engagement.flagged}</span></div>
                 ) : null}
               </div>
             ) : <div className="empty">Not reporting.</div>}
@@ -120,7 +117,7 @@ export default async function Dashboard() {
           <div className="panel-head"><h2>Treasury</h2></div>
           <div className="panel-body">
             {data.spend ? (
-              <div className="stack" style={{ gap: 9 }}>
+              <div className="stack-loose">
                 <div className="spread"><span className="stat-note">Coins issued</span><span className="num">{coins(data.spend.coinsIssued)}</span></div>
                 <div className="spread"><span className="stat-note">Coins spent</span><span className="num">{coins(data.spend.coinsSpent)}</span></div>
                 {/* The ledger is double entry and must sum to zero. Surfacing it
@@ -128,7 +125,7 @@ export default async function Dashboard() {
                 <div className="spread">
                   <span className="stat-note">Ledger balanced</span>
                   <span className={`pill ${data.spend.ledgerBalanced ? 'pill-published' : 'pill-block'}`}>
-                    {data.spend.ledgerBalanced ? 'balanced' : 'DRIFT'}
+                    {data.spend.ledgerBalanced ? 'balanced' : 'drifting'}
                   </span>
                 </div>
               </div>

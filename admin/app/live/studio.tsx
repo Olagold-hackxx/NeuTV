@@ -151,27 +151,19 @@ export function Studio({ event }: { event: LiveEvent }) {
       <div className="panel-head">
         <h2>Studio</h2>
         {recording ? (
-          <span className="pill pill-published"><span className="live-dot" />broadcasting</span>
+          <span className="pill pill-live"><span className="live-dot" /> broadcasting</span>
         ) : <span className="pill">idle</span>}
       </div>
       <div className="panel-body">
         {error ? <div className="alert alert-error">{error}</div> : null}
 
-        <div style={{
-          position: 'relative', aspectRatio: '16 / 9', borderRadius: 12, overflow: 'hidden',
-          background: '#000', border: '1px solid var(--line)', marginBottom: 14,
-        }}>
+        <div className="preview-frame">
           <video
             ref={previewRef} muted playsInline
             style={{ width: '100%', height: '100%', objectFit: 'contain' }}
           />
           {!recording ? (
-            <div style={{
-              position: 'absolute', inset: 0, display: 'grid', placeItems: 'center',
-              color: 'var(--faint)', fontSize: 13,
-            }}>
-              Preview appears here once you go on air
-            </div>
+            <div className="preview-empty">Preview appears here once you go on air.</div>
           ) : null}
         </div>
 
@@ -189,9 +181,9 @@ export function Studio({ event }: { event: LiveEvent }) {
           </div>
         ) : (
           <div className="grid grid-3" style={{ marginBottom: 14 }}>
-            <div><div className="stat-label">Segments sent</div><div className="num" style={{ fontSize: 20, fontWeight: 800 }}>{sent}</div></div>
-            <div><div className="stat-label">Bitrate</div><div className="num" style={{ fontSize: 20, fontWeight: 800 }}>{kbps} kbps</div></div>
-            <div><div className="stat-label">Dropped</div><div className="num" style={{ fontSize: 20, fontWeight: 800, color: dropped ? 'var(--live)' : undefined }}>{dropped}</div></div>
+            <div><div className="stat-label">Segments sent</div><div className="stat-value">{sent}</div></div>
+            <div><div className="stat-label">Bitrate</div><div className="stat-value">{kbps} kbps</div></div>
+            <div><div className="stat-label">Dropped</div><div className={`stat-value${dropped ? ' text-danger' : ''}`}>{dropped}</div></div>
           </div>
         )}
 

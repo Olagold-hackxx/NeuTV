@@ -25,17 +25,17 @@ export default async function VideoDetail({ params }: { params: Promise<{ id: st
       <div className="page-head">
         <div>
           <div className="mono" style={{ marginBottom: 6 }}>
-            <Link href="/videos">← Videos</Link>
+            <Link href="/videos">Back to videos</Link>
           </div>
           <h1>{video.title}</h1>
-          <p className="page-sub">
+          <div className="row" style={{ marginTop: 8 }}>
             <span className={`pill pill-${video.status}`}>{video.status}</span>
-            {isOnAir ? <span className="pill pill-published" style={{ marginLeft: 8 }}><span className="live-dot" /> on air</span> : null}
-          </p>
+            {isOnAir ? <span className="pill pill-published">on air</span> : null}
+          </div>
         </div>
       </div>
 
-      <div className="grid grid-2" style={{ gridTemplateColumns: '1.4fr 1fr', alignItems: 'start' }}>
+      <div className="grid grid-split-narrow" style={{ alignItems: 'start' }}>
         <div className="stack" style={{ gap: 18 }}>
           <EditForm video={video} isOnAir={isOnAir} />
           <VideoPanel video={video} products={products} isOnAir={isOnAir} />
@@ -54,7 +54,7 @@ export default async function VideoDetail({ params }: { params: Promise<{ id: st
                 <tr><td className="stat-note">Type</td><td className="mono">{video.contentType ?? '—'}</td></tr>
                 <tr>
                   <td className="stat-note">Playback</td>
-                  <td className="mono" style={{ wordBreak: 'break-all' }}>{video.playbackUrl ?? '— nothing to play yet'}</td>
+                  <td className="mono" style={{ wordBreak: 'break-all' }}>{video.playbackUrl ?? 'nothing to play yet'}</td>
                 </tr>
                 <tr><td className="stat-note">Created</td><td className="mono">{timestamp(video.createdAt)}</td></tr>
                 <tr><td className="stat-note">Updated</td><td className="mono">{timestamp(video.updatedAt)}</td></tr>

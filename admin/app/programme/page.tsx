@@ -29,30 +29,27 @@ export default async function ProgrammePage() {
 
       <div className={`panel ${programme.video ? 'onair' : 'onair-empty'}`} style={{ marginBottom: 20 }}>
         <div className="panel-body">
-          <div className="row" style={{ marginBottom: 8 }}>
-            {programme.video ? <span className="live-dot" /> : null}
-            <span className="stat-label">{programme.video ? 'On air now' : 'Nothing set'}</span>
-          </div>
+          <span className="stat-label">{programme.video ? 'On air now' : 'Nothing set'}</span>
           {programme.video ? (
             <>
-              <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: '-0.02em' }}>{programme.video.title}</div>
+              <div className="headline">{programme.video.title}</div>
               <div className="stat-note">
-                {programme.video.productId} · {duration(programme.video.durationSeconds)} · set{' '}
+                {programme.video.productId}, {duration(programme.video.durationSeconds)}, set{' '}
                 {timestamp(programme.programme?.setAt)} by {programme.programme?.setBy}
-                {programme.programme?.note ? ` · ${programme.programme.note}` : ''}
+                {programme.programme?.note ? `. ${programme.programme.note}` : ''}
               </div>
             </>
           ) : (
             <div className="stat-note" style={{ maxWidth: '68ch' }}>
               No main broadcast has been set, so the stage falls back to the seeded
-              Central TV programme that ships with the catalog. Pick something below
-              and it takes the main page immediately.
+              Central TV programme that ships with the catalog. Pick an eligible
+              video and it takes the main page immediately.
             </div>
           )}
         </div>
       </div>
 
-      <div className="grid grid-2" style={{ gridTemplateColumns: '1.4fr 1fr', alignItems: 'start' }}>
+      <div className="grid grid-split-narrow" style={{ alignItems: 'start' }}>
         <div className="panel">
           <div className="panel-head">
             <h2>Put something on air</h2>

@@ -27,7 +27,7 @@ export default async function ModerationPage() {
             waiting on a human — that is this queue&apos;s job.
           </p>
         </div>
-        <div className="mono">{flagged.length} live &amp; flagged · {blocked.length} blocked</div>
+        <div className="mono">{flagged.length} live and flagged, {blocked.length} blocked</div>
       </div>
 
       {flagged.length > 0 ? (
@@ -45,7 +45,7 @@ export default async function ModerationPage() {
         ) : (
           <table>
             <thead>
-              <tr><th>Verdict</th><th>Message</th><th>Surface</th><th>Rules</th><th style={{ textAlign: 'right' }}>Score</th><th>When</th></tr>
+              <tr><th>Verdict</th><th>Message</th><th>Surface</th><th>Rules</th><th className="num-col">Score</th><th>When</th></tr>
             </thead>
             <tbody>
               {queue.map((item) => (
@@ -57,15 +57,15 @@ export default async function ModerationPage() {
                       {item.userId ? <span className="mono">{item.userId}</span> : <span className="mono">guest</span>}
                     </div>
                   </td>
-                  <td className="mono">{SURFACE_LABEL[item.surface] ?? item.surface}</td>
+                  <td>{SURFACE_LABEL[item.surface] ?? item.surface}</td>
                   <td>
                     <div className="actions">
                       {item.ruleIds.map((rule) => (
-                        <span key={rule} className="pill" style={{ fontSize: 10 }}>{rule.replace(/_/g, ' ')}</span>
+                        <span key={rule} className="pill">{rule.replace(/_/g, ' ')}</span>
                       ))}
                     </div>
                   </td>
-                  <td className="num" style={{ textAlign: 'right' }}>{item.score}</td>
+                  <td className="num num-col">{item.score}</td>
                   <td className="mono">{timestamp(item.decidedAt)}</td>
                 </tr>
               ))}

@@ -110,7 +110,7 @@ export function LiveEventPanel({ event, compact = false }: { event: LiveEvent; c
         </>
       ) : (
         <div className="stat-note" style={{ marginBottom: 12 }}>
-          {event.productId} · {event.playbackUrl ? 'playback set' : 'no playback source yet'}
+          {event.productId}, {event.playbackUrl ? 'playback set' : 'no playback source yet'}
         </div>
       )}
 
@@ -160,7 +160,7 @@ export function LiveEventPanel({ event, compact = false }: { event: LiveEvent; c
 
   if (compact) {
     return (
-      <div className="panel" style={{ background: 'rgba(0,0,0,0.2)' }}>
+      <div className="panel" style={{ background: 'var(--base)' }}>
         <div className="panel-body">
           <div style={{ fontWeight: 700, marginBottom: 4 }}>{event.title}</div>
           {body}
@@ -173,8 +173,9 @@ export function LiveEventPanel({ event, compact = false }: { event: LiveEvent; c
     <div className="panel">
       <div className="panel-head">
         <h2>{event.isLive ? 'On air' : event.title}</h2>
-        <span className={`pill ${event.isLive ? 'pill-published' : 'pill-draft'}`}>
-          {event.isLive ? <span className="live-dot" /> : null}{event.status}
+        <span className={`pill ${event.isLive ? 'pill-live' : 'pill-draft'}`}>
+          {event.isLive ? <span className="live-dot" /> : null}
+          {event.isLive ? ' ' : null}{event.status}
         </span>
       </div>
       <div className="panel-body">{body}</div>

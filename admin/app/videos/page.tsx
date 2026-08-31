@@ -32,14 +32,14 @@ export default async function VideosPage() {
         </div>
       </div>
 
-      <div className="grid grid-2" style={{ gridTemplateColumns: '1.6fr 1fr', alignItems: 'start' }}>
+      <div className="grid grid-split" style={{ alignItems: 'start' }}>
         <div className="panel">
           <div className="panel-head">
             <h2>Library</h2>
             <span className="mono">{videos.length} total</span>
           </div>
           {sorted.length === 0 ? (
-            <div className="empty">Nothing in the library yet. Add the first video on the right.</div>
+            <div className="empty">Nothing in the library yet. Add the first video with the form.</div>
           ) : (
             <table>
               <thead>
@@ -55,15 +55,14 @@ export default async function VideosPage() {
                         <span style={{ fontWeight: 600 }}>{v.title}</span>
                         <span className="mono">
                           {v.kind}
-                          {v.id === onAirId ? ' · on air' : ''}
-                          {!v.hasFile && v.kind === 'upload' ? ' · awaiting file' : ''}
+                          {!v.hasFile && v.kind === 'upload' ? ', awaiting file' : ''}
                         </span>
                       </Link>
                     </td>
                     <td>
-                      <span className={`pill pill-${v.status}`}>
-                        {v.id === onAirId ? <span className="live-dot" /> : null}
-                        {v.status}
+                      <span className="row">
+                        <span className={`pill pill-${v.status}`}>{v.status}</span>
+                        {v.id === onAirId ? <span className="pill pill-published">on air</span> : null}
                       </span>
                     </td>
                     <td className="mono">{v.productId}</td>

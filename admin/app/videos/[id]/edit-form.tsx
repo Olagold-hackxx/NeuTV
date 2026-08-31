@@ -221,7 +221,7 @@ export function EditForm({ video, isOnAir }: { video: Video; isOnAir: boolean })
         {/* The file lands through its own streaming route, not this form: a
             multi-gigabyte video does not belong in a server action payload. */}
         {video.kind === 'upload' ? (
-          <div style={{ marginTop: 22, paddingTop: 18, borderTop: '1px solid var(--line, rgba(255,255,255,0.08))' }}>
+          <div className="divider">
             <UploadField video={video} />
           </div>
         ) : null}

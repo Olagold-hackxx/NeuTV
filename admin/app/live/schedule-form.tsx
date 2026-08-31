@@ -59,7 +59,7 @@ export function ScheduleForm({ products }: { products: Product[] }) {
         <textarea id="description" name="description" maxLength={2000} />
       </div>
 
-      <button type="submit" className="btn btn-primary" style={{ width: '100%' }} disabled={pending}>
+      <button type="submit" className="btn btn-primary btn-block" disabled={pending}>
         {pending ? 'Scheduling…' : 'Schedule event'}
       </button>
     </form>

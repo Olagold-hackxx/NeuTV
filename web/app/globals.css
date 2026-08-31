@@ -1,0 +1,215 @@
+@import 'tailwindcss';
+
+/* NEU TV design tokens. Every color, radius, duration and shadow in the app
+   traces back to this block — components reference tokens, never raw values.
+   The brand palette itself is fixed by docs/design-brief.md §3; what this file
+   adds is the discipline layer: where each color is allowed to appear. */
+
+@theme {
+  /* surfaces — hierarchy is a value step, not a border or a blur */
+  --color-base: #060a12;
+  --color-midnight: #0b1220;
+  --color-obsidian: #111b33;
+
+  /* text */
+  --color-ink: #edf1f7;
+  /* dark text for on-accent surfaces (a cyan button) — never use text-base,
+     which Tailwind reads as a font size */
+  --color-deep: #04211a;
+  --color-dim: rgba(237, 241, 247, 0.62);
+  --color-faint: rgba(237, 241, 247, 0.4);
+  --color-line: rgba(148, 163, 184, 0.14);
+  --color-line-strong: rgba(148, 163, 184, 0.26);
+
+  /* meaning-bearing color. cyan = interactive/active/focus. live = on air and
+     nothing else. amber = needs attention. danger is deliberately NOT live. */
+  --color-cyan: #00f6a7;
+  --color-sky: #00c8ff;
+  --color-cobalt: #4d6bff;
+  --color-live: #ff2a5f;
+  --color-amber: #ffb020;
+  --color-danger: #f4657c;
+
+  /* radius by hierarchy: stage 12, panel 10, control 8, chip 6 */
+  --radius-stage: 12px;
+  --radius-panel: 10px;
+  --radius-control: 8px;
+  --radius-chip: 6px;
+
+  /* motion */
+  --ease-out: cubic-bezier(0.2, 0, 0, 1);
+  --duration-fast: 120ms;
+  --duration-base: 200ms;
+  --duration-slow: 320ms;
+
+  /* the one shadow, for true overlays only (menus, drawer, palettes) */
+  --shadow-overlay: 0 12px 40px rgba(2, 6, 16, 0.55);
+
+  --font-sans: var(--font-jakarta), -apple-system, BlinkMacSystemFont,
+    'Segoe UI', system-ui, sans-serif;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  background: var(--color-base);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Numbers that change in place must not reflow their row. */
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+/* The one systematic job of the accent: where attention goes next. */
+:focus-visible {
+  outline: 2px solid var(--color-cyan);
+  outline-offset: 2px;
+  border-radius: var(--radius-control);
+}
+
+/* The gradient is an identity mark: the wordmark, plus at most one other
+   place per screen. Nothing else may use this class. */
+.wordmark-gradient {
+  background: linear-gradient(
+    135deg,
+    var(--color-cyan) 0%,
+    var(--color-sky) 52%,
+    var(--color-cobalt) 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* The sign-in gate's header rule — the screen's one permitted non-wordmark
+   gradient use. Nothing else may use this class either. */
+.identity-rule {
+  height: 2px;
+  background: linear-gradient(
+    135deg,
+    var(--color-cyan) 0%,
+    var(--color-sky) 52%,
+    var(--color-cobalt) 100%
+  );
+}
+
+/* On-air pulse — carries meaning (this is happening now), so it is one of the
+   two things allowed to move on its own. Static under reduced motion. */
+.live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--color-live);
+  box-shadow: 0 0 0 0 rgba(255, 42, 95, 0.6);
+  animation: onair-pulse 2s infinite;
+}
+@keyframes onair-pulse {
+  70% {
+    box-shadow: 0 0 0 8px rgba(255, 42, 95, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 42, 95, 0);
+  }
+}
+
+/* Spotlight reel pan — the second allowed self-mover. */
+@keyframes reel-pan {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+.reel-track {
+  animation: reel-pan var(--reel-duration, 60s) linear infinite;
+}
+.reel-track:hover,
+.reel-track:focus-within,
+.reel-track[data-paused='true'] {
+  animation-play-state: paused;
+}
+
+/* Skeletons */
+@keyframes shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+.skeleton {
+  background: linear-gradient(
+    100deg,
+    var(--color-midnight) 40%,
+    var(--color-obsidian) 50%,
+    var(--color-midnight) 60%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.6s linear infinite;
+  border-radius: var(--radius-chip);
+}
+
+/* Gift reaction particles — user-initiated, skipped under reduced motion. */
+@keyframes particle-rise {
+  from {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+  to {
+    transform: translateY(-140px) scale(0.6);
+    opacity: 0;
+  }
+}
+.particle {
+  animation: particle-rise 1.2s var(--ease-out) forwards;
+}
+
+/* The single orchestrated page-load moment: stage first, chrome follows. */
+@keyframes settle {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.settle {
+  animation: settle var(--duration-slow) var(--ease-out) both;
+}
+.settle-late {
+  animation: settle var(--duration-slow) var(--ease-out) 120ms both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live-dot {
+    animation: none;
+  }
+  .reel-track {
+    animation: none;
+  }
+  .particle {
+    animation: none;
+    opacity: 0;
+  }
+  .settle,
+  .settle-late {
+    animation: none;
+  }
+  .skeleton {
+    animation: none;
+  }
+  *,
+  *::before,
+  *::after {
+    transition-duration: 1ms !important;
+  }
+}

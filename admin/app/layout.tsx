@@ -1,8 +1,14 @@
 import type { Metadata } from 'next';
+import { Plus_Jakarta_Sans } from 'next/font/google';
 import './globals.css';
 import { NavLink } from './nav-link';
 import { getSession } from '@/lib/api';
 import { signOut } from '@/lib/actions';
+
+const jakarta = Plus_Jakarta_Sans({
+  subsets: ['latin'],
+  variable: '--font-jakarta',
+});
 
 export const metadata: Metadata = {
   title: 'NEU TV — Back Office',
@@ -29,14 +35,14 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   // draw, so the layout gets out of the way.
   if (!user) {
     return (
-      <html lang="en">
+      <html lang="en" className={jakarta.variable}>
         <body>{children}</body>
       </html>
     );
   }
 
   return (
-    <html lang="en">
+    <html lang="en" className={jakarta.variable}>
       <body>
         <div className="shell">
           <aside className="sidebar">
@@ -60,7 +66,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 <div className="who-role">{user.role}</div>
               </div>
               <form action={signOut}>
-                <button type="submit" className="btn btn-sm" style={{ width: '100%' }}>Sign out</button>
+                <button type="submit" className="btn btn-sm btn-block">Sign out</button>
               </form>
             </div>
           </aside>
