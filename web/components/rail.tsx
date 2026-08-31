@@ -3,6 +3,7 @@
 import { useEffect, useRef } from 'react';
 import { PanelLeftClose, PanelLeftOpen, X, Tv, LayoutGrid } from 'lucide-react';
 import type { CommunityHub, Product } from '@/lib/types';
+import { Logo } from './logo';
 
 type RailProps = {
   products: Product[];
@@ -60,11 +61,9 @@ function RailBody({
     <div className="flex h-full flex-col gap-5 p-3">
       <div className={`flex items-center ${showLabels ? 'justify-between pl-2' : 'justify-center'}`}>
         {showLabels ? (
-          <span className="text-lg font-extrabold italic tracking-tight">
-            <span className="wordmark-gradient">NEU</span>
-            <span className="ml-1 text-xs font-extrabold not-italic text-sky">TV</span>
-          </span>
+          <Logo size="md" priority />
         ) : null}
+        {!showLabels ? <Logo size="sm" showTv={false} priority /> : null}
         {!inDrawer ? (
           <button
             type="button"

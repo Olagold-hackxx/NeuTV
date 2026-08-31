@@ -4,6 +4,7 @@ import { X } from 'lucide-react';
 import type { Product, SessionUser } from '@/lib/types';
 import { NeuTVClient } from '@/lib/client';
 import { SignInForms } from './sign-in';
+import { Logo } from './logo';
 
 type GateProps = {
   products: Product[];
@@ -23,10 +24,7 @@ export function Gate({ products, client, onClose, onSignedIn }: GateProps) {
         <div className="identity-rule" aria-hidden />
 
         <header className="flex items-center justify-between px-5 pt-4">
-          <span className="text-lg font-extrabold italic tracking-tight">
-            <span className="wordmark-gradient">NEU</span>
-            <span className="ml-1 text-xs font-extrabold not-italic text-sky">TV</span>
-          </span>
+          <Logo size="md" />
           <button
             type="button"
             onClick={onClose}

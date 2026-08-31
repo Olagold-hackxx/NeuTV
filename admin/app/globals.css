@@ -70,13 +70,6 @@ code {
 }
 
 /* The one place the brand gradient is allowed to appear. */
-.gradient-text {
-  background: linear-gradient(135deg, var(--neu-cyan) 0%, var(--neu-sky) 52%, var(--neu-cobalt) 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
-
 /* --- shell --------------------------------------------------------------- */
 
 .shell { display: grid; grid-template-columns: 232px 1fr; min-height: 100vh; }
@@ -94,7 +87,6 @@ code {
 }
 
 .brand { display: flex; align-items: baseline; gap: 5px; padding-left: 8px; }
-.brand-neu { font-size: 20px; font-weight: 800; font-style: italic; letter-spacing: -0.03em; }
 .brand-tv { font-size: 12px; font-weight: 800; color: var(--neu-sky); }
 .brand-sub { font-size: 12px; color: var(--faint); padding-left: 8px; margin-top: 3px; }
 

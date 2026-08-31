@@ -4,6 +4,7 @@ import './globals.css';
 import { NavLink } from './nav-link';
 import { getSession } from '@/lib/api';
 import { signOut } from '@/lib/actions';
+import { Logo } from './logo';
 
 const jakarta = Plus_Jakarta_Sans({
   subsets: ['latin'],
@@ -47,10 +48,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <div className="shell">
           <aside className="sidebar">
             <div>
-              <div className="brand">
-                <span className="brand-neu gradient-text">NEU</span>
-                <span className="brand-tv">TV</span>
-              </div>
+              <Logo size={24} />
               <div className="brand-sub">Back Office</div>
             </div>
 

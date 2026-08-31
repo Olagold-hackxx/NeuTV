@@ -74,20 +74,6 @@ body {
   border-radius: var(--radius-control);
 }
 
-/* The gradient is an identity mark: the wordmark, plus at most one other
-   place per screen. Nothing else may use this class. */
-.wordmark-gradient {
-  background: linear-gradient(
-    135deg,
-    var(--color-cyan) 0%,
-    var(--color-sky) 52%,
-    var(--color-cobalt) 100%
-  );
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
-
 /* The sign-in gate's header rule — the screen's one permitted non-wordmark
    gradient use. Nothing else may use this class either. */
 .identity-rule {

@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/api';
 import { LoginForm } from './login-form';
+import { Logo } from '../logo';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,10 +13,7 @@ export default async function LoginPage() {
     <div className="login-wrap">
       <div className="panel login-card">
         <div style={{ marginBottom: 22 }}>
-          <div className="brand" style={{ paddingLeft: 0 }}>
-            <span className="brand-neu gradient-text">NEU</span>
-            <span className="brand-tv">TV</span>
-          </div>
+          <Logo size={26} />
           <div className="brand-sub" style={{ paddingLeft: 0 }}>Back Office</div>
         </div>
         <LoginForm />
