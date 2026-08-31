@@ -32,9 +32,27 @@ cp deploy/.env.example .env      # fill it in; compose refuses to start without
 docker compose up -d             # the required ones
 ```
 
-Four containers: the gateway, Postgres, MediaMTX for RTMP, and Caddy in front
-doing TLS. Only 443 and 1935 are published; Postgres and the HLS port stay
-inside the compose network.
+Three containers by default: the gateway, Postgres and MediaMTX. The API and the
+HLS port are published on **loopback only**; the internet reaches them through
+whatever terminates TLS.
+
+Most VPS images already have Caddy installed and serving its welcome page on
+:80, and two processes cannot both bind it. So use the one that is there:
+
+```bash
+sudo cp deploy/Caddyfile.host /etc/caddy/Caddyfile   # then set your domain in it
+sudo caddy validate --config /etc/caddy/Caddyfile
+sudo systemctl reload caddy
+```
+
+If the machine has no Caddy, run ours instead and it will get the certificate:
+
+```bash
+docker compose --profile edge up -d
+```
+
+RTMP (1935) is published either way: OBS does not speak HTTP, so it cannot go
+through a reverse proxy.
 
 TLS is not optional. The front ends are on Vercel over https, and a browser
 blocks an http:// API from an https page before the request is sent - which

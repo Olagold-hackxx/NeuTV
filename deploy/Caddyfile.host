@@ -1,0 +1,43 @@
+# For a Caddy already installed on the VPS. Copy to /etc/caddy/Caddyfile.
+#
+#   sudo cp deploy/Caddyfile.host /etc/caddy/Caddyfile
+#   sudo sed -i 's/{$API_DOMAIN}/api.your-domain.com/' /etc/caddy/Caddyfile
+#   sudo caddy validate --config /etc/caddy/Caddyfile
+#   sudo systemctl reload caddy
+#
+# This replaces the default welcome-page site. Most VPS images ship Caddy
+# listening on :80 with that page, which is why the caddy container in
+# docker-compose.yml is behind a profile and off by default: two processes
+# cannot both bind :80, and the one that is already there is fine.
+#
+# The difference from deploy/Caddyfile is only the upstreams. The container
+# version reaches its neighbours by service name on the compose network; this
+# one is outside that network, so it uses the loopback ports the compose file
+# publishes.
+
+{$API_DOMAIN} {
+	encode zstd gzip
+
+	# Live HLS from MediaMTX. handle_path strips the prefix, because MediaMTX
+	# serves at its root: /hls/live-abc/index.m3u8 here is
+	# /live-abc/index.m3u8 there.
+	handle_path /hls/* {
+		reverse_proxy 127.0.0.1:8888
+	}
+
+	handle {
+		reverse_proxy 127.0.0.1:4173 {
+			# The live event stream is server-sent events, held open for as long
+			# as the tab is. Without this Caddy buffers the response and nothing
+			# reaches the page until the connection closes, which for SSE never
+			# happens.
+			flush_interval -1
+		}
+	}
+
+	# Video is uploaded through the API on its way to Cloudinary. The default
+	# 10MB cap would reject every one of them.
+	request_body {
+		max_size 2GB
+	}
+}

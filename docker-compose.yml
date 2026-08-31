@@ -44,8 +44,11 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    expose:
-      - "4173"
+    ports:
+      # Loopback only. Not reachable from the internet - whatever terminates
+      # TLS (the caddy service below, or a Caddy already installed on the host)
+      # reaches it here.
+      - "127.0.0.1:4173:4173"
 
   postgres:
     image: postgres:17-alpine
@@ -79,10 +82,15 @@ services:
       # protecting the broadcast - which is why the ingest driver mints a long
       # random one rather than letting anyone choose it.
       - "1935:1935"
-    expose:
-      - "8888"
+      # HLS on loopback, for whichever proxy is serving /hls.
+      - "127.0.0.1:8888:8888"
 
+  # Only started with `--profile edge`. A VPS that already has Caddy installed
+  # has something on :80 already, and two of them cannot both bind it - so the
+  # default is to use the one that is there and proxy to the loopback ports
+  # above. See deploy/Caddyfile.host.
   caddy:
+    profiles: ["edge"]
     image: caddy:2-alpine
     restart: unless-stopped
     environment:
