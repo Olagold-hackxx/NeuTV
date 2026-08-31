@@ -13,7 +13,7 @@ export default async function LoginPage() {
     <div className="login-wrap">
       <div className="panel login-card">
         <div style={{ marginBottom: 22 }}>
-          <Logo width={158} />
+          <Logo width={112} />
           <div className="brand-sub" style={{ paddingLeft: 0 }}>Back Office</div>
         </div>
         <LoginForm />

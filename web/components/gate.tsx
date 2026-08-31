@@ -24,7 +24,7 @@ export function Gate({ products, client, onClose, onSignedIn }: GateProps) {
         <div className="identity-rule" aria-hidden />
 
         <header className="flex items-center justify-between px-5 pt-4">
-          <Logo width={132} />
+          <Logo width={92} />
           <button
             type="button"
             onClick={onClose}

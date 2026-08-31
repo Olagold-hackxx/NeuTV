@@ -48,7 +48,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <div className="shell">
           <aside className="sidebar">
             <div>
-              <Logo width={146} />
+              <Logo width={96} />
               <div className="brand-sub">Back Office</div>
             </div>
 
