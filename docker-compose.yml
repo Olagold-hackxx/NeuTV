@@ -89,25 +89,25 @@ services:
   # has something on :80 already, and two of them cannot both bind it - so the
   # default is to use the one that is there and proxy to the loopback ports
   # above. See deploy/Caddyfile.host.
-  caddy:
-    profiles: ["edge"]
-    image: caddy:2-alpine
-    restart: unless-stopped
-    environment:
-      API_DOMAIN: ${API_DOMAIN:?set API_DOMAIN}
-    volumes:
-      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddydata:/data
-      - caddyconfig:/config
-    ports:
-      - "80:80"
-      - "443:443"
-    depends_on:
-      - api
-      - mediamtx
+  # caddy:
+  #   profiles: ["edge"]
+  #   image: caddy:2-alpine
+  #   restart: unless-stopped
+  #   environment:
+  #     API_DOMAIN: ${API_DOMAIN:?set API_DOMAIN}
+  #   volumes:
+  #     - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+  #     - caddydata:/data
+  #     - caddyconfig:/config
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #   depends_on:
+  #     - api
+  #     - mediamtx
 
 volumes:
   pgdata:
   segments:
-  caddydata:
-  caddyconfig:
+  # caddydata:
+  # caddyconfig:
