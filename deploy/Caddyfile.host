@@ -3,21 +3,22 @@
 # that file takes every other site on the machine down with it.
 #
 #   sudo tee -a /etc/caddy/Caddyfile < deploy/Caddyfile.host
-#   sudo sed -i 's/neutv.your-domain.com/<your hostname>/' /etc/caddy/Caddyfile
 #   sudo caddy validate --config /etc/caddy/Caddyfile
 #   sudo systemctl reload caddy      # reload, not restart: no dropped connections
 #
-# The hostname has to appear in three places and match in all of them:
+# The hostname appears in three places and has to match in all of them:
 #   - here
 #   - API_DOMAIN in .env, which is what the RTMP and HLS URLs are built from
 #   - NEUTV_API_BASE on both Vercel projects
+# It is written out rather than left as a placeholder so there is nothing to
+# substitute and nothing to get subtly wrong between the three.
 #
 # This is the same configuration as deploy/Caddyfile, which the caddy container
 # uses. The only difference is the upstreams: that one reaches its neighbours by
 # compose service name, this one is outside the compose network and uses the
 # loopback ports the compose file publishes.
 
-neutv.your-domain.com {
+neutv.tsionark.io {
 	encode zstd gzip
 
 	# Live HLS from MediaMTX. handle_path strips the prefix, because MediaMTX

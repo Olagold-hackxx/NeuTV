@@ -41,7 +41,6 @@ Most VPS images already have Caddy installed and serving its welcome page on
 
 ```bash
 sudo tee -a /etc/caddy/Caddyfile < deploy/Caddyfile.host   # append, never replace
-sudo sed -i 's/neutv.your-domain.com/<your hostname>/' /etc/caddy/Caddyfile
 sudo caddy validate --config /etc/caddy/Caddyfile
 sudo systemctl reload caddy
 ```
