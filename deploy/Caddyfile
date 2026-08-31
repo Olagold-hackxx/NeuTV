@@ -1,0 +1,39 @@
+# TLS, and the only thing on the VPS listening on 443.
+#
+# Caddy gets a Let's Encrypt certificate on first boot and renews it, which is
+# the whole reason it is here: the front ends are on Vercel over https, and an
+# http API would be blocked by the browser as mixed content.
+#
+# Two upstreams. The API answers everything except /hls, which is the live
+# broadcast MediaMTX republishes from whatever OBS is sending it.
+
+{$API_DOMAIN} {
+	encode zstd gzip
+
+	# Live HLS. Stripped of the prefix because MediaMTX serves paths at its
+	# root: /hls/live-abc/index.m3u8 here is /live-abc/index.m3u8 there.
+	handle_path /hls/* {
+		reverse_proxy mediamtx:8888
+	}
+
+	handle {
+		reverse_proxy api:4173 {
+			# The live event stream is server-sent events held open for as long
+			# as a viewer keeps the tab open. Without this Caddy buffers the
+			# response and nothing reaches the page until the connection ends,
+			# which for SSE is never.
+			flush_interval -1
+		}
+	}
+
+	# Uploads stream through the API to Cloudinary; the default 10MB body cap
+	# would reject every video before it got there.
+	request_body {
+		max_size 2GB
+	}
+
+	log {
+		output stderr
+		format console
+	}
+}

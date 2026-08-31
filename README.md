@@ -25,12 +25,43 @@ The API is a long-lived process; the two front ends are static/edge and go on
 Vercel. Splitting them is the supported shape, and it is why the gateway sends
 permissive CORS and why the client takes an API base URL.
 
-**API** (`backend/`) — anywhere that runs a Node process and keeps it running:
-Railway, Fly, Render, a container. It must stay a process, not a function: the
-live event stream is a held-open SSE connection, and broadcasting from the admin
-studio writes segments to local disk. Needs `DATABASE_URL` (Postgres) and, for
-uploaded video that outlives one host, a media driver that is not `local` -
-`cloudinary` or `s3`, whichever you already pay for.
+**API** (`backend/`) — a VPS, via Docker:
+
+```bash
+cp deploy/.env.example .env      # fill it in; compose refuses to start without
+docker compose up -d             # the required ones
+```
+
+Four containers: the gateway, Postgres, MediaMTX for RTMP, and Caddy in front
+doing TLS. Only 443 and 1935 are published; Postgres and the HLS port stay
+inside the compose network.
+
+TLS is not optional. The front ends are on Vercel over https, and a browser
+blocks an http:// API from an https page before the request is sent - which
+surfaces as "Failed to fetch" and looks exactly like the backend being down.
+Caddy gets a Let's Encrypt certificate on boot, so point `API_DOMAIN` at the
+machine before the first `up`.
+
+It must stay a process, not a function: the live event stream is a held-open SSE
+connection, and a browser broadcast arrives as segments written to a volume.
+
+| | |
+|---|---|
+| Video | Cloudinary stores and transcodes; Fastly serves. No bucket involved. |
+| Live from OBS | MediaMTX takes RTMP on 1935 and republishes HLS at `/hls`. |
+| Live from the browser | The admin studio, straight to the API. No media server needed. |
+| State | Postgres, plus one volume for live segments. |
+
+### Fastly in front of Cloudinary
+
+Point a Fastly service at `res.cloudinary.com` as its origin, then set
+
+```bash
+NEUTV_MEDIA_BASE_URL=https://cdn.your-domain.com/<cloud-name>/video/upload
+```
+
+The database stores a relative path, never a URL, so moving CDNs is this one
+variable and not a migration.
 
 **Viewer app** (`frontend/`) — a Vercel static project. Root `vercel.json`
 already points at it: it builds Tailwind and generates `src/config.js` from

@@ -112,8 +112,48 @@ function cloudflareProvider({ accountId, apiToken, fetchImpl = globalThis.fetch 
   };
 }
 
+/**
+ * MediaMTX running alongside the API, usually in the same compose file.
+ *
+ * The one self-hosted option: a single Go binary that accepts RTMP from OBS and
+ * republishes it as HLS. Nothing is provisioned over an API because MediaMTX
+ * creates a path the moment something publishes to it - so "provisioning" is
+ * deciding the path name, and the stream key IS that name. Which means the key
+ * has to be unguessable: anyone who can publish to a path owns the broadcast.
+ */
+function mediamtxProvider({ rtmpUrl, hlsBase }) {
+  return {
+    driver: 'mediamtx',
+    async provision() {
+      const path = `live-${mintStreamKey().slice(3).toLowerCase()}`;
+      return {
+        ingestUrl: rtmpUrl.replace(/\/$/, ''),
+        streamKey: path,
+        playbackUrl: `${hlsBase.replace(/\/$/, '')}/${path}/index.m3u8`,
+        providerRef: path,
+        instructions:
+          `In OBS: Settings -> Stream -> Custom, Server "${rtmpUrl.replace(/\/$/, '')}", `
+          + 'Stream Key as shown. Viewers get HLS a few seconds behind.',
+      };
+    },
+    // A MediaMTX path exists only while something is publishing to it, so there
+    // is nothing to release. Ending the event stops it being served.
+    async teardown() { /* nothing was allocated */ },
+  };
+}
+
 export function createIngestProvider(env = process.env) {
   const driver = (env.NEUTV_LIVE_DRIVER || 'manual').toLowerCase();
+
+  if (driver === 'mediamtx') {
+    if (!env.NEUTV_MEDIAMTX_RTMP_URL || !env.NEUTV_MEDIAMTX_HLS_BASE) {
+      throw new Error('NEUTV_LIVE_DRIVER=mediamtx needs NEUTV_MEDIAMTX_RTMP_URL and NEUTV_MEDIAMTX_HLS_BASE');
+    }
+    return mediamtxProvider({
+      rtmpUrl: env.NEUTV_MEDIAMTX_RTMP_URL,
+      hlsBase: env.NEUTV_MEDIAMTX_HLS_BASE,
+    });
+  }
 
   if (driver === 'mux') {
     if (!env.NEUTV_MUX_TOKEN_ID || !env.NEUTV_MUX_TOKEN_SECRET) {

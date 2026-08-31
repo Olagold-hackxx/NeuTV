@@ -244,3 +244,33 @@ test('an event cannot be left external with nothing to play', async () => {
   const { event } = await events.create(ADMIN, { title: 'Studio', source: 'browser' });
   await assert.rejects(() => events.update(event.id, { source: 'external' }), (e) => e.status === 400);
 });
+
+// --- self-hosted ingest -----------------------------------------------------
+
+test('the mediamtx driver mints a path and derives the playback URL from it', async () => {
+  const ingest = createIngestProvider({
+    NEUTV_LIVE_DRIVER: 'mediamtx',
+    NEUTV_MEDIAMTX_RTMP_URL: 'rtmp://stream.neu.tv:1935/',
+    NEUTV_MEDIAMTX_HLS_BASE: 'https://stream.neu.tv/hls/',
+  });
+  assert.equal(ingest.driver, 'mediamtx');
+
+  const a = await ingest.provision({ title: 'Market Open' });
+  assert.equal(a.ingestUrl, 'rtmp://stream.neu.tv:1935', 'trailing slash trimmed; OBS appends its own');
+  assert.equal(a.playbackUrl, `https://stream.neu.tv/hls/${a.streamKey}/index.m3u8`);
+  assert.ok(a.streamKey.startsWith('live-'));
+
+  // The path is the credential: anyone who can publish to it owns the
+  // broadcast, so two events must never collide.
+  const b = await ingest.provision({ title: 'Market Open' });
+  assert.notEqual(b.streamKey, a.streamKey);
+  assert.ok(a.streamKey.length >= 20, 'and it has to be long enough not to be guessed');
+
+  // A path is created by publishing to it, so there is nothing to release.
+  await ingest.teardown(a.providerRef);
+});
+
+test('mediamtx without its URLs fails at boot rather than at go-live', () => {
+  assert.throws(() => createIngestProvider({ NEUTV_LIVE_DRIVER: 'mediamtx' }),
+    /needs NEUTV_MEDIAMTX_RTMP_URL and NEUTV_MEDIAMTX_HLS_BASE/);
+});

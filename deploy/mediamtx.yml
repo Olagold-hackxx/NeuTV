@@ -1,0 +1,39 @@
+# MediaMTX: RTMP in, HLS out.
+#
+# The only self-hosted piece of live infrastructure. OBS publishes to
+# rtmp://<domain>:1935/<stream-key>, and viewers fetch
+# https://<domain>/hls/<stream-key>/index.m3u8 through Caddy.
+#
+# A path is created by publishing to it, so the stream key is the credential -
+# anyone who can publish to a path owns that broadcast. The ingest driver mints
+# a long random one for exactly that reason; do not let anyone pick a memorable
+# one.
+
+logLevel: info
+
+# RTMP ingest. Published on the host because OBS speaks RTMP, not HTTP, so it
+# cannot go through the reverse proxy.
+rtmp: yes
+rtmpAddress: :1935
+
+# HLS out. Bound inside the compose network only: Caddy is what the public
+# reaches, and it terminates TLS.
+hls: yes
+hlsAddress: :8888
+hlsVariant: lowLatency
+# Roughly six seconds behind live, which is the trade for HLS working in every
+# browser without a plugin. Sub-second needs WebRTC and a different player.
+hlsSegmentCount: 7
+hlsSegmentDuration: 1s
+hlsAllowOrigin: "*"
+
+# Everything else off. Each enabled protocol is another listener to reason
+# about, and nothing here consumes them.
+rtsp: no
+webrtc: no
+srt: no
+
+paths:
+  # Any path, created on publish. The keys are minted by the API, not chosen
+  # here, so there is nothing to enumerate in this file.
+  all_others:

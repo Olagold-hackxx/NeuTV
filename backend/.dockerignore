@@ -1,0 +1,7 @@
+node_modules
+npm-debug.log
+# Runtime state. SQLite files, uploaded video and live segments belong on a
+# mounted volume, not baked into an image.
+services/*/data
+Dockerfile
+.env

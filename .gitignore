@@ -2,6 +2,9 @@ node_modules/
 *.log
 .env
 .env.*
+# ...but the templates are the documentation for what to fill in.
+!.env.example
+!**/.env.example
 .DS_Store
 
 # Runtime state, never committed: per-service SQLite stores and uploaded video.

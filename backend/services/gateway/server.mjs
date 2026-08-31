@@ -232,6 +232,11 @@ if (isMain) {
   // Top-level await: the process must not listen until every migration has run.
   const { server, app } = await createGateway({
     adminEmails: (process.env.NEUTV_ADMIN_EMAILS || '').split(',').map((s) => s.trim()).filter(Boolean),
+    // Where anything that has to survive a restart is written: live broadcast
+    // segments, and uploaded video when the media driver is local. In a
+    // container that is a mounted volume, because the image's own filesystem
+    // goes away with the container and takes the broadcast with it.
+    ...(process.env.NEUTV_DATA_DIR ? { dataDir: process.env.NEUTV_DATA_DIR } : {}),
   });
 
   // Sessions expire by timestamp, so this sweep is housekeeping, not
