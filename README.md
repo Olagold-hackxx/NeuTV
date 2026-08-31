@@ -40,10 +40,14 @@ Most VPS images already have Caddy installed and serving its welcome page on
 :80, and two processes cannot both bind it. So use the one that is there:
 
 ```bash
-sudo cp deploy/Caddyfile.host /etc/caddy/Caddyfile   # then set your domain in it
+sudo tee -a /etc/caddy/Caddyfile < deploy/Caddyfile.host   # append, never replace
+sudo sed -i 's/neutv.your-domain.com/<your hostname>/' /etc/caddy/Caddyfile
 sudo caddy validate --config /etc/caddy/Caddyfile
 sudo systemctl reload caddy
 ```
+
+Append it. That file usually holds every other site on the machine, and
+overwriting it takes them all down.
 
 If the machine has no Caddy, run ours instead and it will get the certificate:
 

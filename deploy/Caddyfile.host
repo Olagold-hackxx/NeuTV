@@ -1,21 +1,23 @@
-# For a Caddy already installed on the VPS. Copy to /etc/caddy/Caddyfile.
+# Add this to the Caddy already on the VPS. APPEND it to /etc/caddy/Caddyfile -
+# do not replace the file. A VPS is rarely serving one thing, and overwriting
+# that file takes every other site on the machine down with it.
 #
-#   sudo cp deploy/Caddyfile.host /etc/caddy/Caddyfile
-#   sudo sed -i 's/{$API_DOMAIN}/api.your-domain.com/' /etc/caddy/Caddyfile
+#   sudo tee -a /etc/caddy/Caddyfile < deploy/Caddyfile.host
+#   sudo sed -i 's/neutv.your-domain.com/<your hostname>/' /etc/caddy/Caddyfile
 #   sudo caddy validate --config /etc/caddy/Caddyfile
-#   sudo systemctl reload caddy
+#   sudo systemctl reload caddy      # reload, not restart: no dropped connections
 #
-# This replaces the default welcome-page site. Most VPS images ship Caddy
-# listening on :80 with that page, which is why the caddy container in
-# docker-compose.yml is behind a profile and off by default: two processes
-# cannot both bind :80, and the one that is already there is fine.
+# The hostname has to appear in three places and match in all of them:
+#   - here
+#   - API_DOMAIN in .env, which is what the RTMP and HLS URLs are built from
+#   - NEUTV_API_BASE on both Vercel projects
 #
-# The difference from deploy/Caddyfile is only the upstreams. The container
-# version reaches its neighbours by service name on the compose network; this
-# one is outside that network, so it uses the loopback ports the compose file
-# publishes.
+# This is the same configuration as deploy/Caddyfile, which the caddy container
+# uses. The only difference is the upstreams: that one reaches its neighbours by
+# compose service name, this one is outside the compose network and uses the
+# loopback ports the compose file publishes.
 
-{$API_DOMAIN} {
+neutv.your-domain.com {
 	encode zstd gzip
 
 	# Live HLS from MediaMTX. handle_path strips the prefix, because MediaMTX
