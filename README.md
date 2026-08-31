@@ -45,6 +45,17 @@ machine before the first `up`.
 It must stay a process, not a function: the live event stream is a held-open SSE
 connection, and a browser broadcast arrives as segments written to a volume.
 
+Updating it is a pull and a restart, because migrations run on boot:
+
+```bash
+npm run verify                   # 243 tests + evals, ~4s. Do this before, not after.
+ssh you@vps 'cd NEUTV && git pull && docker compose up -d --build'
+```
+
+If the build fails, compose aborts and the old container keeps serving. Rolling
+back is checking out the previous tag and building again - there is no faster
+path, so tag what you deploy.
+
 | | |
 |---|---|
 | Video | Cloudinary stores and transcodes; Fastly serves. No bucket involved. |
