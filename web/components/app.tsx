@@ -21,6 +21,10 @@ import { Celebration } from './celebration';
 import { Splash } from './splash';
 import { VideoModal, type ModalVideo } from './video-modal';
 
+// How many floating comments sit over the stage at once. Two is enough to show
+// the room is live without covering the video, which is the subject.
+const TICKER_LIMIT = 2;
+
 const EMOJIS = ['❤️', '🔥', '👏', '🎉', '🚀', '⭐', '💖', '💎'];
 
 type Heart = { id: number; emoji: string; right: number };
@@ -83,7 +87,7 @@ export function App({ data }: { data: AppData }) {
   const [tvLikes, setTvLikes] = useState<number>(seedCard.likes ?? 0);
   const [tvLiked, setTvLiked] = useState(false);
 
-  const [ticker, setTicker] = useState<LiveComment[]>(() => (bootstrap.SAMPLE_LIVE_COMMENTS ?? []).slice(0, 3));
+  const [ticker, setTicker] = useState<LiveComment[]>([]);
   const [giftBanner, setGiftBanner] = useState<GiftBanner | null>(null);
   const [hearts, setHearts] = useState<Heart[]>([]);
   const [gifts, setGifts] = useState<Gift[]>([]);
@@ -180,19 +184,20 @@ export function App({ data }: { data: AppData }) {
     return () => clearInterval(timer);
   }, [spawnHeart]);
 
-  // The floating ticker keeps rotating through the sample comments; real ones
-  // from the stream cut in on top.
+  // The ticker carries what people have actually said, and nothing else.
+  //
+  // It used to rotate through SAMPLE_LIVE_COMMENTS on a timer, injecting an
+  // invented message every 3.5 seconds under a real person's name and photo.
+  // On a broadcast nobody is talking in, the honest overlay is an empty one.
   useEffect(() => {
-    const samples = bootstrap.SAMPLE_LIVE_COMMENTS ?? [];
-    if (samples.length === 0) return;
-    let index = 0;
-    const timer = setInterval(() => {
-      index = (index + 1) % samples.length;
-      const next = { ...samples[index], id: `s-${samples[index].id}-${Date.now()}` };
-      setTicker((prev) => [next, ...prev].slice(0, 3));
-    }, 3500);
-    return () => clearInterval(timer);
-  }, [bootstrap.SAMPLE_LIVE_COMMENTS]);
+    let cancelled = false;
+    client.liveComments(TICKER_LIMIT)
+      .then((res) => {
+        if (!cancelled && res?.comments?.length) setTicker(res.comments.slice(0, TICKER_LIMIT));
+      })
+      .catch(() => { /* the stream fills it in as people speak */ });
+    return () => { cancelled = true; };
+  }, [client]);
 
   // Mount: adopt the server's stage, restore the session, start presence and
   // the event stream.
@@ -263,7 +268,7 @@ export function App({ data }: { data: AppData }) {
       comment: (payload: { comment?: LiveComment } & LiveComment) => {
         const comment = payload.comment ?? payload;
         if (!comment?.text) return;
-        setTicker((prev) => [{ ...comment, id: `${comment.id}-${Date.now()}` }, ...prev].slice(0, 3));
+        setTicker((prev) => [{ ...comment, id: `${comment.id}-${Date.now()}` }, ...prev].slice(0, TICKER_LIMIT));
       },
       gift: (payload: { sender?: string; giftName?: string; name?: string; cost?: number; emoji?: string }) => {
         if (stateRef.current.user && payload.sender === stateRef.current.user.name) return;

@@ -11,7 +11,7 @@ import { dirname, join } from 'node:path';
 import { notFound } from '../../platform/errors.mjs';
 import { CONTRACT_VERSION } from '../../contracts/version.mjs';
 import { resolveSchedule } from './schedule.mjs';
-import { stripCounts, stripSeededComments } from './counts.mjs';
+import { stripCounts, stripSeededComments, SEEDED_SPEECH } from './counts.mjs';
 import { searchCatalog } from './search.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -26,6 +26,8 @@ export function createCatalogService({ runtime, seed = loadSeed(), tzOffsetMinut
   // shown, so the numbers are dropped once, here, and no consumer has to
   // remember which fields were real. See counts.mjs.
   const content = stripCounts(seed.content);
+  // Invented speech goes the same way the invented counts did.
+  for (const key of SEEDED_SPEECH) content[key] = [];
 
   // The five canonical ecosystem products. Every other service validates
   // productId against this list, through the contract, never by hardcoding.

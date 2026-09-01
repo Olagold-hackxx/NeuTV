@@ -47,3 +47,14 @@ export function stripCounts(value) {
 export function stripSeededComments(posts) {
   return posts.map(({ comments, ...post }) => ({ ...post, comments: [] }));
 }
+
+/**
+ * Invented chatter for the live ticker.
+ *
+ * SAMPLE_LIVE_COMMENTS carried messages attributed to named people with photos,
+ * which the stage rotated through every few seconds so the broadcast looked
+ * busy. They are indistinguishable from real viewers talking, which is exactly
+ * the problem. An empty ticker is the honest state of a stream nobody has
+ * spoken in.
+ */
+export const SEEDED_SPEECH = ['SAMPLE_LIVE_COMMENTS'];

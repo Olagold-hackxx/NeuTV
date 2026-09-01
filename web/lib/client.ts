@@ -212,6 +212,11 @@ export class NeuTVClient {
   liveComment(text: string) {
     return this.post<{ comment?: import('./types').LiveComment }>('/live/comments', { text });
   }
+
+  /** The floating ticker's backlog: what people have actually said. */
+  liveComments(limit = 8) {
+    return this.get<{ comments: import('./types').LiveComment[] }>(`/live/comments?limit=${limit}`);
+  }
   react(emoji: string) {
     return this.post('/live/reactions', { emoji });
   }
