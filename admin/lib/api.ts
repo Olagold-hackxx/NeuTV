@@ -46,19 +46,37 @@ export async function call<T>(path: string, options: CallOptions = {}): Promise<
   const { method = 'GET', body, anonymous = false } = options;
   const token = options.token !== undefined ? options.token : await getToken();
 
-  const res = await fetch(`${API_BASE}/api/v1${path}`, {
-    method,
-    headers: {
-      'content-type': 'application/json',
-      ...(token ? { authorization: `Bearer ${token}` } : {}),
-    },
-    body: body === undefined ? undefined : JSON.stringify(body),
-    // The back office must never show a stale roster or a stale programme.
-    cache: 'no-store',
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}/api/v1${path}`, {
+      method,
+      headers: {
+        'content-type': 'application/json',
+        ...(token ? { authorization: `Bearer ${token}` } : {}),
+      },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      // The back office must never show a stale roster or a stale programme.
+      cache: 'no-store',
+    });
+  } catch {
+    // A connection failure is not a response. Without this it surfaces as a
+    // bare "fetch failed" TypeError, which the error boundary can only render
+    // as a mystery. Name the actual problem instead.
+    throw new ApiError(
+      0,
+      `The NEU TV API at ${API_BASE} could not be reached. Check that it is running, then reload.`,
+      'api_unreachable',
+    );
+  }
 
   const text = await res.text();
-  const parsed = text ? JSON.parse(text) : null;
+  let parsed: any = null;
+  try {
+    parsed = text ? JSON.parse(text) : null;
+  } catch {
+    // A proxy or crash page answered instead of the API.
+    throw new ApiError(res.status, `The API answered with something that is not JSON (${res.status}).`, 'bad_response');
+  }
 
   if (!res.ok) {
     // An expired or revoked session sends the operator back to the login form

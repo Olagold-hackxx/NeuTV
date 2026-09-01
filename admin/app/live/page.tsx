@@ -12,6 +12,12 @@ export default async function LivePage() {
   const upcoming = events.filter((e) => e.status === 'scheduled');
   const past = events.filter((e) => e.status === 'ended' || e.status === 'cancelled');
 
+  // One event is the studio's subject; which panel it gets depends on how
+  // it is fed. Only a browser-fed event can accept segments from here.
+  const subject = onAir ?? upcoming[0] ?? null;
+  const studioEvent = subject?.source === 'browser' ? subject : null;
+  const encoderEvent = subject && subject.source !== 'browser' ? subject : null;
+
   return (
     <>
       <div className="page-head">
@@ -50,8 +56,31 @@ export default async function LivePage() {
       <div className="grid grid-split" style={{ alignItems: 'start' }}>
         <div className="stack" style={{ gap: 16 }}>
           {/* The studio broadcasts whatever is on air, or the next scheduled
-              event if nothing is. */}
-          {(onAir ?? upcoming[0]) ? <Studio event={(onAir ?? upcoming[0])!} /> : null}
+              event if nothing is - but only if that event is fed by a browser.
+
+              It used to mount for any event at all. An event defaults to
+              "external", so the common case was a studio offering to broadcast
+              into an event the API would never accept: the camera opened, the
+              preview looked correct, and every segment came back 409. Nothing
+              reached the viewer and the counter sat at zero, with the only
+              explanation in a rejected response nobody was reading. An encoder
+              event gets the encoder's instructions instead. */}
+          {studioEvent ? (
+            <Studio event={studioEvent} />
+          ) : encoderEvent ? (
+            <div className="panel">
+              <div className="panel-head"><h2>Broadcast</h2></div>
+              <p className="stat-note" style={{ maxWidth: '66ch' }}>
+                <strong>{encoderEvent.title}</strong> is fed by an external encoder,
+                so it cannot be broadcast from this browser. Point OBS at the ingest
+                URL below, or switch the event to <em>Broadcast from this browser</em>{' '}
+                in its panel to use the camera instead.
+              </p>
+              {encoderEvent.ingestUrl ? (
+                <p className="mono stat-note">{encoderEvent.ingestUrl}</p>
+              ) : null}
+            </div>
+          ) : null}
           {onAir ? <LiveEventPanel event={onAir} /> : null}
 
           <div className="panel">

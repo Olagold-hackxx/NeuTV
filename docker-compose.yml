@@ -37,6 +37,11 @@ services:
       NEUTV_LIVE_DRIVER: ${NEUTV_LIVE_DRIVER:-mediamtx}
       NEUTV_MEDIAMTX_RTMP_URL: rtmp://${API_DOMAIN:?set API_DOMAIN}:1935
       NEUTV_MEDIAMTX_HLS_BASE: https://${API_DOMAIN}/hls
+      # WHIP: the studio publishes WebRTC straight to MediaMTX, so ingest is
+      # sub-second instead of one MediaRecorder chunk behind. The API only
+      # hands a whipUrl to the studio when this is set, so leaving it blank
+      # keeps every broadcast on the segment path.
+      NEUTV_MEDIAMTX_WHIP_BASE: ${NEUTV_MEDIAMTX_WHIP_BASE:-}
     volumes:
       # Live broadcast segments. The only state that is not in Postgres or
       # Cloudinary, and it has to outlive the container.
@@ -84,6 +89,15 @@ services:
       - "1935:1935"
       # HLS on loopback, for whichever proxy is serving /hls.
       - "127.0.0.1:8888:8888"
+      # WHIP signalling on loopback, for whichever proxy is serving /whip.
+      - "127.0.0.1:8889:8889"
+      # WebRTC media. This one CANNOT be loopback and CANNOT be proxied: the
+      # browser sends media straight here over UDP, bypassing Caddy entirely.
+      # Signalling working while this port is closed is the failure that looks
+      # like a connected broadcast carrying no video, so open it in the
+      # firewall too - both protocols, same number.
+      - "8189:8189/udp"
+      - "8189:8189/tcp"
 
   # Only started with `--profile edge`. A VPS that already has Caddy installed
   # has something on :80 already, and two of them cannot both bind it - so the

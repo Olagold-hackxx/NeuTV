@@ -39,6 +39,7 @@ export function Studio({ event }: { event: LiveEvent }) {
   const [source, setSource] = useState<Source>('camera');
   const [recording, setRecording] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [sent, setSent] = useState(0);
   const [dropped, setDropped] = useState(0);
   const [kbps, setKbps] = useState(0);
@@ -68,6 +69,7 @@ export function Studio({ event }: { event: LiveEvent }) {
 
   const begin = async () => {
     setError(null);
+    setNotice(null);
     try {
       const stream = source === 'screen'
         ? await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 30 }, audio: true })
@@ -87,27 +89,45 @@ export function Studio({ event }: { event: LiveEvent }) {
       // finished recording it, which put a three-second floor under the old
       // path. The segment path stays below as the fallback for a deployment
       // with no WebRTC ingest configured.
+      // WHIP is preferred, but never required.
+      //
+      // This used to be an unguarded `await`. When WHIP was configured and the
+      // ingest server could not actually take it — WebRTC disabled, UDP blocked,
+      // the endpoint 404ing — the throw skipped straight to the outer catch and
+      // the segment path below was never reached. The broadcast did not degrade,
+      // it simply did not happen: nothing on air, nothing uploaded, zero bytes.
+      // A broken fast path must fall back to the slow one, not replace it.
       if (event.whipUrl) {
-        const publisher = await publishWhip(event.whipUrl, stream, (state) => {
-          if (state === 'failed' || state === 'disconnected') {
-            setError('The connection to the broadcast server dropped.');
-          }
-        });
-        publisherRef.current = publisher;
-        setRecording(true);
-        if (!event.isLive) await startLiveEvent(event.id);
-        router.refresh();
+        try {
+          const publisher = await publishWhip(event.whipUrl, stream, (state) => {
+            if (state === 'failed' || state === 'disconnected') {
+              setError('The connection to the broadcast server dropped.');
+            }
+          });
+          publisherRef.current = publisher;
+          setRecording(true);
+          if (!event.isLive) await startLiveEvent(event.id);
+          router.refresh();
 
-        // Stats come from the peer connection rather than from chunk sizes.
-        const timer = setInterval(async () => {
-          try {
-            const s = await publisher.stats();
-            setKbps(s.kbps);
-            setSent(s.frames);
-          } catch { /* the connection is closing */ }
-        }, 1000);
-        statsRef.current = timer;
-        return;
+          // Stats come from the peer connection rather than from chunk sizes.
+          const timer = setInterval(async () => {
+            try {
+              const s = await publisher.stats();
+              setKbps(s.kbps);
+              setSent(s.frames);
+            } catch { /* the connection is closing */ }
+          }, 1000);
+          statsRef.current = timer;
+          return;
+        } catch (err) {
+          // Say which path is carrying the broadcast, so a silent downgrade to
+          // three-second latency is not mistaken for the sub-second one.
+          console.warn('WHIP ingest unavailable, falling back to segments:', err);
+          setNotice(
+            'The low-latency route was unavailable, so this is broadcasting over '
+            + 'the segment path instead. Viewers will see it a few seconds behind.',
+          );
+        }
       }
 
       // Pick a container the browser will actually produce.
@@ -197,6 +217,7 @@ export function Studio({ event }: { event: LiveEvent }) {
       </div>
       <div className="panel-body">
         {error ? <div className="alert alert-error">{error}</div> : null}
+        {notice ? <div className="alert">{notice}</div> : null}
 
         <div className="preview-frame">
           <video
