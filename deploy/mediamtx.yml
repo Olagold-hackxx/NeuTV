@@ -52,9 +52,17 @@ webrtcTrustedProxies: [127.0.0.1/8, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16]
 # the firewall.
 webrtcLocalUDPAddress: :8189
 webrtcLocalTCPAddress: :8189
-# Replace with the public hostname or IP of this server, or ICE offers only
-# private addresses and nothing outside the machine can connect.
-webrtcAdditionalHosts: [{$MTX_PUBLICHOST}]
+# The public hostname or IP of this server. Without it ICE offers only private
+# addresses and nothing outside the machine can connect.
+#
+# It is supplied by compose as MTX_WEBRTCADDITIONALHOSTS rather than written
+# here, because this file has no variable substitution. It previously read
+# `[{$MTX_PUBLICHOST}]` - Caddy's syntax, which YAML parses as a mapping, not a
+# string. MediaMTX rejected the config with "cannot unmarshal object into Go
+# value of type string" and restarted in a loop. Every MediaMTX setting can be
+# overridden by an MTX_<NAME> environment variable; that is the mechanism to
+# use for anything host-specific.
+webrtcAdditionalHosts: []
 
 paths:
   # Any path, created on publish. The keys are minted by the API, not chosen

@@ -79,6 +79,10 @@ services:
     restart: unless-stopped
     environment:
       MTX_PROTOCOLS: tcp
+      # The public host to advertise in ICE candidates. MediaMTX has no
+      # variable substitution inside its config file, so anything host-specific
+      # is passed as MTX_<NAME> instead.
+      MTX_WEBRTCADDITIONALHOSTS: ${API_DOMAIN:?set API_DOMAIN}
     volumes:
       - ./deploy/mediamtx.yml:/mediamtx.yml:ro
     ports:

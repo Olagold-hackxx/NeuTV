@@ -183,12 +183,54 @@ Nothing to configure for browser broadcasting — an admin opens `/live`, picks
 camera or screen, and goes on air. Segments post to the API and viewers assemble
 them. Latency is 3–6 seconds.
 
-For an encoder instead, MediaMTX is in the compose file. OBS publishes RTMP to
-the VPS and Caddy serves the HLS at `/hls`:
+An event is **fed by an external encoder unless you say otherwise**. The studio
+only appears for an event set to *Broadcast from this browser* — an encoder event
+gets its ingest URL instead, because the API refuses browser segments for one.
+
+For an encoder, MediaMTX is in the compose file. OBS publishes RTMP to the VPS
+and Caddy serves the HLS at `/hls`:
 
 ```bash
 NEUTV_LIVE_DRIVER=mediamtx
 ```
+
+The ingest URL is `rtmp://`, not `rtmps://`. MediaMTX serves plain RTMP on 1935;
+pointing OBS at `rtmps://` sends a TLS handshake to it and the log says
+`invalid rtmp version (22)` — 22 being the first byte of that handshake.
+
+### Sub-second ingest with WHIP
+
+The studio publishes WebRTC straight to MediaMTX rather than posting recorded
+chunks, which takes ingest from about three seconds to under one:
+
+```bash
+NEUTV_MEDIAMTX_WHIP_BASE=https://api.example.com/whip
+```
+
+Then open **8189 on both UDP and TCP** in the firewall:
+
+```bash
+sudo ufw allow 8189/udp && sudo ufw allow 8189/tcp
+```
+
+That port cannot be proxied. Caddy carries the signalling on `/whip`, but the
+browser sends media straight to 8189 — so signalling succeeding while the port is
+closed gives you a connection that looks established and carries no video.
+
+Confirm WebRTC actually started, because a config MediaMTX cannot parse leaves it
+restarting with the other listeners up:
+
+```bash
+docker compose logs mediamtx | grep WebRTC     # want a listener on :8889
+curl -X OPTIONS https://api.example.com/whip/test/whip -o /dev/null -w '%{http_code}\n'
+```
+
+Nothing host-specific goes in `deploy/mediamtx.yml` — it has no variable
+substitution. Override with `MTX_<NAME>` environment variables in compose, the
+way `MTX_WEBRTCADDITIONALHOSTS` supplies the public hostname.
+
+Then `docker compose up -d --build`. A restart is not enough: it reuses the
+image, so a code or config change does not take.
 
 ---
 
