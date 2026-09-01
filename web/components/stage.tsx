@@ -8,11 +8,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ChevronDown,
+  Expand,
   Flame,
   Globe,
   Heart,
   Maximize,
   Minimize,
+  Shrink,
   Tv,
   Volume2,
   VolumeX,
@@ -68,6 +70,8 @@ type StageProps = {
   giftBanner: { sender: string; giftName: string; cost: number; emoji?: string } | null;
   hearts: { id: number; emoji: string; right: number }[];
   signedIn: boolean;
+  theater: boolean;
+  onToggleTheater: () => void;
 };
 
 const isHls = (url: string | null | undefined) => Boolean(url && url.includes('.m3u8'));
@@ -129,6 +133,8 @@ export function Stage(props: StageProps) {
     giftBanner,
     hearts,
     signedIn,
+    theater,
+    onToggleTheater,
   } = props;
 
   const frameRef = useRef<HTMLElement>(null);
@@ -394,6 +400,19 @@ export function Stage(props: StageProps) {
             ) : null}
           </div>
 
+          <button
+            type="button"
+            title={theater ? 'Exit Expanded Player' : 'Expand Player'}
+            aria-pressed={theater}
+            onClick={onToggleTheater}
+            className={`w-8 h-8 rounded-full border flex items-center justify-center transition ${
+              theater
+                ? 'bg-white text-black border-white hover:bg-neutral-200'
+                : 'bg-white/10 hover:bg-white/20 border-white/20 text-white'
+            }`}
+          >
+            {theater ? <Shrink className="w-3.5 h-3.5" /> : <Expand className="w-3.5 h-3.5" />}
+          </button>
           <button
             type="button"
             title="Watch Fullscreen"

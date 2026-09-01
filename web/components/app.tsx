@@ -94,6 +94,38 @@ export function App({ data }: { data: AppData }) {
   const [activeProduct, setActiveProduct] = useState('all');
   const [search, setSearch] = useState('');
 
+  // Theater mode: the player takes the room and both rails fold away. The
+  // sidebar keeps its own toggle, so it can be expanded again even mid-theater.
+  const [railCollapsed, setRailCollapsed] = useState(false);
+  const [theater, setTheater] = useState(false);
+  const railBeforeTheater = useRef(false);
+  const toggleTheater = useCallback(() => {
+    setTheater((was) => {
+      if (!was) {
+        railBeforeTheater.current = railCollapsed;
+        setRailCollapsed(true);
+      } else {
+        setRailCollapsed(railBeforeTheater.current);
+      }
+      return !was;
+    });
+  }, [railCollapsed]);
+
+  // Leaving the TV tab leaves theater too — otherwise the chat rail would
+  // stay hidden with its only way back off-screen.
+  const selectTab = useCallback(
+    (tab: MainTab) => {
+      setActiveTab(tab);
+      if (tab !== 'tv') {
+        setTheater((was) => {
+          if (was) setRailCollapsed(railBeforeTheater.current);
+          return false;
+        });
+      }
+    },
+    [],
+  );
+
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const showToast = useCallback((message: string) => {
@@ -461,7 +493,7 @@ export function App({ data }: { data: AppData }) {
         products={bootstrap.PRODUCTS ?? []}
         activeTab={activeTab}
         onSelectTab={(tab) => {
-          setActiveTab(tab);
+          selectTab(tab);
           setActiveProduct('all');
         }}
         activeProduct={activeProduct}
@@ -474,6 +506,8 @@ export function App({ data }: { data: AppData }) {
           setGateOpen(true);
         }}
         onSignOut={signOut}
+        collapsed={railCollapsed}
+        onToggleCollapsed={() => setRailCollapsed((c) => !c)}
       />
 
       <main className="flex-1 h-screen overflow-y-auto min-w-0 p-4 md:p-8 space-y-10 border-r border-white/10 no-scrollbar relative">
@@ -487,7 +521,7 @@ export function App({ data }: { data: AppData }) {
           </output>
         ) : null}
 
-        <TopBar activeTab={activeTab} onSelectTab={setActiveTab} search={search} onSearch={setSearch} />
+        <TopBar activeTab={activeTab} onSelectTab={selectTab} search={search} onSearch={setSearch} />
 
         {activeTab === 'tv' ? (
           <Stage
@@ -512,6 +546,8 @@ export function App({ data }: { data: AppData }) {
             giftBanner={giftBanner}
             hearts={hearts}
             signedIn={Boolean(user)}
+            theater={theater}
+            onToggleTheater={toggleTheater}
           />
         ) : null}
 
@@ -525,7 +561,7 @@ export function App({ data }: { data: AppData }) {
           activeProduct={activeProduct}
           onSelectProduct={setActiveProduct}
           activeTab={activeTab}
-          onSelectTab={setActiveTab}
+          onSelectTab={selectTab}
           search={search}
           now={now}
           client={client}
@@ -537,15 +573,17 @@ export function App({ data }: { data: AppData }) {
         />
       </main>
 
-      <ChatRail
-        hubs={bootstrap.PRODUCT_COMMUNITY_HUBS ?? {}}
-        products={bootstrap.PRODUCTS ?? []}
-        activeProduct={activeProduct}
-        client={client}
-        user={user}
-        onRequireSignIn={() => setGateOpen(true)}
-        showToast={showToast}
-      />
+      {!theater ? (
+        <ChatRail
+          hubs={bootstrap.PRODUCT_COMMUNITY_HUBS ?? {}}
+          products={bootstrap.PRODUCTS ?? []}
+          activeProduct={activeProduct}
+          client={client}
+          user={user}
+          onRequireSignIn={() => setGateOpen(true)}
+          showToast={showToast}
+        />
+      ) : null}
 
       {giftsOpen ? (
         <GiftPalette gifts={gifts} balance={balance} onClose={() => setGiftsOpen(false)} onSend={sendGift} />

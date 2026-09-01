@@ -3,7 +3,7 @@
 // The left sidebar: brand header, KashCoin wallet badge, primary navigation
 // and the communities directory — the CDN app's layout, faithfully.
 
-import { Bookmark, Coins, Flame, LogIn, LogOut, Tv, Users } from 'lucide-react';
+import { Bookmark, Coins, Flame, LogIn, LogOut, PanelLeftClose, PanelLeftOpen, Tv, Users } from 'lucide-react';
 import type { Product, SessionUser } from '@/lib/types';
 
 export type MainTab = 'tv' | 'foryou' | 'following' | 'saved';
@@ -19,6 +19,8 @@ type RailProps = {
   onOpenGifts: () => void;
   onOpenGate: () => void;
   onSignOut: () => void;
+  collapsed: boolean;
+  onToggleCollapsed: () => void;
 };
 
 const NAV: { tab: MainTab; label: string }[] = [
@@ -52,33 +54,163 @@ export function Rail({
   onOpenGifts,
   onOpenGate,
   onSignOut,
+  collapsed,
+  onToggleCollapsed,
 }: RailProps) {
+  // Collapsed: an icon rail. Everything stays reachable; labels come back
+  // when the sidebar expands again.
+  if (collapsed) {
+    return (
+      <aside className="w-20 h-screen flex-shrink-0 hidden md:flex flex-col items-center justify-between py-6 px-3 border-r border-white/10 bg-[#0A0A0C]/95 backdrop-blur-2xl z-40 overflow-y-auto no-scrollbar shadow-2xl sticky top-0">
+        <div className="flex flex-col items-center gap-5">
+          <button
+            type="button"
+            onClick={() => {
+              onSelectTab('tv');
+              onSelectProduct('all');
+            }}
+            title="NEU TV Live"
+            className="w-10 h-10 flex items-center justify-center hover:scale-105 transition duration-300"
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/logos/neu-cube-n.png" alt="NEU TV" className="w-full h-full object-contain drop-shadow" />
+          </button>
+
+          <button
+            type="button"
+            onClick={onToggleCollapsed}
+            title="Expand sidebar"
+            aria-expanded={false}
+            className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 flex items-center justify-center text-white transition"
+          >
+            <PanelLeftOpen className="w-4 h-4" />
+          </button>
+
+          <button
+            type="button"
+            onClick={onOpenGifts}
+            title={`KashCoin Balance: ${balance.toLocaleString()} KASH — send a gift`}
+            className="w-10 h-10 rounded-xl bg-[#0070F3]/20 border border-[#0070F3]/40 hover:bg-[#0070F3]/40 flex items-center justify-center text-[#38B6FF] transition"
+          >
+            <Coins className="w-4.5 h-4.5" />
+          </button>
+
+          <nav className="flex flex-col items-center gap-2 pt-2 border-t border-white/10 w-full" aria-label="Main">
+            {NAV.map(({ tab, label }) => {
+              const active = activeTab === tab;
+              return (
+                <button
+                  key={tab}
+                  type="button"
+                  onClick={() => onSelectTab(tab)}
+                  title={label}
+                  aria-current={active ? 'true' : undefined}
+                  className={`w-11 h-11 rounded-2xl flex items-center justify-center transition ${
+                    active ? 'bg-white/10 border border-white/20 shadow-md scale-105' : 'hover:bg-white/5'
+                  }`}
+                >
+                  {navIcon(tab)}
+                </button>
+              );
+            })}
+          </nav>
+
+          <div className="flex flex-col items-center gap-2 pt-2 border-t border-white/10 w-full">
+            {products.map((prod) => {
+              const isActive = activeProduct === prod.id;
+              return (
+                <button
+                  key={prod.id}
+                  type="button"
+                  onClick={() => onSelectProduct(prod.id)}
+                  title={prod.name}
+                  className={`w-10 h-10 rounded-xl p-1.5 flex items-center justify-center transition ${
+                    isActive ? 'bg-white shadow-md scale-105' : 'bg-white/5 border border-white/10 hover:bg-white/15'
+                  }`}
+                >
+                  {prod.logo ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={prod.logo} alt="" className="w-full h-full object-contain" />
+                  ) : (
+                    <span className={`text-[10px] font-black ${isActive ? 'text-black' : 'text-white'}`}>
+                      {prod.name.slice(0, 2)}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="pt-4 border-t border-white/10 w-full flex justify-center">
+          {user ? (
+            <button
+              type="button"
+              onClick={onSignOut}
+              title={`${user.name} — log out`}
+              className="w-9 h-9 rounded-full overflow-hidden border border-white/30 hover:border-rose-400 transition"
+            >
+              {user.avatar ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={user.avatar} alt="" className="w-full h-full object-cover" />
+              ) : (
+                <span className="w-full h-full bg-white/10 flex items-center justify-center text-xs font-black text-white">
+                  {user.name.slice(0, 1).toUpperCase()}
+                </span>
+              )}
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onOpenGate}
+              title="Sign In to NEU TV"
+              className="w-9 h-9 rounded-full bg-white text-black flex items-center justify-center hover:bg-white/90 transition shadow-lg"
+            >
+              <LogIn className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+      </aside>
+    );
+  }
+
   return (
     <aside className="w-64 md:w-72 h-screen flex-shrink-0 hidden md:flex flex-col justify-between p-6 border-r border-white/10 bg-[#0A0A0C]/95 backdrop-blur-2xl z-40 overflow-y-auto no-scrollbar shadow-2xl sticky top-0 space-y-6">
       <div className="space-y-6">
         {/* Brand header */}
-        <button
-          type="button"
-          onClick={() => {
-            onSelectTab('tv');
-            onSelectProduct('all');
-          }}
-          className="flex items-center gap-3 cursor-pointer py-1 group select-none w-full text-left"
-        >
-          <div className="h-10 flex-shrink-0 group-hover:scale-105 transition duration-300">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/logos/neu-brand-banner.png" alt="NEU TV" className="h-full w-auto object-contain drop-shadow" />
-          </div>
-          <div className="min-w-0">
-            <div className="flex items-center gap-1 leading-none">
-              <span className="text-white text-[11px] font-black tracking-widest">TV LIVE</span>
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse ml-1 shadow-[0_0_8px_rgba(52,211,153,0.5)]" aria-hidden />
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              onSelectTab('tv');
+              onSelectProduct('all');
+            }}
+            className="flex items-center gap-3 cursor-pointer py-1 group select-none flex-1 min-w-0 text-left"
+          >
+            <div className="h-10 flex-shrink-0 group-hover:scale-105 transition duration-300">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/logos/neu-brand-banner.png" alt="NEU TV" className="h-full w-auto object-contain drop-shadow" />
             </div>
-            <p className="text-[8px] font-mono tracking-wider text-white/50 uppercase mt-1 font-bold truncate">
-              NEW ECONOMY UNVEIL NETWORK
-            </p>
-          </div>
-        </button>
+            <div className="min-w-0">
+              <div className="flex items-center gap-1 leading-none">
+                <span className="text-white text-[11px] font-black tracking-widest">TV LIVE</span>
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse ml-1 shadow-[0_0_8px_rgba(52,211,153,0.5)]" aria-hidden />
+              </div>
+              <p className="text-[8px] font-mono tracking-wider text-white/50 uppercase mt-1 font-bold truncate">
+                NEW ECONOMY UNVEIL NETWORK
+              </p>
+            </div>
+          </button>
+          <button
+            type="button"
+            onClick={onToggleCollapsed}
+            title="Collapse sidebar"
+            aria-expanded
+            className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/15 border border-white/10 flex items-center justify-center text-white/60 hover:text-white transition flex-shrink-0"
+          >
+            <PanelLeftClose className="w-4 h-4" />
+          </button>
+        </div>
 
         {/* Wallet */}
         <div className="p-3.5 rounded-2xl bg-[#141418]/80 border border-white/10 flex items-center justify-between shadow-lg">

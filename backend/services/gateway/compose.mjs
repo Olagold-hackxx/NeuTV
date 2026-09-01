@@ -31,7 +31,7 @@ import { createLiveService } from '../live/service.mjs';
 import { createLiveRouter } from '../live/router.mjs';
 import { openLiveStore } from '../live/store.mjs';
 import { createAdminService } from '../admin/service.mjs';
-import { createMediaStorage, mediaBaseFor } from '../admin/storage/index.mjs';
+import { createMediaStorage, mediaBaseFor, mediaTransformFor } from '../admin/storage/index.mjs';
 import { createAdminRouter } from '../admin/router.mjs';
 import { openAdminStore } from '../admin/store.mjs';
 import { createModerationService } from '../moderation/service.mjs';
@@ -54,6 +54,7 @@ export async function compose({
   passwordCost = PROD_COST,
   uploadsRoot = null,
   mediaBase = mediaBaseFor(),
+  mediaTransform = mediaTransformFor(),
   storage = null,
 } = {}) {
   // One Postgres database when DATABASE_URL is set, otherwise a SQLite file per
@@ -107,7 +108,7 @@ export async function compose({
 
   const uploads = uploadsRoot || `${dataDir}/admin/data/uploads`;
   const admin = createAdminService({
-    runtime, catalog, mediaBase,
+    runtime, catalog, mediaBase, mediaTransform,
     store: await open(openAdminStore, 'admin'),
     // Local disk unless NEUTV_MEDIA_DRIVER says otherwise; the service only
     // ever sees "something with save() on it".

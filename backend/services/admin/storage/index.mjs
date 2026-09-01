@@ -59,3 +59,22 @@ export function createMediaStorage(env = process.env, { uploadsRoot } = {}) {
  */
 export const mediaBaseFor = (env = process.env) =>
   (env.NEUTV_MEDIA_BASE_URL || '/media').replace(/\/$/, '');
+
+/**
+ * Delivery transform, inserted between the base URL and the stored path.
+ *
+ * Cloudinary reads these from the URL, so asking for a smaller rendition costs
+ * nothing and stores nothing extra. It matters more than it looks: a 28-second
+ * 1080p upload arrives at 50.7MB, which is over the 20MB object limit a CDN
+ * will buffer, so it is refused at the edge with "Response object too large"
+ * and never plays. q_auto brings the same clip to 5.3MB.
+ *
+ * Only meaningful for a driver that transforms on delivery. Local disk and
+ * plain S3 serve the bytes they were given, so this is empty for them and the
+ * URL is unchanged.
+ */
+export const mediaTransformFor = (env = process.env) => {
+  if (env.NEUTV_MEDIA_TRANSFORM !== undefined) return env.NEUTV_MEDIA_TRANSFORM.replace(/^\/|\/$/g, '');
+  const driver = (env.NEUTV_MEDIA_DRIVER || 'local').toLowerCase();
+  return driver === 'cloudinary' ? 'q_auto,f_auto' : '';
+};

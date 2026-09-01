@@ -168,3 +168,21 @@ test('selecting cloudinary without credentials fails loudly at boot', () => {
   });
   assert.equal(ok.driver, 'cloudinary');
 });
+
+test('the delivery transform keeps a file under a CDN object limit', async () => {
+  // A 28-second 1080p upload arrives at 50.7MB, which Fastly refuses to buffer
+  // ("Response object too large", error 54113) so it never plays. q_auto brings
+  // the same clip to 5.3MB. The transform is a URL segment, so it costs nothing
+  // to store and nothing to compute here.
+  const { mediaTransformFor } = await import('../storage/index.mjs');
+  assert.equal(mediaTransformFor({ NEUTV_MEDIA_DRIVER: 'cloudinary' }), 'q_auto,f_auto');
+  assert.equal(mediaTransformFor({ NEUTV_MEDIA_DRIVER: 'local' }), '', 'disk serves what it was given');
+  assert.equal(mediaTransformFor({ NEUTV_MEDIA_DRIVER: 's3' }), '', 'plain object storage does not transform');
+  assert.equal(
+    mediaTransformFor({ NEUTV_MEDIA_DRIVER: 'cloudinary', NEUTV_MEDIA_TRANSFORM: 'q_auto:eco,w_1280' }),
+    'q_auto:eco,w_1280',
+    'and it can be overridden',
+  );
+  assert.equal(mediaTransformFor({ NEUTV_MEDIA_DRIVER: 'cloudinary', NEUTV_MEDIA_TRANSFORM: '' }), '',
+    'including turned off entirely');
+});

@@ -27,7 +27,7 @@ export function parseDuration(value) {
   return parts.reduce((total, n) => total * 60 + n, 0);
 }
 
-const publicVideo = (row, mediaBase) => ({
+const publicVideo = (row, mediaBase, mediaTransform = '') => ({
   id: row.id,
   title: row.title,
   description: row.description,
@@ -38,7 +38,11 @@ const publicVideo = (row, mediaBase) => ({
   posterUrl: row.poster_url,
   youtubeId: row.youtube_id,
   // An uploaded file is addressed by the media route, never by its disk path.
-  playbackUrl: row.file_path ? `${mediaBase}/${row.file_path}` : row.source_url,
+  // The transform segment, where the driver supports one, is what keeps a
+  // delivered file small enough for a CDN to accept.
+  playbackUrl: row.file_path
+    ? `${mediaBase}/${mediaTransform ? `${mediaTransform}/` : ''}${row.file_path}`
+    : row.source_url,
   fileSize: row.file_size,
   contentType: row.content_type,
   hasFile: Boolean(row.file_path),
@@ -53,6 +57,7 @@ export function createAdminService({
   storage = null,
   uploadsRoot = null,
   mediaBase = '/media',
+  mediaTransform = '',
   catalog,                    // for product id validation, through the contract
   ports = {},                 // { viewers, spend, moderation, engagement }
   events = { emit: () => {} },
@@ -84,17 +89,17 @@ export function createAdminService({
         ? await store.all('SELECT * FROM videos WHERE status = ? ORDER BY created_at DESC LIMIT ?', status, Math.min(limit, 200))
         : await store.all('SELECT * FROM videos ORDER BY created_at DESC LIMIT ?', Math.min(limit, 200));
       const filtered = productId ? rows.filter((r) => r.product_id === productId) : rows;
-      return { videos: filtered.map((r) => publicVideo(r, mediaBase)), total: filtered.length };
+      return { videos: filtered.map((r) => publicVideo(r, mediaBase, mediaTransform)), total: filtered.length };
     },
 
-    async getVideo(videoId) { return { video: publicVideo(await getRow(videoId), mediaBase) }; },
+    async getVideo(videoId) { return { video: publicVideo(await getRow(videoId), mediaBase, mediaTransform) }; },
 
     // Public read. Only published videos, so a draft cannot be played by
     // guessing its id, and archived content stops being reachable.
     async publishedVideo(videoId) {
       const row = await getRow(videoId);
       if (row.status !== 'published') throw notFound(`No published video "${videoId}".`);
-      return { video: publicVideo(row, mediaBase) };
+      return { video: publicVideo(row, mediaBase, mediaTransform) };
     },
 
     // Public read of the whole published library. This is what the viewer app
@@ -108,7 +113,7 @@ export function createAdminService({
         'published', Math.min(Math.max(Number(limit) || 60, 1), 200),
       );
       const filtered = productId ? rows.filter((r) => r.product_id === productId) : rows;
-      return { videos: filtered.map((r) => publicVideo(r, mediaBase)), total: filtered.length };
+      return { videos: filtered.map((r) => publicVideo(r, mediaBase, mediaTransform)), total: filtered.length };
     },
 
     async createVideo(actorId, input) {
@@ -142,7 +147,7 @@ export function createAdminService({
         v.sourceUrl ?? null, v.youtubeId ?? null, seconds, v.posterUrl ?? null,
         actorId, now, now,
       );
-      const video = publicVideo(await getRow(id), mediaBase);
+      const video = publicVideo(await getRow(id), mediaBase, mediaTransform);
       return {
         video,
         upload: v.kind === 'upload'
@@ -187,7 +192,7 @@ export function createAdminService({
         v.durationSeconds ?? row.duration_secs,
         row.status === 'draft' ? 'ready' : row.status, runtime.now(), videoId,
       );
-      return { video: publicVideo(await getRow(videoId), mediaBase) };
+      return { video: publicVideo(await getRow(videoId), mediaBase, mediaTransform) };
     },
 
     async uploadFile(videoId, { stream, contentType, contentLength }) {
@@ -199,7 +204,7 @@ export function createAdminService({
          WHERE id = ?`,
         saved.path, saved.size, saved.contentType, row.status === 'draft' ? 'ready' : row.status, runtime.now(), videoId,
       );
-      return { video: publicVideo(await getRow(videoId), mediaBase), uploaded: { size: saved.size, path: saved.path } };
+      return { video: publicVideo(await getRow(videoId), mediaBase, mediaTransform), uploaded: { size: saved.size, path: saved.path } };
     },
 
     async updateVideo(videoId, input) {
@@ -294,7 +299,7 @@ export function createAdminService({
         next.youtube_id, next.file_path, next.file_size, next.content_type,
         next.poster_url, next.duration_secs, runtime.now(), videoId,
       );
-      return { video: publicVideo(await getRow(videoId), mediaBase) };
+      return { video: publicVideo(await getRow(videoId), mediaBase, mediaTransform) };
     },
 
     async archiveVideo(videoId) {
@@ -306,7 +311,7 @@ export function createAdminService({
         throw conflict('That video is the main broadcast. Set another programme before archiving it.');
       }
       await store.run('UPDATE videos SET status = ?, updated_at = ? WHERE id = ?', 'archived', runtime.now(), videoId);
-      return { video: publicVideo(await getRow(videoId), mediaBase), archived: true, fileRetained: Boolean(row.file_path) };
+      return { video: publicVideo(await getRow(videoId), mediaBase, mediaTransform), archived: true, fileRetained: Boolean(row.file_path) };
     },
 
     // --- programming ------------------------------------------------------
@@ -354,7 +359,7 @@ export function createAdminService({
       if (!video) return { programme: null, video: null, source: 'unset' };
       return {
         programme: { videoId: row.video_id, setBy: row.set_by, setAt: row.set_at, note: row.note },
-        video: publicVideo(video, mediaBase),
+        video: publicVideo(video, mediaBase, mediaTransform),
         source: 'admin',
       };
     },
