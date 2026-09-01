@@ -14,16 +14,16 @@ const MIGRATIONS = {
       category_tag  TEXT NOT NULL DEFAULT '',
       role          TEXT NOT NULL DEFAULT '',
       bio           TEXT NOT NULL DEFAULT '',
-      followers     TEXT NOT NULL DEFAULT '',
       content       TEXT NOT NULL,
       video_title   TEXT,
       duration      TEXT,
-      views         TEXT,
       youtube_id    TEXT,
       video_mp4     TEXT,
       media_url     TEXT,
       shares        INTEGER NOT NULL DEFAULT 0,
-      seed_upvotes  INTEGER NOT NULL DEFAULT 0, -- content shipped with the seed
+      seed_upvotes  INTEGER NOT NULL DEFAULT 0, -- dropped by 002; kept here so
+                                                -- an existing database and a
+                                                -- fresh one follow one path
       flagged       INTEGER NOT NULL DEFAULT 0,
       created_at    INTEGER NOT NULL
     );
@@ -64,6 +64,11 @@ const MIGRATIONS = {
       created_at INTEGER NOT NULL,
       PRIMARY KEY (user_id, handle)
     );
+  `,
+  // Seeded engagement is gone: counts are measured or not shown. A column that
+  // held an invented number cannot be told apart from a real one downstream.
+  '002_drop_seed_counts': `
+    ALTER TABLE posts DROP COLUMN seed_upvotes;
   `,
 };
 

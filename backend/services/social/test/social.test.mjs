@@ -70,15 +70,18 @@ test('two viewers each add one upvote', async () => {
   assert.equal(res.upvotes, base + 2);
 });
 
-test('designed counts and measured counts are both visible and never conflated', async () => {
+test('a seeded post starts at zero engagement', async () => {
+  // The seed is editorial - video, title, creator - and carries no counts. A
+  // post that ships claiming 4,820 upvotes makes the 4,821st meaningless.
   const { social } = await build();
-  const id = (await social.feed(null, {})).posts[0].id;
-  const before = (await social.post(null, id)).post;
-  assert.ok(before.seedUpvotes > 0, 'the seed ships a designed number');
-  await social.toggleUpvote(authFor(), id);
-  const after = (await social.post(null, id)).post;
-  assert.equal(after.seedUpvotes, before.seedUpvotes, 'the seed number never moves');
-  assert.equal(after.upvotes, before.seedUpvotes + 1);
+  const post = (await social.feed(null, {})).posts[0];
+  assert.equal(post.upvotes, 0, 'no invented upvotes');
+  assert.equal(post.commentCount, 0, 'no invented comment thread');
+  assert.ok(!('seedUpvotes' in post), 'and nothing to add a real count to');
+  assert.ok(post.videoMp4 || post.youtubeId, 'but the video is still there');
+
+  await social.toggleUpvote(authFor(), post.id);
+  assert.equal((await social.post(null, post.id)).post.upvotes, 1, 'the first real vote reads as 1');
 });
 
 test('save and follow are per-viewer toggles', async () => {

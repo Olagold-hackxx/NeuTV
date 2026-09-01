@@ -364,7 +364,6 @@ export function App({ data }: { data: AppData }) {
     <div className="flex min-h-dvh bg-base">
       <Rail
         products={bootstrap.PRODUCTS ?? []}
-        hubs={bootstrap.PRODUCT_COMMUNITY_HUBS ?? {}}
         activeProduct={activeProduct}
         onSelectProduct={setActiveProduct}
         collapsed={railCollapsed}

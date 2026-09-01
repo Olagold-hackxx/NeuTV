@@ -86,18 +86,19 @@ test('viewer count measures presence heartbeats and decays', async () => {
   assert.equal((await live.telemetry()).viewers, 0, 'a tab that stopped beating stops counting');
 });
 
-test('seeded viewer numbers are reported separately from measured ones', async () => {
+test('the viewer count is measured, and there is no invented baseline', async () => {
   const { live, catalog } = await build();
   const t = await live.telemetry();
-  assert.equal(t.viewers, 0, 'nothing measured yet');
-  assert.equal(t.baselineViewers, catalog.centralTv().viewers, 'seed content, clearly labelled');
+  assert.equal(t.viewers, 0, 'nobody is watching yet, so it says nobody');
+  assert.ok(!('baselineViewers' in t), 'no seeded floor to sit on top of');
+  assert.equal(catalog.centralTv().viewers, undefined, 'the catalog no longer ships one');
 });
 
 test('blocked live comments never reach the ticker', async () => {
   const moderation = { call: async () => ({ status: 200, body: { verdict: 'block', allowed: false, needsReview: false, matches: [{ reason: 'scam' }] } }) };
   const { live } = await build({ moderation });
   await assert.rejects(() => live.postComment(authFor(), { text: 'send 1 eth get 2 back' }), (e) => e.status === 400);
-  assert.equal((await live.comments()).seeded, true, 'nothing was published');
+  assert.equal((await live.comments()).comments.length, 0, 'nothing was published');
 });
 
 test('flagged comments publish but are marked for review', async () => {
@@ -108,12 +109,14 @@ test('flagged comments publish but are marked for review', async () => {
   assert.equal((await live.comments()).comments[0].flagged, 1);
 });
 
-test('the ticker falls back to seeded chatter only while it is empty', async () => {
+test('the ticker starts empty rather than inventing chatter', async () => {
+  // It used to fall back to seeded messages attributed to named people, which
+  // read as real viewers talking. An empty ticker is the honest state.
   const { live } = await build();
-  assert.equal((await live.comments()).seeded, true);
+  assert.deepEqual((await live.comments()).comments, []);
   await live.postComment(authFor(), { text: 'first real message' });
   const after = await live.comments();
-  assert.equal(after.seeded, false);
+  assert.equal(after.comments.length, 1);
   assert.equal(after.comments[0].text, 'first real message');
 });
 

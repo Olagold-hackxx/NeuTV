@@ -2,12 +2,11 @@
 
 import { useEffect, useRef } from 'react';
 import { PanelLeftClose, PanelLeftOpen, X, Tv, LayoutGrid } from 'lucide-react';
-import type { CommunityHub, Product } from '@/lib/types';
+import type { Product } from '@/lib/types';
 import { Logo } from './logo';
 
 type RailProps = {
   products: Product[];
-  hubs: Record<string, CommunityHub>;
   activeProduct: string;
   onSelectProduct: (id: string) => void;
   collapsed: boolean;
@@ -45,7 +44,6 @@ function ProductLogo({ product, active }: { product: Product; active: boolean })
 
 function RailBody({
   products,
-  hubs,
   activeProduct,
   onSelectProduct,
   collapsed,
@@ -101,28 +99,11 @@ function RailBody({
         })}
       </nav>
 
-      {showLabels ? (
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          <div className="px-2.5 pb-1.5 text-xs font-semibold text-faint">Community hubs</div>
-          <div className="flex flex-col gap-0.5">
-            {Object.entries(hubs).map(([id, hub]) => (
-              <button
-                key={id}
-                type="button"
-                onClick={() => onSelectProduct(id)}
-                className="flex items-center justify-between gap-2 rounded-control px-2.5 py-1.5 text-left text-[13px] text-dim transition hover:bg-obsidian hover:text-ink"
-              >
-                <span className="truncate">{hub.name}</span>
-                {hub.channels?.[0]?.activeNow ? (
-                  <span className="num text-[11px] text-faint">{hub.channels[0].activeNow}</span>
-                ) : null}
-              </button>
-            ))}
-          </div>
-        </div>
-      ) : (
-        <div className="flex-1" />
-      )}
+      {/* The community hubs list lived here and was removed: it repeated the
+          product list above it, name for name, and both buttons called
+          onSelectProduct with the same id. Selecting a product is what opens
+          its hub, and the chat rail already shows that hub's channels. */}
+      <div className="flex-1" />
 
       <div className={showLabels ? '' : 'flex justify-center'}>
         <button

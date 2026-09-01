@@ -11,6 +11,7 @@ import { dirname, join } from 'node:path';
 import { notFound } from '../../platform/errors.mjs';
 import { CONTRACT_VERSION } from '../../contracts/version.mjs';
 import { resolveSchedule } from './schedule.mjs';
+import { stripCounts, stripSeededComments } from './counts.mjs';
 import { searchCatalog } from './search.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -21,7 +22,10 @@ export function loadSeed(path = SEED_PATH) {
 }
 
 export function createCatalogService({ runtime, seed = loadSeed(), tzOffsetMinutes = 0 }) {
-  const content = seed.content;
+  // Every count in the seed was invented. Engagement is measured or it is not
+  // shown, so the numbers are dropped once, here, and no consumer has to
+  // remember which fields were real. See counts.mjs.
+  const content = stripCounts(seed.content);
 
   // The five canonical ecosystem products. Every other service validates
   // productId against this list, through the contract, never by hardcoding.
@@ -84,7 +88,9 @@ export function createCatalogService({ runtime, seed = loadSeed(), tzOffsetMinut
     }),
     liveCommentSeeds: () => content.SAMPLE_LIVE_COMMENTS || [],
     centralTv: () => content.INITIAL_CENTRAL_TV || {},
-    seedPosts: () => content.INITIAL_POSTS || [],
+    // Posts keep their video and copy; their comment threads do not survive,
+    // because a comment nobody wrote is worse than an empty thread.
+    seedPosts: () => stripSeededComments(content.INITIAL_POSTS || []),
 
     schedule: () => ({
       items: resolveSchedule(content.SCHEDULE_ITEMS || [], runtime.now(), tzOffsetMinutes),

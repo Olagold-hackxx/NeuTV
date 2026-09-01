@@ -203,15 +203,13 @@ export function createLiveService({
     (await store.get('SELECT COUNT(*) AS n FROM presence WHERE last_seen > ?', runtime.now() - PRESENCE_WINDOW_MS)).n;
 
   const telemetry = async () => {
-    const seed = catalog.centralTv();
     return {
       onAir: true,
       resolution: '1080p HD',
-      // A real measurement from presence heartbeats.
+      // A real measurement from presence heartbeats, and the only viewer number
+      // there is. The catalog used to ship a baseline of 34,200; a count that
+      // does not move when people arrive is not a count.
       viewers: await liveViewers(),
-      // Seed content shipped with the catalog, kept separate so nobody mistakes
-      // it for a measurement.
-      baselineViewers: seed.viewers ?? 0,
       subscribers: hub.clientCount(),
       uptimeMs: runtime.now() - bootedAt,
       at: runtime.now(),
@@ -243,7 +241,6 @@ export function createLiveService({
         telemetry: tele,
         likes: {
           total: likes.n,
-          seeded: catalog.centralTv().likes ?? 0,
           liked: Boolean(liked),
         },
       };
@@ -340,18 +337,10 @@ export function createLiveService({
         `SELECT id, author, handle, avatar, badge, text, created_at AS at, flagged
          FROM comments ORDER BY created_at DESC LIMIT ?`, Math.min(limit, 100),
       );
-      // Before anyone has spoken, the ticker shows the seeded ambient chatter
-      // the frontend already renders.
-      if (!rows.length) {
-        return {
-          comments: catalog.liveCommentSeeds().map((c) => ({
-            id: `seed-${c.id}`, author: c.author, badge: c.badge, text: c.text,
-            avatar: c.avatar, at: bootedAt, seeded: true,
-          })),
-          seeded: true,
-        };
-      }
-      return { comments: rows, seeded: false };
+      // An empty ticker is the honest state of a broadcast nobody has spoken
+      // in yet. It used to fall back to invented chatter attributed to named
+      // people, which reads as real messages from real viewers.
+      return { comments: rows };
     },
 
     async react(auth, input) {
@@ -383,7 +372,7 @@ export function createLiveService({
       if (existing) await store.run('DELETE FROM tv_likes WHERE user_id = ? AND video_id = ?', auth.userId, videoId);
       else await store.run('INSERT INTO tv_likes (user_id, video_id, created_at) VALUES (?,?,?)', auth.userId, videoId, runtime.now());
       const total = (await store.get('SELECT COUNT(*) AS n FROM tv_likes WHERE video_id = ?', videoId)).n;
-      return { videoId, liked: !existing, total, seeded: catalog.centralTv().likes ?? 0 };
+      return { videoId, liked: !existing, total };
     },
 
     async postChat(auth, serverId, channelId, input) {

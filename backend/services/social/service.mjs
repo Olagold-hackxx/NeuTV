@@ -2,9 +2,10 @@
 //
 // Engagement counts are stored as rows, never as columns that get incremented.
 // A "likes" integer is a lie the first time a request retries; COUNT(*) over a
-// unique (user, post) pair cannot be wrong. Seeded content keeps its shipped
-// count in seed_upvotes and the two are added on read, so the feed looks like
-// the designed product without pretending seed numbers are real engagement.
+// unique (user, post) pair cannot be wrong.
+//
+// There are no seeded counts. A post starts at zero upvotes and zero comments
+// because that is true; every number after that is something a person did.
 
 import { validate } from '../../platform/validate.mjs';
 import { notFound, badRequest, unauthorized } from '../../platform/errors.mjs';
@@ -29,20 +30,14 @@ export function createSocialService({
         const createdAt = runtime.now() - index * 3_600_000;
         await t.run(
           `INSERT INTO posts (id, author_id, author, handle, avatar, verified, product_id, product_name,
-                              category_tag, role, bio, followers, content, video_title, duration, views,
-                              youtube_id, video_mp4, media_url, shares, seed_upvotes, created_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+                              category_tag, role, bio, content, video_title, duration,
+                              youtube_id, video_mp4, media_url, created_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
           p.id, null, p.author, p.handle, p.avatar, p.verified ? 1 : 0, p.productId, p.productName ?? '',
-          p.categoryTag ?? '', p.role ?? '', p.bio ?? '', p.followers ?? '', p.content ?? '',
-          p.videoTitle ?? null, p.duration ?? null, p.views ?? null, p.youtubeId ?? null,
-          p.videoMp4 ?? null, p.mediaUrl ?? null, p.shares ?? 0, p.upvotes ?? 0, createdAt,
+          p.categoryTag ?? '', p.role ?? '', p.bio ?? '', p.content ?? '',
+          p.videoTitle ?? null, p.duration ?? null, p.youtubeId ?? null,
+          p.videoMp4 ?? null, p.mediaUrl ?? null, createdAt,
         );
-        for (const c of p.comments ?? []) {
-          await t.run(
-            'INSERT INTO comments (id, post_id, author_id, author, handle, avatar, text, likes, created_at) VALUES (?,?,?,?,?,?,?,?,?)',
-            c.id, p.id, null, c.author, c.handle, c.avatar ?? null, c.text, c.likes ?? 0, createdAt + 60_000,
-          );
-        }
       }
     });
     return { seeded: true, posts: posts.length };
@@ -65,19 +60,14 @@ export function createSocialService({
     categoryTag: row.category_tag,
     role: row.role,
     bio: row.bio,
-    followers: row.followers,
     content: row.content,
     videoTitle: row.video_title,
     duration: row.duration,
-    views: row.views,
     youtubeId: row.youtube_id,
     videoMp4: row.video_mp4,
     mediaUrl: row.media_url,
     shares: row.shares,
-    // Designed count plus measured count, and both are visible so neither is
-    // mistaken for the other.
-    upvotes: row.seed_upvotes + await upvoteCount(row.id),
-    seedUpvotes: row.seed_upvotes,
+    upvotes: await upvoteCount(row.id),
     commentCount: (await store.get('SELECT COUNT(*) AS n FROM comments WHERE post_id = ?', row.id)).n,
     createdAt: row.created_at,
     flagged: Boolean(row.flagged),
@@ -164,8 +154,7 @@ export function createSocialService({
       const existing = await store.get('SELECT 1 AS x FROM upvotes WHERE user_id = ? AND post_id = ?', auth.userId, postId);
       if (existing) await store.run('DELETE FROM upvotes WHERE user_id = ? AND post_id = ?', auth.userId, postId);
       else await store.run('INSERT INTO upvotes (user_id, post_id, created_at) VALUES (?,?,?)', auth.userId, postId, runtime.now());
-      const row = await getRow(postId);
-      return { postId, isUpvoted: !existing, upvotes: row.seed_upvotes + await upvoteCount(postId) };
+      return { postId, isUpvoted: !existing, upvotes: await upvoteCount(postId) };
     },
 
     async toggleSave(auth, postId) {
