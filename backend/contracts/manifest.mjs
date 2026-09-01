@@ -81,6 +81,12 @@ export const ROUTES = [
   { service: 'admin', method: 'PUT',    path: '/admin/videos/:videoId',      auth: 'admin', summary: 'Update video metadata or publish state.' },
   { service: 'admin', method: 'DELETE', path: '/admin/videos/:videoId',      auth: 'admin', summary: 'Archive a video. Never unlinks the file under it.' },
   { service: 'admin', method: 'PUT',    path: '/admin/videos/:videoId/file', auth: 'admin', summary: 'Stream a video file up. Raw binary body, not multipart.', raw: true },
+  // Direct-to-storage upload. The browser cannot send a video through a
+  // serverless function - Vercel rejects any body over 4.5MB with a 413 before
+  // the handler runs - so it asks for a scoped signature and posts the file
+  // straight to the CDN.
+  { service: 'admin', method: 'POST',   path: '/admin/videos/:videoId/upload-signature', auth: 'admin', summary: 'Credentials for the browser to upload straight to storage.' },
+  { service: 'admin', method: 'POST',   path: '/admin/videos/:videoId/upload-complete',  auth: 'admin', summary: 'Record an upload that went directly to storage.' },
   { service: 'admin', method: 'GET',    path: '/admin/programme',            auth: 'admin', summary: 'The main broadcast plus the history of what held it.' },
   { service: 'admin', method: 'PUT',    path: '/admin/programme',            auth: 'admin', summary: 'Set the video that owns the main page.' },
   { service: 'admin', method: 'GET',    path: '/admin/crm/overview',         auth: 'admin', summary: 'Viewers, engagement, gifting and moderation at a glance.' },

@@ -56,6 +56,32 @@ export function createCloudinaryStorage({
     cloudName,
     folder,
 
+    /**
+     * Credentials for the browser to upload straight to Cloudinary.
+     *
+     * Proxying the bytes through our own servers was the original design and it
+     * does not survive a real deployment: the admin panel runs on Vercel, whose
+     * serverless functions reject any request body over 4.5MB with a 413 before
+     * our code is even reached. A video is never under 4.5MB.
+     *
+     * A signed direct upload removes every hop. The signature is scoped to one
+     * public_id and Cloudinary rejects it once the timestamp is about an hour
+     * old, so the worst a leaked one allows is overwriting the single asset it
+     * was minted for. The API secret never leaves the server.
+     */
+    signUpload(videoId) {
+      if (!/^[A-Za-z0-9_-]+$/.test(videoId)) throw badRequest('Malformed video id.');
+      const timestamp = now();
+      const publicId = folder ? `${folder}/${videoId}` : videoId;
+      const params = { public_id: publicId, timestamp, overwrite: 'true', invalidate: 'true' };
+      return {
+        uploadUrl: endpoint,
+        fields: { ...params, api_key: apiKey, signature: signParams(params, apiSecret) },
+        publicId,
+        maxBytes,
+      };
+    },
+
     async save(videoId, contentType, source, { declaredLength = null } = {}) {
       const type = String(contentType || '').split(';')[0].trim().toLowerCase();
       const ext = ALLOWED_TYPES[type];

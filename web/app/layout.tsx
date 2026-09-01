@@ -8,8 +8,8 @@ const jakarta = Plus_Jakarta_Sans({
 });
 
 export const metadata: Metadata = {
-  title: 'NEU TV — Central Stream',
-  description: '24/7 linear broadcast network for the New Economy.',
+  title: 'NEU TV — The New Economy, On Screen.',
+  description: '24/7 live central broadcast network for the New Economy.',
 };
 
 // Nothing here may be cached: what is on air changes from outside this app.

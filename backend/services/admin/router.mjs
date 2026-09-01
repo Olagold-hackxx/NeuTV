@@ -20,6 +20,13 @@ export function createAdminRouter(deps) {
     auth: 'admin', raw: true,
   });
 
+  r.post('/admin/videos/:videoId/upload-signature', async (req) => ok(
+    await service.uploadSignature(req.params.videoId),
+  ), { auth: 'admin' });
+  r.post('/admin/videos/:videoId/upload-complete', async (req) => ok(
+    await service.completeUpload(req.params.videoId, req.body),
+  ), { auth: 'admin' });
+
   r.get('/admin/programme', async (req) => ok(await service.programmeWithHistory(Number(req.query.limit) || 20)), { auth: 'admin' });
   r.put('/admin/programme', async (req) => ok(await service.setProgramme(req.auth.userId, req.body)),             { auth: 'admin' });
 

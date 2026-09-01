@@ -1,129 +1,418 @@
 @import 'tailwindcss';
 
-/* NEU TV design tokens. Every color, radius, duration and shadow in the app
-   traces back to this block — components reference tokens, never raw values.
-   The brand palette itself is fixed by docs/design-brief.md §3; what this file
-   adds is the discipline layer: where each color is allowed to appear. */
+/* NEU TV — the original Central Stream look, ported from frontend/src/styles.css
+   and polished: same black base, blue accent, glass surfaces and signature
+   animations, with the fit-and-finish the CDN app lacked (the brand font is
+   actually loaded, focus is visible, reduced-motion is honoured everywhere). */
 
 @theme {
-  /* surfaces — hierarchy is a value step, not a border or a blur */
-  --color-base: #060a12;
-  --color-midnight: #0b1220;
-  --color-obsidian: #111b33;
-
-  /* text */
-  --color-ink: #edf1f7;
-  /* dark text for on-accent surfaces (a cyan button) — never use text-base,
-     which Tailwind reads as a font size */
-  --color-deep: #04211a;
-  --color-dim: rgba(237, 241, 247, 0.62);
-  --color-faint: rgba(237, 241, 247, 0.4);
-  --color-line: rgba(148, 163, 184, 0.14);
-  --color-line-strong: rgba(148, 163, 184, 0.26);
-
-  /* meaning-bearing color. cyan = interactive/active/focus. live = on air and
-     nothing else. amber = needs attention. danger is deliberately NOT live. */
-  --color-cyan: #00f6a7;
-  --color-sky: #00c8ff;
-  --color-cobalt: #4d6bff;
-  --color-live: #ff2a5f;
-  --color-amber: #ffb020;
-  --color-danger: #f4657c;
-
-  /* radius by hierarchy: stage 12, panel 10, control 8, chip 6 */
-  --radius-stage: 12px;
-  --radius-panel: 10px;
-  --radius-control: 8px;
-  --radius-chip: 6px;
-
-  /* motion */
-  --ease-out: cubic-bezier(0.2, 0, 0, 1);
-  --duration-fast: 120ms;
-  --duration-base: 200ms;
-  --duration-slow: 320ms;
-
-  /* the one shadow, for true overlays only (menus, drawer, palettes) */
-  --shadow-overlay: 0 12px 40px rgba(2, 6, 16, 0.55);
-
+  --color-accent: #0070f3;
+  --color-card: #0c0c0e;
+  --color-panel: #08080a;
   --font-sans: var(--font-jakarta), -apple-system, BlinkMacSystemFont,
-    'Segoe UI', system-ui, sans-serif;
+    'SF Pro Display', system-ui, sans-serif;
 }
 
 :root {
+  --neu-blue-accent: #0070f3;
+  --neu-dark-base: #000000;
+  --neu-card-bg: #0c0c0e;
+  --neu-panel-bg: #08080a;
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-accent: rgba(255, 255, 255, 0.15);
   color-scheme: dark;
 }
 
+html,
 body {
-  background: var(--color-base);
-  color: var(--color-ink);
+  height: 100%;
+  max-height: 100vh;
+  overflow: hidden;
+  margin: 0;
+  padding: 0;
+  background-color: #000000;
+  color: #f5f5f7;
   font-family: var(--font-sans);
-  font-size: 14px;
-  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
 
-/* Numbers that change in place must not reflow their row. */
+/* Polish the original never had: you can see where your keyboard is. */
+:focus-visible {
+  outline: 2px solid var(--neu-blue-accent);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
 .num {
   font-variant-numeric: tabular-nums;
 }
 
-/* The one systematic job of the accent: where attention goes next. */
-:focus-visible {
-  outline: 2px solid var(--color-cyan);
-  outline-offset: 2px;
-  border-radius: var(--radius-control);
+/* Subtle neutral utilities */
+.neu-gradient-text {
+  background: #ffffff;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
-/* The sign-in gate's header rule — the screen's one permitted non-wordmark
-   gradient use. Nothing else may use this class either. */
-.identity-rule {
-  height: 2px;
-  background: linear-gradient(
-    135deg,
-    var(--color-cyan) 0%,
-    var(--color-sky) 52%,
-    var(--color-cobalt) 100%
-  );
+.neu-pill-active {
+  background: #ffffff;
+  color: #000000;
+  font-weight: 800;
 }
 
-/* On-air pulse — carries meaning (this is happening now), so it is one of the
-   two things allowed to move on its own. Static under reduced motion. */
-.live-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 999px;
-  background: var(--color-live);
-  box-shadow: 0 0 0 0 rgba(255, 42, 95, 0.6);
-  animation: onair-pulse 2s infinite;
+/* Glassmorphism panels & cards */
+.glass-nav {
+  background: rgba(10, 10, 12, 0.95);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.9);
 }
-@keyframes onair-pulse {
-  70% {
-    box-shadow: 0 0 0 8px rgba(255, 42, 95, 0);
+
+.glass-card {
+  background: rgba(14, 14, 16, 0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.8);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.glass-card:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+  transform: translateY(-2px);
+  box-shadow: 0 16px 40px -10px rgba(0, 0, 0, 0.95);
+}
+
+.twitter-card {
+  background: rgba(12, 12, 14, 0.8);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  transition: background-color 0.2s ease;
+}
+
+.twitter-card:hover {
+  background-color: rgba(255, 255, 255, 0.03);
+}
+
+/* Circular story avatars & highlight rings */
+.story-avatar-ring {
+  padding: 3px;
+  background: linear-gradient(135deg, #ff0050 0%, #00f2fe 50%, #ffffff 100%);
+  border-radius: 9999px;
+  transition: transform 0.25s ease;
+}
+
+.story-avatar-ring:hover {
+  transform: scale(1.08);
+}
+
+.story-highlight-ring {
+  padding: 2.5px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.4) 0%, rgba(255, 255, 255, 0.1) 100%);
+  border-radius: 9999px;
+  transition: all 0.2s ease;
+}
+
+.story-highlight-ring:hover {
+  background: linear-gradient(135deg, #00f2fe 0%, #ff0050 100%);
+  transform: scale(1.05);
+}
+
+/* Marquee continuous scrolling */
+@keyframes marquee-left {
+  0% {
+    transform: translate3d(0, 0, 0);
   }
   100% {
-    box-shadow: 0 0 0 0 rgba(255, 42, 95, 0);
+    transform: translate3d(-50%, 0, 0);
   }
 }
 
-/* Spotlight reel pan — the second allowed self-mover. */
-@keyframes reel-pan {
+.animate-marquee-left {
+  display: flex;
+  width: max-content;
+  animation: marquee-left 26s linear infinite;
+  will-change: transform;
+}
+
+.animate-marquee-left:hover,
+.animate-marquee-left:active,
+.animate-marquee-left:focus-within,
+.animate-marquee-left.is-paused {
+  animation-play-state: paused !important;
+}
+
+/* Flying hearts & reaction animations */
+@keyframes float-heart-up {
+  0% {
+    transform: translateY(0) scale(0.6) rotate(0deg);
+    opacity: 1;
+  }
+  50% {
+    transform: translateY(-140px) scale(1.2) rotate(-15deg);
+    opacity: 0.85;
+  }
+  100% {
+    transform: translateY(-280px) scale(1.5) rotate(15deg);
+    opacity: 0;
+  }
+}
+
+.flying-heart {
+  position: absolute;
+  pointer-events: none;
+  animation: float-heart-up 2.2s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+  z-index: 40;
+  font-size: 1.6rem;
+}
+
+/* Floating live comment stream */
+@keyframes float-comment-up {
+  0% {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  15% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  85% {
+    transform: translateY(-40px);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-60px);
+    opacity: 0;
+  }
+}
+
+.live-comment-bubble {
+  animation: float-comment-up 4s ease-out forwards;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+}
+
+/* Pulse for the live badge */
+@keyframes live-pulse {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.2);
+    opacity: 0.6;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.animate-live {
+  animation: live-pulse 2s infinite ease-in-out;
+}
+
+/* NEU logo cube signal & red banner */
+@keyframes neu-cube-signal-n {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+    filter: brightness(0.95);
+  }
+  6%,
+  22% {
+    transform: translateY(-4px) scale(1.08);
+    filter: brightness(1.35) drop-shadow(0 4px 12px rgba(0, 102, 255, 0.75));
+  }
+  30% {
+    transform: translateY(0) scale(1);
+    filter: brightness(1);
+  }
+}
+
+@keyframes neu-cube-signal-e {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+    filter: brightness(0.95);
+  }
+  24%,
+  40% {
+    transform: translateY(-4px) scale(1.08);
+    filter: brightness(1.35) drop-shadow(0 4px 12px rgba(0, 102, 255, 0.75));
+  }
+  48% {
+    transform: translateY(0) scale(1);
+    filter: brightness(1);
+  }
+}
+
+@keyframes neu-cube-signal-u {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+    filter: brightness(0.95);
+  }
+  42%,
+  58% {
+    transform: translateY(-4px) scale(1.08);
+    filter: brightness(1.35) drop-shadow(0 4px 12px rgba(0, 102, 255, 0.75));
+  }
+  66% {
+    transform: translateY(0) scale(1);
+    filter: brightness(1);
+  }
+}
+
+@keyframes neu-red-banner-pulse {
+  0%,
+  55% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: brightness(1);
+  }
+  68%,
+  88% {
+    opacity: 0.15;
+    transform: translateY(1px) scale(0.97);
+    filter: brightness(0.6);
+  }
+  98%,
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: brightness(1.15) drop-shadow(0 0 10px rgba(229, 9, 20, 0.6));
+  }
+}
+
+.neu-anim-cube-n {
+  animation: neu-cube-signal-n 3s infinite cubic-bezier(0.34, 1.56, 0.64, 1);
+  will-change: transform, filter;
+}
+
+.neu-anim-cube-e {
+  animation: neu-cube-signal-e 3s infinite cubic-bezier(0.34, 1.56, 0.64, 1);
+  will-change: transform, filter;
+}
+
+.neu-anim-cube-u {
+  animation: neu-cube-signal-u 3s infinite cubic-bezier(0.34, 1.56, 0.64, 1);
+  will-change: transform, filter;
+}
+
+.neu-anim-red-bar {
+  animation: neu-red-banner-pulse 3s infinite ease-in-out;
+  will-change: transform, opacity, filter;
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  height: 6px;
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #000000;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.25);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.45);
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Celebration confetti & popping particles */
+@keyframes confetti-fall {
+  0% {
+    transform: translateY(-20px) rotate(0deg) scale(0.8);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(105vh) rotate(720deg) scale(1.1);
+    opacity: 0;
+  }
+}
+
+.confetti-particle {
+  position: fixed;
+  top: -10px;
+  pointer-events: none;
+  animation: confetti-fall 3.8s linear forwards;
+  z-index: 100;
+}
+
+@keyframes auth-float-pop {
+  0% {
+    transform: translateY(0) scale(0.4) rotate(0deg);
+    opacity: 0;
+  }
+  15% {
+    transform: translateY(-40px) scale(1.2) rotate(-10deg);
+    opacity: 1;
+  }
+  80% {
+    transform: translateY(-280px) scale(1.1) rotate(12deg);
+    opacity: 0.9;
+  }
+  100% {
+    transform: translateY(-420px) scale(0.8) rotate(24deg);
+    opacity: 0;
+  }
+}
+
+.auth-popping-emoji {
+  position: fixed;
+  bottom: 20px;
+  pointer-events: none;
+  animation: auth-float-pop 3.2s cubic-bezier(0.2, 0.8, 0.4, 1) forwards;
+  z-index: 55;
+}
+
+/* Card entrances */
+@keyframes fadeIn {
   from {
-    transform: translateX(0);
+    opacity: 0;
+    transform: translateY(8px);
   }
   to {
-    transform: translateX(-50%);
+    opacity: 1;
+    transform: translateY(0);
   }
 }
-.reel-track {
-  animation: reel-pan var(--reel-duration, 60s) linear infinite;
-}
-.reel-track:hover,
-.reel-track:focus-within,
-.reel-track[data-paused='true'] {
-  animation-play-state: paused;
+
+@keyframes scaleUp {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
-/* Skeletons */
+.animate-fadeIn {
+  animation: fadeIn 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.animate-scaleUp {
+  animation: scaleUp 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Skeleton shimmer — loading states are part of the polish. */
 @keyframes shimmer {
   from {
     background-position: 200% 0;
@@ -133,65 +422,36 @@ body {
   }
 }
 .skeleton {
-  background: linear-gradient(
-    100deg,
-    var(--color-midnight) 40%,
-    var(--color-obsidian) 50%,
-    var(--color-midnight) 60%
-  );
+  background: linear-gradient(100deg, #0c0c0e 40%, #17171a 50%, #0c0c0e 60%);
   background-size: 200% 100%;
   animation: shimmer 1.6s linear infinite;
-  border-radius: var(--radius-chip);
+  border-radius: 8px;
 }
 
-/* Gift reaction particles — user-initiated, skipped under reduced motion. */
-@keyframes particle-rise {
-  from {
-    transform: translateY(0) scale(1);
-    opacity: 1;
-  }
-  to {
-    transform: translateY(-140px) scale(0.6);
-    opacity: 0;
-  }
-}
-.particle {
-  animation: particle-rise 1.2s var(--ease-out) forwards;
-}
-
-/* The single orchestrated page-load moment: stage first, chrome follows. */
-@keyframes settle {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-.settle {
-  animation: settle var(--duration-slow) var(--ease-out) both;
-}
-.settle-late {
-  animation: settle var(--duration-slow) var(--ease-out) 120ms both;
-}
-
+/* Anyone who has asked the OS not to animate things should be believed. */
 @media (prefers-reduced-motion: reduce) {
-  .live-dot {
-    animation: none;
+  .animate-fadeIn,
+  .animate-scaleUp,
+  .animate-marquee-left,
+  .animate-live,
+  .flying-heart,
+  .live-comment-bubble,
+  .confetti-particle,
+  .auth-popping-emoji,
+  .neu-anim-cube-n,
+  .neu-anim-cube-e,
+  .neu-anim-cube-u,
+  .neu-anim-red-bar,
+  .skeleton {
+    animation: none !important;
   }
-  .reel-track {
-    animation: none;
-  }
-  .particle {
-    animation: none;
+  .flying-heart,
+  .confetti-particle,
+  .auth-popping-emoji {
     opacity: 0;
   }
-  .settle,
-  .settle-late {
-    animation: none;
-  }
-  .skeleton {
-    animation: none;
+  .live-comment-bubble {
+    opacity: 1;
   }
   *,
   *::before,

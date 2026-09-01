@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { createVideo } from '@/lib/actions';
 import type { Product, Video } from '@/lib/types';
 import { FileDrop } from './file-drop';
+import { uploadVideo } from '@/lib/upload';
 
 type Phase =
   | { step: 'idle' }
@@ -25,29 +26,12 @@ export function NewVideoForm({ products }: { products: Product[] }) {
 
   const busy = phase.step === 'creating' || phase.step === 'uploading';
 
+  // Direct to storage. This cannot proxy through Vercel: a serverless function
+  // rejects any body over 4.5MB with a 413, and a video is never that small.
+  // See lib/upload.ts.
   function upload(video: Video, file: File): Promise<void> {
-    return new Promise((resolve, reject) => {
-      // XHR rather than fetch: it is still the only way to get upload
-      // progress events.
-      const xhr = new XMLHttpRequest();
-      xhr.open('PUT', `/api/upload/${video.id}`);
-      xhr.setRequestHeader('content-type', file.type || 'video/mp4');
-      xhr.upload.onprogress = (e) => {
-        if (e.lengthComputable) setPhase({ step: 'uploading', video, progress: e.loaded / e.total });
-      };
-      xhr.onload = () => {
-        if (xhr.status >= 200 && xhr.status < 300) return resolve();
-        let message = `Upload failed (${xhr.status}).`;
-        try {
-          message = JSON.parse(xhr.responseText)?.error?.message ?? message;
-        } catch {
-          /* non-JSON error body */
-        }
-        reject(new Error(message));
-      };
-      xhr.onerror = () => reject(new Error('Upload failed: the connection dropped.'));
-      xhr.send(file);
-    });
+    return uploadVideo(video.id, file, (fraction) =>
+      setPhase({ step: 'uploading', video, progress: fraction })).then(() => undefined);
   }
 
   async function submit(e: React.FormEvent<HTMLFormElement>) {

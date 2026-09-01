@@ -12,6 +12,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { Video } from '@/lib/types';
 import { FileDrop } from '../file-drop';
+import { uploadVideo } from '@/lib/upload';
 
 export function UploadField({ video }: { video: Video }) {
   const router = useRouter();
@@ -22,25 +23,17 @@ export function UploadField({ video }: { video: Video }) {
   // XHR rather than fetch: it is still the only way to get upload progress
   // events in a browser, and a multi-gigabyte upload with no progress bar is
   // indistinguishable from a hung one.
-  const upload = (file: File) => {
+  const upload = async (file: File) => {
     setError(null); setNotice(null); setProgress(0);
-    const xhr = new XMLHttpRequest();
-    xhr.open('PUT', `/api/upload/${video.id}`);
-    xhr.setRequestHeader('content-type', file.type || 'video/mp4');
-    xhr.upload.onprogress = (e) => { if (e.lengthComputable) setProgress(e.loaded / e.total); };
-    xhr.onload = () => {
+    try {
+      await uploadVideo(video.id, file, setProgress);
       setProgress(null);
-      if (xhr.status >= 200 && xhr.status < 300) {
-        setNotice('File uploaded. The video is ready to broadcast.');
-        router.refresh();
-      } else {
-        let message = `Upload failed (${xhr.status}).`;
-        try { message = JSON.parse(xhr.responseText)?.error?.message ?? message; } catch { /* non-JSON body */ }
-        setError(message);
-      }
-    };
-    xhr.onerror = () => { setProgress(null); setError('Upload failed: the connection dropped.'); };
-    xhr.send(file);
+      setNotice('File uploaded. The video is ready to broadcast.');
+      router.refresh();
+    } catch (err) {
+      setProgress(null);
+      setError(err instanceof Error ? err.message : 'The upload failed.');
+    }
   };
 
   return (

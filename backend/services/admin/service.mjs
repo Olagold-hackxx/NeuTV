@@ -151,6 +151,45 @@ export function createAdminService({
       };
     },
 
+    /**
+     * Credentials for the browser to upload straight to storage.
+     *
+     * Only drivers that can accept a direct upload offer this. Local disk
+     * cannot - there is nowhere for a browser to send bytes except through us -
+     * so it says so rather than pretending.
+     */
+    async uploadSignature(videoId) {
+      const row = await getRow(videoId);
+      if (row.kind !== 'upload') throw conflict('That video is external; it has no file to upload.');
+      if (typeof files.signUpload !== 'function') {
+        throw conflict(`The ${files.driver} storage driver cannot accept a direct upload. Use PUT .../file instead.`);
+      }
+      return { videoId, ...files.signUpload(videoId) };
+    },
+
+    /**
+     * Record an upload that went straight to storage. The bytes never passed
+     * through here, so the browser reports what storage told it.
+     */
+    async completeUpload(videoId, input) {
+      const row = await getRow(videoId);
+      if (row.kind !== 'upload') throw conflict('That video is external; it has no file to upload.');
+      const v = validate(input, {
+        path: { type: 'string', required: true, max: 400 },
+        bytes: { type: 'int', required: false, min: 0 },
+        contentType: { type: 'string', required: false, max: 80 },
+        durationSeconds: { type: 'int', required: false, min: 0, max: 86_400 },
+      });
+      await store.run(
+        `UPDATE videos SET file_path = ?, file_size = ?, content_type = ?, duration_secs = ?,
+                           status = ?, updated_at = ? WHERE id = ?`,
+        v.path, v.bytes ?? null, v.contentType ?? 'video/mp4',
+        v.durationSeconds ?? row.duration_secs,
+        row.status === 'draft' ? 'ready' : row.status, runtime.now(), videoId,
+      );
+      return { video: publicVideo(await getRow(videoId), mediaBase) };
+    },
+
     async uploadFile(videoId, { stream, contentType, contentLength }) {
       const row = await getRow(videoId);
       if (row.kind !== 'upload') throw conflict('That video is external; it has no file to upload.');
