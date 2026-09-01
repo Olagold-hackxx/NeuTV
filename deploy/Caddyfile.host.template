@@ -18,9 +18,6 @@
 {{API_DOMAIN}} {
 	encode zstd gzip
 
-	# Live HLS from MediaMTX. handle_path strips the prefix, because MediaMTX
-	# serves at its root: /hls/live-abc/index.m3u8 here is
-	# /live-abc/index.m3u8 there.
 	# WHIP: the studio publishes its camera here as a WebRTC peer connection.
 	# Signalling only - the media itself goes direct to MediaMTX on the ICE ports,
 	# which is why those are published rather than proxied.
@@ -28,6 +25,9 @@
 		reverse_proxy 127.0.0.1:8889
 	}
 
+	# Live HLS from MediaMTX. handle_path strips the prefix, because MediaMTX
+	# serves at its root: /hls/live-abc/index.m3u8 here is
+	# /live-abc/index.m3u8 there.
 	handle_path /hls/* {
 		reverse_proxy 127.0.0.1:8888
 	}
