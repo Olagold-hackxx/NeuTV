@@ -12,6 +12,13 @@
 
 	# Live HLS. Stripped of the prefix because MediaMTX serves paths at its
 	# root: /hls/live-abc/index.m3u8 here is /live-abc/index.m3u8 there.
+	# WHIP: the studio publishes its camera here as a WebRTC peer connection.
+	# Signalling only - the media itself goes direct to MediaMTX on the ICE ports,
+	# which is why those are published rather than proxied.
+	handle_path /whip/* {
+		reverse_proxy mediamtx:8889
+	}
+
 	handle_path /hls/* {
 		reverse_proxy mediamtx:8888
 	}

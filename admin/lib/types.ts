@@ -128,6 +128,7 @@ export interface LiveEvent {
   source: 'external' | 'browser';
   driver: 'manual' | 'mux' | 'cloudflare';
   ingestUrl: string | null;
+  whipUrl: string | null;
   streamKey: string;
   playbackUrl: string | null;
   youtubeId: string | null;

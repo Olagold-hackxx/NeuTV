@@ -19,6 +19,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { startLiveEvent, stopLiveEvent } from '@/lib/actions';
 import type { LiveEvent } from '@/lib/types';
+import { publishWhip, type Publisher } from '@/lib/whip';
 
 const CHUNK_MS = 2000;
 
@@ -28,9 +29,11 @@ export function Studio({ event }: { event: LiveEvent }) {
   const router = useRouter();
   const previewRef = useRef<HTMLVideoElement | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
+  const publisherRef = useRef<Publisher | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   // Serialises uploads: every chunk waits for the one before it.
   const queueRef = useRef<Promise<void>>(Promise.resolve());
+  const statsRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const initSentRef = useRef(false);
 
   const [source, setSource] = useState<Source>('camera');
@@ -77,6 +80,34 @@ export function Studio({ event }: { event: LiveEvent }) {
       if (previewRef.current) {
         previewRef.current.srcObject = stream;
         await previewRef.current.play().catch(() => { /* autoplay policy */ });
+      }
+
+      // WHIP first. A peer connection sends frames as they are captured, so
+      // ingest is sub-second; MediaRecorder cannot send a chunk until it has
+      // finished recording it, which put a three-second floor under the old
+      // path. The segment path stays below as the fallback for a deployment
+      // with no WebRTC ingest configured.
+      if (event.whipUrl) {
+        const publisher = await publishWhip(event.whipUrl, stream, (state) => {
+          if (state === 'failed' || state === 'disconnected') {
+            setError('The connection to the broadcast server dropped.');
+          }
+        });
+        publisherRef.current = publisher;
+        setRecording(true);
+        if (!event.isLive) await startLiveEvent(event.id);
+        router.refresh();
+
+        // Stats come from the peer connection rather than from chunk sizes.
+        const timer = setInterval(async () => {
+          try {
+            const s = await publisher.stats();
+            setKbps(s.kbps);
+            setSent(s.frames);
+          } catch { /* the connection is closing */ }
+        }, 1000);
+        statsRef.current = timer;
+        return;
       }
 
       // Pick a container the browser will actually produce.
@@ -137,6 +168,16 @@ export function Studio({ event }: { event: LiveEvent }) {
   };
 
   const end = async () => {
+    if (statsRef.current) { clearInterval(statsRef.current); statsRef.current = null; }
+    if (publisherRef.current) {
+      await publisherRef.current.stop();
+      publisherRef.current = null;
+      stopTracks();
+      setRecording(false);
+      await stopLiveEvent(event.id);
+      router.refresh();
+      return;
+    }
     recorderRef.current?.state === 'recording' && recorderRef.current.stop();
     stopTracks();
     setRecording(false);
@@ -200,7 +241,9 @@ export function Studio({ event }: { event: LiveEvent }) {
         </div>
 
         <p className="hint" style={{ marginTop: 12 }}>
-          Viewers see this with roughly {CHUNK_MS / 1000}–{(CHUNK_MS / 1000) * 3} seconds
+          {event.whipUrl
+            ? 'Viewers see this about a second behind. '
+            : `Viewers see this with roughly ${CHUNK_MS / 1000}–${(CHUNK_MS / 1000) * 3} seconds `}
           of delay: a segment cannot be sent until it has been recorded. Keep this
           tab open and visible; browsers throttle recording in background tabs.
         </p>

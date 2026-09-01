@@ -26,6 +26,7 @@ export const adminEvent = (row) => ({
   source: row.source ?? 'external',
   driver: row.driver,
   ingestUrl: row.ingest_url,
+  whipUrl: row.whip_url,
   streamKey: row.stream_key,
   playbackUrl: row.playback_url,
   youtubeId: row.youtube_id,
@@ -112,11 +113,12 @@ export function createLiveEvents({ runtime, store, catalog, ingest, events }) {
       const now = runtime.now();
       await store.run(
         `INSERT INTO live_events (id, title, description, product_id, status, source, driver, ingest_url,
-                                  stream_key, playback_url, youtube_id, poster_url, provider_ref,
+                                  whip_url, stream_key, playback_url, youtube_id, poster_url, provider_ref,
                                   scheduled_for, created_by, created_at, updated_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         id, v.title, v.description, v.productId, 'scheduled', v.source, ingest.driver,
         provisioned.ingestUrl ?? null,
+        provisioned.whipUrl ?? null,
         // Even the manual driver gets a key: it is what a future self-hosted
         // RTMP endpoint authenticates, and minting it now avoids a migration.
         provisioned.streamKey ?? mintStreamKey(),

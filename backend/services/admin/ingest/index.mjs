@@ -121,7 +121,7 @@ function cloudflareProvider({ accountId, apiToken, fetchImpl = globalThis.fetch 
  * deciding the path name, and the stream key IS that name. Which means the key
  * has to be unguessable: anyone who can publish to a path owns the broadcast.
  */
-function mediamtxProvider({ rtmpUrl, hlsBase }) {
+function mediamtxProvider({ rtmpUrl, hlsBase, whipBase }) {
   return {
     driver: 'mediamtx',
     async provision() {
@@ -129,6 +129,11 @@ function mediamtxProvider({ rtmpUrl, hlsBase }) {
       return {
         ingestUrl: rtmpUrl.replace(/\/$/, ''),
         streamKey: path,
+        // WHIP lets the studio publish straight from the browser, which is what
+        // makes sub-second ingest possible: a peer connection sends frames as
+        // they are captured, where MediaRecorder could not send a chunk until
+        // it had finished recording it.
+        whipUrl: whipBase ? `${whipBase.replace(/\/$/, '')}/${path}/whip` : null,
         playbackUrl: `${hlsBase.replace(/\/$/, '')}/${path}/index.m3u8`,
         providerRef: path,
         instructions:
@@ -152,6 +157,7 @@ export function createIngestProvider(env = process.env) {
     return mediamtxProvider({
       rtmpUrl: env.NEUTV_MEDIAMTX_RTMP_URL,
       hlsBase: env.NEUTV_MEDIAMTX_HLS_BASE,
+      whipBase: env.NEUTV_MEDIAMTX_WHIP_BASE,
     });
   }
 

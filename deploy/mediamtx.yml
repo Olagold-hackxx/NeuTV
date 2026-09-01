@@ -30,8 +30,31 @@ hlsAllowOrigin: "*"
 # Everything else off. Each enabled protocol is another listener to reason
 # about, and nothing here consumes them.
 rtsp: no
-webrtc: no
 srt: no
+
+# WebRTC, for publishing straight from a browser.
+#
+# The studio used to record with MediaRecorder and post chunks, which cannot go
+# below about three seconds: a chunk is not sendable until it has been recorded.
+# WHIP publishes the camera as a live peer connection instead, and MediaMTX
+# repackages it as low-latency HLS for viewers. Ingest is sub-second; playback
+# is one to two seconds and still a plain HLS URL, so a CDN can fan it out.
+webrtc: yes
+webrtcAddress: :8889
+# Caddy terminates TLS in front, so MediaMTX speaks plain HTTP on the loopback.
+webrtcEncryption: no
+webrtcAllowOrigin: "*"
+webrtcTrustedProxies: [127.0.0.1/8, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16]
+
+# ICE needs a candidate the browser can actually reach. The UDP port is the fast
+# path; the TCP port is the fallback for networks that block UDP, which is a lot
+# of corporate and mobile ones. Both must be published by compose and open in
+# the firewall.
+webrtcLocalUDPAddress: :8189
+webrtcLocalTCPAddress: :8189
+# Replace with the public hostname or IP of this server, or ICE offers only
+# private addresses and nothing outside the machine can connect.
+webrtcAdditionalHosts: [{$MTX_PUBLICHOST}]
 
 paths:
   # Any path, created on publish. The keys are minted by the API, not chosen

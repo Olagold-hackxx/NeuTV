@@ -95,6 +95,13 @@ const MIGRATIONS = {
   '004_event_source': `
     ALTER TABLE live_events ADD COLUMN source TEXT NOT NULL DEFAULT 'external';
   `,
+  // Where the studio publishes a WebRTC peer connection. Separate from
+  // ingest_url, which is the RTMP endpoint an encoder like OBS uses: an event
+  // can offer both, and the studio picks WHIP because it is the one that gets
+  // under a second.
+  '005_whip_url': `
+    ALTER TABLE live_events ADD COLUMN whip_url TEXT;
+  `,
 };
 
 export const openAdminStore = (target, options) => openStore(target, MIGRATIONS, options);
