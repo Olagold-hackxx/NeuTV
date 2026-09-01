@@ -179,3 +179,40 @@ test('an unknown event is a 404, not a new directory on disk', async () => {
     (e) => e.status === 404,
   );
 });
+
+test('overlapping uploads never lose a segment', async () => {
+  // The bug this pins: the sequence number was read, incremented in JS, and
+  // inserted only after the file had been written to disk. Two uploads that
+  // overlapped at all both read the same maximum, both claimed the next number,
+  // and one died on the primary key - a segment the studio had sent that never
+  // reached the manifest and never played.
+  const { segments } = await build();
+  await segments.append(EVENT, { stream: bytes(64), contentType: 'video/webm', init: true });
+  for (let i = 0; i < 18; i++) await segments.append(EVENT, { stream: bytes(64), contentType: 'video/webm' });
+
+  const results = await Promise.allSettled(
+    Array.from({ length: 8 }, () => segments.append(EVENT, { stream: bytes(64), contentType: 'video/webm' })),
+  );
+  assert.equal(results.filter((r) => r.status === 'rejected').length, 0, 'no upload was rejected');
+
+  const manifest = await segments.manifest(EVENT, { limit: 200 });
+  const seqs = manifest.segments.map((s) => s.seq);
+  assert.equal(seqs.length, 27, 'init + 26 media segments');
+  assert.equal(new Set(seqs).size, seqs.length, 'no number handed out twice');
+  for (let i = 0; i <= manifest.head; i++) {
+    assert.ok(seqs.includes(i), `sequence has a hole at ${i}`);
+  }
+});
+
+test('a rejected upload leaves no half-written file behind', async () => {
+  const { segments, root } = await build({ maxSegmentBytes: 100 });
+  await segments.append(EVENT, { stream: bytes(16), contentType: 'video/webm', init: true });
+  await assert.rejects(
+    () => segments.append(EVENT, { stream: bytes(500), contentType: 'video/webm' }),
+    (e) => e.status === 400,
+  );
+  const { readdirSync } = await import('node:fs');
+  const files = readdirSync(join(root, EVENT));
+  assert.deepEqual(files.filter((f) => f.startsWith('.incoming')), [], 'no temp file left');
+  assert.equal((await segments.manifest(EVENT)).head, 0, 'and no row claiming a number');
+});

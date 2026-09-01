@@ -16,7 +16,7 @@
 //   - everything after it is a rolling window; old media segments are deleted
 //     from disk so a six-hour broadcast does not fill the volume.
 
-import { createWriteStream, mkdirSync, rmSync, existsSync, statSync } from 'node:fs';
+import { createWriteStream, mkdirSync, rmSync, renameSync, existsSync, statSync } from 'node:fs';
 import { pipeline } from 'node:stream/promises';
 import { Transform } from 'node:stream';
 import { join, resolve } from 'node:path';
@@ -24,6 +24,9 @@ import { badRequest, notFound, conflict } from '../../platform/errors.mjs';
 
 export const SEGMENT_MIMES = ['video/webm', 'video/mp4', 'video/x-matroska'];
 export const DEFAULT_WINDOW = 150;                 // ~5 minutes at 2s segments
+// How many times a sequence claim may lose a race before giving up.
+export const MAX_SEQUENCE_ATTEMPTS = 12;
+
 export const MAX_SEGMENT_BYTES = 32 * 1024 * 1024; // one chunk, not one broadcast
 
 export function createLiveSegments({
@@ -77,20 +80,27 @@ export function createLiveSegments({
         throw badRequest(`Segment exceeds ${maxSegmentBytes} bytes.`);
       }
 
+
+      // The sequence number is assigned by the database, in one statement.
+      //
+      // It used to be read, incremented in JavaScript, and inserted after the
+      // file had been written - with a slow disk write sitting between the read
+      // and the insert. Two uploads that overlapped at all both read the same
+      // maximum, both claimed the next number, and one died on the primary key.
+      // The segment it carried was gone: sent by the studio, never in the
+      // manifest, never played. INSERT ... SELECT MAX(seq) + 1 ... RETURNING is
+      // atomic on both engines, so the number cannot be handed out twice.
+      //
+      // The bytes land in a temporary file first, so the only thing inside the
+      // critical section is one statement rather than a disk write.
       mkdirSync(dir, { recursive: true });
 
-      const last = await store.get('SELECT MAX(seq) AS seq FROM live_segments WHERE event_id = ?', eventId);
-      // Sequence 0 is reserved for the init segment so a player always knows
-      // where the header is without a separate lookup.
-      const seq = init ? 0 : Math.max(Number(last?.seq ?? 0), 0) + 1;
-      if (init && Number(last?.seq ?? -1) >= 0) {
+      if (init) {
         const existing = await store.get('SELECT seq FROM live_segments WHERE event_id = ? AND seq = 0', eventId);
         if (existing) throw conflict('This broadcast already has an initialisation segment.');
       }
 
-      const name = `${seq}.webm`;
-      const absolute = join(dir, name);
-
+      const temp = join(dir, `.incoming-${runtime.uuid()}`);
       let bytes = 0;
       const meter = new Transform({
         transform(chunk, _enc, cb) {
@@ -101,21 +111,66 @@ export function createLiveSegments({
       });
 
       try {
-        await pipeline(stream, meter, createWriteStream(absolute));
+        await pipeline(stream, meter, createWriteStream(temp));
       } catch (err) {
-        if (existsSync(absolute)) { try { rmSync(absolute); } catch { /* best effort */ } }
+        if (existsSync(temp)) { try { rmSync(temp); } catch { /* best effort */ } }
         throw err;
       }
       if (bytes === 0) {
-        try { rmSync(absolute); } catch { /* best effort */ }
+        try { rmSync(temp); } catch { /* best effort */ }
         throw badRequest('Empty segment.');
       }
 
-      await store.run(
-        `INSERT INTO live_segments (event_id, seq, path, bytes, mime, is_init, created_at)
-         VALUES (?,?,?,?,?,?,?)`,
-        eventId, seq, `${eventId}/${name}`, bytes, mime, init ? 1 : 0, runtime.now(),
-      );
+      // Claim a sequence number.
+      //
+      // INSERT ... SELECT MAX(seq) + 1 ... RETURNING is one statement, which is
+      // enough on SQLite because it serialises writers. Postgres at READ
+      // COMMITTED is not: two concurrent statements can both read the same
+      // maximum and the loser hits the primary key. Rather than reach for an
+      // advisory lock or a stricter isolation level - both of which serialise
+      // every upload, including the ones that would never have collided - a
+      // conflict simply retries. Collisions are rare, the statement is cheap,
+      // and the retry converges because each attempt re-reads the maximum.
+      const isConflict = (err) =>
+        /UNIQUE constraint failed|duplicate key value|unique_violation/i.test(String(err?.message ?? ''));
+
+      let seq;
+      try {
+        if (init) {
+          await store.run(
+            `INSERT INTO live_segments (event_id, seq, path, bytes, mime, is_init, created_at)
+             VALUES (?, 0, ?, ?, ?, 1, ?)`,
+            eventId, `${eventId}/0.webm`, bytes, mime, runtime.now(),
+          );
+          seq = 0;
+        } else {
+          for (let attempt = 1; ; attempt++) {
+            try {
+              const row = await store.get(
+                `INSERT INTO live_segments (event_id, seq, path, bytes, mime, is_init, created_at)
+                 SELECT ?, COALESCE(MAX(seq), 0) + 1, '', ?, ?, 0, ?
+                 FROM live_segments WHERE event_id = ?
+                 RETURNING seq`,
+                eventId, bytes, mime, runtime.now(), eventId,
+              );
+              seq = Number(row.seq);
+              break;
+            } catch (err) {
+              if (!isConflict(err) || attempt >= MAX_SEQUENCE_ATTEMPTS) throw err;
+            }
+          }
+          await store.run('UPDATE live_segments SET path = ? WHERE event_id = ? AND seq = ?',
+            `${eventId}/${seq}.webm`, eventId, seq);
+        }
+      } catch (err) {
+        // The number was never claimed, so the bytes are worthless.
+        if (existsSync(temp)) { try { rmSync(temp); } catch { /* best effort */ } }
+        throw err;
+      }
+
+      // Only now does the file take the name the manifest points at, so a
+      // reader can never see a row whose file is still being written.
+      renameSync(temp, join(dir, `${seq}.webm`));
 
       await this.evict(eventId);
       return { seq, bytes, init };
