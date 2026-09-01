@@ -1,192 +1,250 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
-import { PanelLeftClose, PanelLeftOpen, X, Tv, LayoutGrid } from 'lucide-react';
-import type { Product } from '@/lib/types';
-import { Logo } from './logo';
+// The left sidebar: brand header, KashCoin wallet badge, primary navigation
+// and the communities directory — the CDN app's layout, faithfully.
+
+import { Bookmark, Coins, Flame, LogIn, LogOut, Tv, Users } from 'lucide-react';
+import type { Product, SessionUser } from '@/lib/types';
+
+export type MainTab = 'tv' | 'foryou' | 'following' | 'saved';
 
 type RailProps = {
   products: Product[];
+  activeTab: MainTab;
+  onSelectTab: (tab: MainTab) => void;
   activeProduct: string;
   onSelectProduct: (id: string) => void;
-  collapsed: boolean;
-  onToggleCollapsed: () => void;
-  drawerOpen: boolean;
-  onCloseDrawer: () => void;
-  skeletonPreview: boolean;
-  onToggleSkeletons: () => void;
+  balance: number;
+  user: SessionUser | null;
+  onOpenGifts: () => void;
+  onOpenGate: () => void;
+  onSignOut: () => void;
 };
 
-// The five ecosystem logos differ wildly in weight and colour, so at rest they
-// render desaturated and dimmed; the active product gets full colour plus a
-// cyan bar — a second signal that is not colour alone.
-function ProductLogo({ product, active }: { product: Product; active: boolean }) {
-  if (product.logo) {
-    return (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
-        src={product.logo}
-        alt=""
-        className={`h-6 w-6 shrink-0 rounded-chip object-cover transition ${active ? '' : 'opacity-60 grayscale'}`}
-      />
-    );
+const NAV: { tab: MainTab; label: string }[] = [
+  { tab: 'tv', label: 'NEU TV Live' },
+  { tab: 'foryou', label: 'For You' },
+  { tab: 'following', label: 'Following' },
+  { tab: 'saved', label: 'Saved Videos' },
+];
+
+function navIcon(tab: MainTab) {
+  switch (tab) {
+    case 'tv':
+      return <Tv className="w-4.5 h-4.5 text-white" />;
+    case 'foryou':
+      return <Flame className="w-4.5 h-4.5 fill-red-500 text-red-500 stroke-red-500" />;
+    case 'following':
+      return <Users className="w-4.5 h-4.5 text-white" />;
+    case 'saved':
+      return <Bookmark className="w-4.5 h-4.5 text-white" />;
   }
-  return (
-    <span
-      className={`grid h-6 w-6 shrink-0 place-items-center rounded-chip text-[10px] font-extrabold ${
-        active ? 'bg-obsidian text-cyan' : 'bg-obsidian text-faint'
-      }`}
-    >
-      {product.name.slice(0, 2).toUpperCase()}
-    </span>
-  );
 }
 
-function RailBody({
+export function Rail({
   products,
+  activeTab,
+  onSelectTab,
   activeProduct,
   onSelectProduct,
-  collapsed,
-  onToggleCollapsed,
-  skeletonPreview,
-  onToggleSkeletons,
-  inDrawer,
-}: RailProps & { inDrawer?: boolean }) {
-  const showLabels = !collapsed || inDrawer;
-  const entries = [{ id: 'all', name: 'All products' } as Product, ...products];
-
+  balance,
+  user,
+  onOpenGifts,
+  onOpenGate,
+  onSignOut,
+}: RailProps) {
   return (
-    <div className="flex h-full flex-col gap-5 p-3">
-      <div className={`flex items-center ${showLabels ? 'justify-between pl-2' : 'justify-center'}`}>
-        {showLabels ? (
-          <Logo width={96} priority />
-        ) : null}
-        {!showLabels ? <Logo compact priority /> : null}
-        {!inDrawer ? (
-          <button
-            type="button"
-            onClick={onToggleCollapsed}
-            title={collapsed ? 'Expand navigation' : 'Collapse navigation'}
-            className="grid h-8 w-8 place-items-center rounded-control text-dim transition hover:bg-obsidian hover:text-ink"
-          >
-            {collapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
-          </button>
-        ) : null}
-      </div>
-
-      <nav aria-label="Products" className="flex flex-col gap-0.5">
-        {entries.map((product) => {
-          const active = activeProduct === product.id;
-          return (
-            <button
-              key={product.id}
-              type="button"
-              onClick={() => onSelectProduct(product.id)}
-              aria-current={active ? 'true' : undefined}
-              title={showLabels ? undefined : product.name}
-              className={`flex items-center gap-3 rounded-control px-2.5 py-2 text-left text-[13px] font-semibold transition ${
-                active ? 'bg-obsidian text-ink shadow-[inset_2px_0_0_var(--color-cyan)]' : 'text-dim hover:bg-obsidian hover:text-ink'
-              } ${showLabels ? '' : 'justify-center px-0'}`}
-            >
-              {product.id === 'all' ? (
-                <LayoutGrid size={18} className={`shrink-0 ${active ? 'text-cyan' : ''}`} />
-              ) : (
-                <ProductLogo product={product} active={active} />
-              )}
-              {showLabels ? <span className="truncate">{product.name}</span> : null}
-            </button>
-          );
-        })}
-      </nav>
-
-      {/* The community hubs list lived here and was removed: it repeated the
-          product list above it, name for name, and both buttons called
-          onSelectProduct with the same id. Selecting a product is what opens
-          its hub, and the chat rail already shows that hub's channels. */}
-      <div className="flex-1" />
-
-      <div className={showLabels ? '' : 'flex justify-center'}>
+    <aside className="w-64 md:w-72 h-screen flex-shrink-0 hidden md:flex flex-col justify-between p-6 border-r border-white/10 bg-[#0A0A0C]/95 backdrop-blur-2xl z-40 overflow-y-auto no-scrollbar shadow-2xl sticky top-0 space-y-6">
+      <div className="space-y-6">
+        {/* Brand header */}
         <button
           type="button"
-          onClick={onToggleSkeletons}
-          title="Preview every loading state"
-          aria-pressed={skeletonPreview}
-          className={`flex items-center gap-2 rounded-control px-2.5 py-1.5 text-xs font-semibold transition ${
-            skeletonPreview ? 'bg-obsidian text-cyan' : 'text-faint hover:text-dim'
-          }`}
+          onClick={() => {
+            onSelectTab('tv');
+            onSelectProduct('all');
+          }}
+          className="flex items-center gap-3 cursor-pointer py-1 group select-none w-full text-left"
         >
-          <Tv size={14} />
-          {showLabels ? <span>{skeletonPreview ? 'Hide loading states' : 'Preview loading states'}</span> : null}
+          <div className="h-10 flex-shrink-0 group-hover:scale-105 transition duration-300">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/logos/neu-brand-banner.png" alt="NEU TV" className="h-full w-auto object-contain drop-shadow" />
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-1 leading-none">
+              <span className="text-white text-[11px] font-black tracking-widest">TV LIVE</span>
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse ml-1 shadow-[0_0_8px_rgba(52,211,153,0.5)]" aria-hidden />
+            </div>
+            <p className="text-[8px] font-mono tracking-wider text-white/50 uppercase mt-1 font-bold truncate">
+              NEW ECONOMY UNVEIL NETWORK
+            </p>
+          </div>
         </button>
-      </div>
-    </div>
-  );
-}
 
-export function Rail(props: RailProps) {
-  const { drawerOpen, onCloseDrawer, collapsed } = props;
-  const drawerRef = useRef<HTMLDivElement>(null);
-
-  // The drawer is the one intentional focus trap on the page.
-  useEffect(() => {
-    if (!drawerOpen) return;
-    const el = drawerRef.current;
-    if (!el) return;
-    const focusable = () =>
-      Array.from(el.querySelectorAll<HTMLElement>('button, a, [tabindex]:not([tabindex="-1"])'));
-    focusable()[0]?.focus();
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onCloseDrawer();
-      if (e.key !== 'Tab') return;
-      const items = focusable();
-      if (items.length === 0) return;
-      const first = items[0];
-      const last = items[items.length - 1];
-      if (e.shiftKey && document.activeElement === first) {
-        e.preventDefault();
-        last.focus();
-      } else if (!e.shiftKey && document.activeElement === last) {
-        e.preventDefault();
-        first.focus();
-      }
-    };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [drawerOpen, onCloseDrawer]);
-
-  return (
-    <>
-      <aside
-        className={`sticky top-0 hidden h-dvh shrink-0 border-r border-line bg-midnight transition-[width] duration-(--duration-base) md:block ${
-          collapsed ? 'w-[72px]' : 'w-[264px]'
-        }`}
-      >
-        <RailBody {...props} />
-      </aside>
-
-      {drawerOpen ? (
-        <div className="fixed inset-0 z-50 md:hidden" role="dialog" aria-modal="true" aria-label="Navigation">
+        {/* Wallet */}
+        <div className="p-3.5 rounded-2xl bg-[#141418]/80 border border-white/10 flex items-center justify-between shadow-lg">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-[#0070F3]/20 border border-[#0070F3]/40 flex items-center justify-center text-[#38B6FF]">
+              <Coins className="w-4.5 h-4.5" />
+            </div>
+            <div>
+              <div className="text-[9px] text-white/50 font-extrabold uppercase tracking-wider">KashCoin Balance</div>
+              <div className="text-xs md:text-sm font-black text-white num">{balance.toLocaleString()} KASH</div>
+            </div>
+          </div>
           <button
             type="button"
-            aria-label="Close navigation"
-            onClick={onCloseDrawer}
-            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-          />
-          <div ref={drawerRef} className="absolute inset-y-0 left-0 w-[280px] bg-midnight shadow-overlay">
-            <div className="flex justify-end p-2">
+            onClick={onOpenGifts}
+            className="px-3 py-1.5 rounded-full bg-[#0070F3] hover:bg-[#0060DF] text-white text-[11px] font-black transition shadow-lg flex items-center gap-1.5 transform active:scale-95"
+          >
+            <span className="text-sm" aria-hidden>🎁</span>
+            <span>Gift</span>
+          </button>
+        </div>
+
+        {/* Primary nav */}
+        <nav className="space-y-1.5" aria-label="Main">
+          <div className="text-[10px] font-extrabold tracking-widest text-white/40 uppercase mb-2 px-3">NAVIGATION</div>
+          {NAV.map(({ tab, label }) => {
+            const active = activeTab === tab;
+            return (
+              <button
+                key={tab}
+                type="button"
+                onClick={() => onSelectTab(tab)}
+                aria-current={active ? 'true' : undefined}
+                className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl text-xs font-bold transition duration-200 ${
+                  active
+                    ? 'bg-white/10 text-white font-black border border-white/20 shadow-md scale-[1.02]'
+                    : 'text-white/70 hover:bg-white/5 hover:text-white'
+                }`}
+              >
+                <span className="flex items-center gap-3">
+                  {navIcon(tab)}
+                  {label}
+                </span>
+                {tab === 'tv' ? (
+                  <span
+                    className={`text-[9px] px-2 py-0.5 rounded-full font-extrabold ${
+                      active ? 'bg-red-500 text-white' : 'bg-red-500/20 text-red-400'
+                    }`}
+                  >
+                    ON AIR
+                  </span>
+                ) : tab === 'foryou' ? (
+                  <span className="text-[9px] px-2 py-0.5 rounded-full font-black bg-red-500/20 text-red-400 border border-red-500/30 flex items-center gap-1">
+                    🔥 Hot
+                  </span>
+                ) : null}
+              </button>
+            );
+          })}
+        </nav>
+
+        {/* Communities & sites */}
+        <div className="space-y-3 pt-4 border-t border-white/10">
+          <div className="flex items-center justify-between px-2">
+            <span className="text-[10px] font-extrabold tracking-widest text-white/40 uppercase flex items-center gap-1.5">
+              <Users className="w-3.5 h-3.5 text-white/40" /> COMMUNITIES &amp; SITES
+            </span>
+            {activeProduct !== 'all' ? (
               <button
                 type="button"
-                onClick={onCloseDrawer}
-                aria-label="Close navigation"
-                className="grid h-9 w-9 place-items-center rounded-control text-dim hover:bg-obsidian hover:text-ink"
+                onClick={() => onSelectProduct('all')}
+                className="text-[10px] text-white/60 hover:text-white underline font-semibold"
               >
-                <X size={18} />
+                All Feeds
               </button>
-            </div>
-            <RailBody {...props} inDrawer />
+            ) : null}
+          </div>
+          <div className="space-y-1.5">
+            {products.map((prod) => {
+              const isActive = activeProduct === prod.id;
+              return (
+                <div key={prod.id} className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => onSelectProduct(prod.id)}
+                    className={`flex-1 px-3 py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-between shadow-sm ${
+                      isActive
+                        ? 'bg-white text-black font-extrabold shadow-md scale-[1.02]'
+                        : 'bg-white/5 border border-white/10 text-white/70 hover:bg-white/15 hover:text-white'
+                    }`}
+                  >
+                    <span className="flex items-center gap-2.5 truncate">
+                      {prod.logo ? (
+                        <span className={`w-5 h-5 rounded-md ${isActive ? 'bg-black/10' : 'bg-white/10'} p-0.5 flex items-center justify-center flex-shrink-0`}>
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={prod.logo} alt="" className="w-full h-full object-contain" />
+                        </span>
+                      ) : (
+                        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${isActive ? 'bg-black' : 'bg-emerald-400'}`} aria-hidden />
+                      )}
+                      <span className="truncate">{prod.name}</span>
+                    </span>
+                    {prod.badge ? (
+                      <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${isActive ? 'bg-black text-white' : 'bg-white/10 text-white/60'}`}>
+                        {prod.badge}
+                      </span>
+                    ) : null}
+                  </button>
+                  {prod.officialUrl ? (
+                    <a
+                      href={prod.officialUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      title={`Visit ${prod.name} Official Website`}
+                      className="px-2 py-2.5 rounded-xl bg-white/5 hover:bg-white/20 text-white text-[10px] font-bold border border-white/10 transition flex items-center justify-center flex-shrink-0"
+                    >
+                      Site ↗
+                    </a>
+                  ) : null}
+                </div>
+              );
+            })}
           </div>
         </div>
-      ) : null}
-    </>
+      </div>
+
+      {/* User footer */}
+      <div className="pt-4 border-t border-white/10 flex items-center justify-between gap-2">
+        {user ? (
+          <div className="flex items-center justify-between w-full">
+            <div className="flex items-center gap-2.5 min-w-0">
+              {user.avatar ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={user.avatar} alt="" className="w-8 h-8 rounded-full object-cover border border-white/30 shadow-md flex-shrink-0" />
+              ) : (
+                <span className="w-8 h-8 rounded-full bg-white/10 border border-white/30 flex items-center justify-center text-xs font-black text-white flex-shrink-0">
+                  {user.name.slice(0, 1).toUpperCase()}
+                </span>
+              )}
+              <div className="min-w-0">
+                <div className="text-xs font-bold text-white truncate">{user.name}</div>
+                {user.badge ? <div className="text-[9px] text-emerald-400 font-bold truncate">{user.badge}</div> : null}
+              </div>
+            </div>
+            <div className="flex items-center gap-1.5 flex-shrink-0">
+              <button
+                type="button"
+                onClick={onSignOut}
+                title="Log out & return to Sign In screen"
+                className="w-7 h-7 rounded-full bg-white/5 hover:bg-rose-500/20 text-white/50 hover:text-rose-400 flex items-center justify-center transition border border-white/10"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={onOpenGate}
+            className="w-full py-2.5 rounded-full bg-white text-black font-extrabold text-xs hover:bg-white/90 transition shadow-lg text-center flex items-center justify-center gap-2"
+          >
+            <LogIn className="w-3.5 h-3.5" />
+            Sign In to NEU TV
+          </button>
+        )}
+      </div>
+    </aside>
   );
 }

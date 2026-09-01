@@ -1,38 +1,61 @@
 'use client';
 
+// Official announcements: the filter pill strip and the video card grid,
+// in the original three-column layout.
+
 import { useMemo, useState } from 'react';
-import { Heart, Bookmark, Share2, MessageSquare, Gift as GiftIcon, BadgeCheck, Play, ChevronDown } from 'lucide-react';
-import type { Post, PostComment, Product } from '@/lib/types';
+import {
+  Bookmark,
+  Clapperboard,
+  Heart,
+  MessageCircle,
+  MoreVertical,
+  Play,
+  Share2,
+  Sparkles,
+  Tv,
+} from 'lucide-react';
+import type { Post, Product } from '@/lib/types';
 import { NeuTVClient, sync } from '@/lib/client';
-import { compact, relativeTime } from '@/lib/format';
+import { relativeTime } from '@/lib/format';
+import { brandTheme } from '@/lib/brand';
+import type { MainTab } from './rail';
 
 type FeedProps = {
   posts: Post[];
   products: Product[];
   activeProduct: string;
   onSelectProduct: (id: string) => void;
+  activeTab: MainTab;
+  onSelectTab: (tab: MainTab) => void;
   search: string;
   now: number;
   client: NeuTVClient;
   signedIn: boolean;
   onRequireSignIn: () => void;
-  onPromote: (card: Record<string, unknown>) => void;
   onOpenGifts: () => void;
+  onSelect: (post: Post) => void;
   showToast: (msg: string) => void;
-  skeleton: boolean;
 };
 
 export function Feed(props: FeedProps) {
-  const { posts, products, activeProduct, onSelectProduct, search, skeleton } = props;
+  const { posts, products, activeProduct, onSelectProduct, activeTab, onSelectTab, search } = props;
 
-  const sorted = useMemo(
-    () => [...posts].sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0)),
-    [posts],
-  );
+  const [liked, setLiked] = useState<Record<string, boolean>>({});
+  const [upvotes, setUpvotes] = useState<Record<string, number>>({});
+  const [saved, setSaved] = useState<Record<string, boolean>>(() => {
+    const initial: Record<string, boolean> = {};
+    for (const p of posts) if (p.isSaved) initial[p.id] = true;
+    return initial;
+  });
+
+  const sorted = useMemo(() => [...posts].sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0)), [posts]);
 
   const filtered = useMemo(() => {
     let list = sorted;
     if (activeProduct !== 'all') list = list.filter((p) => p.productId === activeProduct);
+    if (activeTab === 'following') list = list.filter((p) => p.handle === '@neutv' || p.fromLibrary);
+    if (activeTab === 'saved') list = list.filter((p) => saved[p.id]);
     const q = search.trim().toLowerCase();
     if (q) {
       list = list.filter((p) =>
@@ -42,339 +65,313 @@ export function Feed(props: FeedProps) {
       );
     }
     return list;
-  }, [sorted, activeProduct, search]);
-
-  if (skeleton) {
-    return (
-      <section className="mt-6" aria-label="Announcements (loading)">
-        <div className="skeleton mb-3 h-5 w-52" />
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {Array.from({ length: 6 }, (_, i) => (
-            <div key={i} className="overflow-hidden rounded-panel border border-line bg-midnight">
-              <div className="skeleton aspect-video w-full rounded-none" />
-              <div className="space-y-2 p-3">
-                <div className="skeleton h-4 w-3/4" />
-                <div className="skeleton h-3 w-1/2" />
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-    );
-  }
+  }, [sorted, activeProduct, activeTab, saved, search]);
 
   return (
-    <section className="mt-8" aria-label="Official announcements">
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-[15px] font-bold">
-          Official announcements
-          <span className="num ml-2 text-xs font-semibold text-faint">{filtered.length}</span>
-        </h2>
-        <div className="flex flex-wrap gap-1.5" role="group" aria-label="Filter by product">
-          {[{ id: 'all', name: 'All' } as Product, ...products].map((p) => {
-            const active = activeProduct === p.id;
+    <section className="space-y-12 w-full pt-4" aria-label="Official announcements">
+      <div className="max-w-4xl mx-auto space-y-3.5 px-1">
+        <div className="flex items-center justify-between">
+          <h2 className="text-base md:text-lg font-black text-white tracking-tight flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-white" />
+            Official Announcements
+          </h2>
+          <span className="text-xs text-white/50 font-medium num">
+            {filtered.length} {filtered.length === 1 ? 'announcement' : 'announcements'}
+          </span>
+        </div>
+
+        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1" role="group" aria-label="Filter by product">
+          <button
+            type="button"
+            onClick={() => onSelectProduct('all')}
+            aria-pressed={activeProduct === 'all'}
+            className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap shadow-sm ${
+              activeProduct === 'all'
+                ? 'bg-white text-black font-black shadow-md'
+                : 'bg-white/5 border border-white/10 text-white/70 hover:bg-white/10 hover:text-white'
+            }`}
+          >
+            ✨ All
+          </button>
+          {products.map((prod) => {
+            const isSelected = activeProduct === prod.id;
             return (
               <button
-                key={p.id}
+                key={prod.id}
                 type="button"
-                onClick={() => onSelectProduct(p.id)}
-                aria-pressed={active}
-                className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
-                  active
-                    ? 'bg-obsidian text-cyan shadow-[inset_0_0_0_1px_var(--color-cyan)]'
-                    : 'text-dim hover:bg-obsidian hover:text-ink'
+                onClick={() => onSelectProduct(prod.id)}
+                aria-pressed={isSelected}
+                className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap shadow-sm ${
+                  isSelected
+                    ? 'bg-white text-black font-black shadow-md'
+                    : 'bg-white/5 border border-white/10 text-white/70 hover:bg-white/10 hover:text-white'
                 }`}
               >
-                {p.name}
+                <span className={`w-2 h-2 rounded-full ${isSelected ? 'bg-black' : brandTheme(prod.id).bannerBg}`} aria-hidden />
+                {prod.name}
               </button>
             );
           })}
         </div>
-      </div>
 
-      {filtered.length === 0 ? (
-        <div className="rounded-panel border border-line bg-midnight px-6 py-14 text-center">
-          <div className="text-sm font-bold">No announcements match</div>
-          <p className="mx-auto mt-1.5 max-w-sm text-[13px] text-dim">
-            {search.trim()
-              ? 'Nothing matches that search. Clear it, or pick a different product.'
-              : 'This product has not posted yet. Switch to All to see the whole network.'}
-          </p>
-          <button
-            type="button"
-            onClick={() => {
+        {filtered.length === 0 ? (
+          <EmptyState
+            tab={activeTab}
+            onExplore={() => {
+              onSelectTab('tv');
               onSelectProduct('all');
             }}
-            className="mt-4 rounded-control border border-line-strong bg-obsidian px-3.5 py-2 text-xs font-bold transition hover:bg-midnight"
-          >
-            Show all products
-          </button>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {filtered.map((post) => (
-            <PostCard key={post.id} post={post} {...props} />
-          ))}
-        </div>
-      )}
+          />
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-8 md:gap-x-5 md:gap-y-10">
+            {filtered.map((post) => (
+              <PostCard
+                key={post.id}
+                post={post}
+                liked={liked[post.id] ?? Boolean(post.isUpvoted)}
+                upvoteCount={upvotes[post.id] ?? post.upvotes ?? 0}
+                savedState={Boolean(saved[post.id])}
+                setLiked={(v) => setLiked((m) => ({ ...m, [post.id]: v }))}
+                setUpvoteCount={(v) => setUpvotes((m) => ({ ...m, [post.id]: v }))}
+                setSavedState={(v) => setSaved((m) => ({ ...m, [post.id]: v }))}
+                {...props}
+              />
+            ))}
+          </div>
+        )}
+      </div>
     </section>
+  );
+}
+
+function EmptyState({ tab, onExplore }: { tab: MainTab; onExplore: () => void }) {
+  const icon = tab === 'saved' ? '🔖' : tab === 'following' ? '👥' : '🔍';
+  const title =
+    tab === 'saved'
+      ? 'No Saved Videos Yet'
+      : tab === 'following'
+        ? 'No Broadcasts From Followed Channels'
+        : 'No Broadcasts Found';
+  const sub =
+    tab === 'saved'
+      ? 'Click the bookmark icon on any broadcast or announcement to save it here for later.'
+      : 'Follow more ecosystem creators or check out the Live TV stage.';
+
+  return (
+    <div className="p-12 text-center space-y-4 rounded-3xl bg-[#0E0E12]/60 border border-white/10 my-4">
+      <div className="w-16 h-16 rounded-full bg-white/5 border border-white/10 flex items-center justify-center mx-auto text-2xl text-white/50" aria-hidden>
+        {icon}
+      </div>
+      <div className="space-y-1">
+        <h3 className="text-base font-extrabold text-white">{title}</h3>
+        <p className="text-xs text-white/60 max-w-sm mx-auto">{sub}</p>
+      </div>
+      <button
+        type="button"
+        onClick={onExplore}
+        className="px-5 py-2 rounded-full bg-white text-black font-black text-xs hover:bg-neutral-200 transition shadow-lg inline-flex items-center gap-1.5"
+      >
+        <Tv className="w-3.5 h-3.5" />
+        Explore NEU TV Live
+      </button>
+    </div>
   );
 }
 
 function PostCard({
   post,
+  liked,
+  upvoteCount,
+  savedState,
+  setLiked,
+  setUpvoteCount,
+  setSavedState,
   now,
   client,
   signedIn,
   onRequireSignIn,
-  onPromote,
   onOpenGifts,
+  onSelect,
   showToast,
-}: FeedProps & { post: Post }) {
-  const [upvotes, setUpvotes] = useState(post.upvotes ?? 0);
-  const [liked, setLiked] = useState(Boolean(post.isUpvoted));
-  const [saved, setSaved] = useState(Boolean(post.isSaved));
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [comments, setComments] = useState<PostComment[] | null>(post.comments ?? null);
-  const [commentsLoading, setCommentsLoading] = useState(false);
-  const [draft, setDraft] = useState('');
-  const [heldNotice, setHeldNotice] = useState<string | null>(null);
-
+}: FeedProps & {
+  post: Post;
+  liked: boolean;
+  upvoteCount: number;
+  savedState: boolean;
+  setLiked: (v: boolean) => void;
+  setUpvoteCount: (v: number) => void;
+  setSavedState: (v: boolean) => void;
+}) {
   const age = post.timestamp || relativeTime(post.createdAt, now);
-  const playable = Boolean(post.videoMp4 || post.youtubeId);
 
-  const toggleLike = () => {
-    setLiked((was) => {
-      setUpvotes((n) => Math.max(0, n + (was ? -1 : 1)));
-      return !was;
-    });
+  const toggleLike = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const next = !liked;
+    setLiked(next);
+    setUpvoteCount(Math.max(0, upvoteCount + (next ? 1 : -1)));
     void sync(async () => {
       const res = await client.upvote(post.id);
-      setUpvotes(res.upvotes);
+      setUpvoteCount(res.upvotes);
       setLiked(res.isUpvoted);
       return res;
     });
   };
 
-  const toggleSave = () => {
-    setSaved((was) => !was);
-    showToast(saved ? 'Removed from saved' : 'Saved for later');
+  const toggleSave = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const next = !savedState;
+    setSavedState(next);
+    showToast(next ? 'Post saved to bookmarks! 🔖' : 'Removed from bookmarks');
     void sync(async () => {
       const res = await client.save(post.id);
-      setSaved(res.isSaved);
+      setSavedState(res.isSaved);
       return res;
     });
   };
 
-  const share = () => {
+  const share = (e: React.MouseEvent) => {
+    e.stopPropagation();
     const url = `${window.location.origin}${window.location.pathname}?post=${post.id}`;
     void navigator.clipboard?.writeText(url).catch(() => {});
-    showToast('Link copied');
+    showToast('Link copied to clipboard! 📋');
     void sync(() => client.share(post.id));
   };
 
-  const openDrawer = () => {
-    setDrawerOpen((open) => !open);
-    if (comments === null && !commentsLoading) {
-      setCommentsLoading(true);
-      void sync(async () => {
-        const res = await client.comments(post.id);
-        setComments(res.comments ?? []);
-        return res;
-      }).finally(() => setCommentsLoading(false));
-    }
-  };
-
-  // Comments post optimistically; moderation can withdraw one a moment later.
-  // That withdrawal is a designed state, not an error.
-  const submitComment = (e: React.FormEvent) => {
-    e.preventDefault();
-    const text = draft.trim();
-    if (!text) return;
+  const gift = (e: React.MouseEvent) => {
+    e.stopPropagation();
     if (!signedIn) {
       onRequireSignIn();
       return;
     }
-    const optimistic: PostComment = {
-      id: `c-${Date.now()}`,
-      author: 'You',
-      text,
-      timestamp: 'just now',
-      optimistic: true,
-    };
-    setComments((prev) => [...(prev ?? []), optimistic]);
-    setDraft('');
-    setHeldNotice(null);
-    void sync(
-      async () => {
-        const res = await client.comment(post.id, text);
-        setComments((prev) =>
-          (prev ?? []).map((c) => (c.id === optimistic.id ? { ...c, ...res.comment, timestamp: 'just now' } : c)),
-        );
-        return res;
-      },
-      (err) => {
-        if (err.status === 400) {
-          setComments((prev) => (prev ?? []).filter((c) => c.id !== optimistic.id));
-          setHeldNotice(err.message || 'That comment was held by moderation and was not published.');
-        }
-      },
-    );
+    onOpenGifts();
   };
 
   return (
-    <article className="flex flex-col overflow-hidden rounded-panel border border-line bg-midnight transition hover:border-line-strong">
-      <button
-        type="button"
-        onClick={() => (playable ? onPromote({ ...post }) : undefined)}
-        disabled={!playable}
-        aria-label={playable ? `Watch ${post.videoTitle ?? post.content} on the stage` : undefined}
-        className="group relative block aspect-video bg-black text-left"
-      >
-        {post.mediaUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={post.mediaUrl} alt="" loading="lazy" className="h-full w-full object-cover" />
-        ) : post.videoMp4 ? (
-          <video src={`${post.videoMp4}#t=0.1`} preload="metadata" muted playsInline tabIndex={-1} className="h-full w-full object-cover" />
-        ) : (
-          <span className="grid h-full w-full place-items-center text-faint">
-            <Play size={28} />
-          </span>
-        )}
-        {post.duration ? (
-          <span className="num absolute right-2 bottom-2 rounded-chip bg-black/70 px-1.5 py-0.5 text-[10px] font-bold">
-            {post.duration}
-          </span>
-        ) : null}
-        {playable ? (
-          <span className="absolute inset-0 grid place-items-center opacity-0 transition group-hover:bg-black/40 group-hover:opacity-100 group-focus-visible:bg-black/40 group-focus-visible:opacity-100">
-            <span className="flex items-center gap-1.5 rounded-control bg-cyan px-3 py-1.5 text-xs font-bold text-deep">
-              <Play size={12} fill="currentColor" /> Watch on the stage
-            </span>
-          </span>
-        ) : null}
-      </button>
-
-      <div className="flex flex-1 flex-col gap-2.5 p-3">
-        <div className="flex items-start gap-2.5">
-          {post.avatar ? (
+    <article
+      id={`post-${post.id}`}
+      className="group cursor-pointer flex flex-col space-y-3 select-none bg-transparent transition-transform duration-200 rounded-2xl"
+    >
+      <button type="button" onClick={() => onSelect(post)} className="text-left" aria-label={`Watch ${post.videoTitle ?? post.content}`}>
+        <div className="relative w-full aspect-video rounded-2xl overflow-hidden bg-neutral-900 shadow-md">
+          {post.mediaUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={post.avatar} alt="" className="mt-0.5 h-8 w-8 shrink-0 rounded-full object-cover" />
+            <img src={post.mediaUrl} alt="" loading="lazy" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+          ) : post.videoMp4 ? (
+            <video
+              src={`${post.videoMp4}#t=0.1`}
+              preload="metadata"
+              muted
+              playsInline
+              tabIndex={-1}
+              className="w-full h-full object-cover pointer-events-none group-hover:scale-105 transition-transform duration-300"
+            />
           ) : (
-            <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full bg-obsidian text-xs font-extrabold text-dim">
-              {post.author.slice(0, 1)}
-            </span>
-          )}
-          <div className="min-w-0">
-            <div className="line-clamp-2 text-[13px] leading-snug font-bold">{post.videoTitle || post.content}</div>
-            <div className="mt-0.5 flex items-center gap-1.5 text-xs text-dim">
-              <span className="truncate">{post.productName || post.author}</span>
-              {post.verified ? <BadgeCheck size={13} className="shrink-0 text-sky" aria-label="Official" /> : null}
-              {post.views ? <span className="num shrink-0 text-faint">{post.views} views</span> : null}
-              {age ? <span className="shrink-0 text-faint">{age}</span> : null}
+            <div className="w-full h-full flex items-center justify-center text-white/20">
+              <Clapperboard className="w-8 h-8" />
             </div>
+          )}
+          <div className="absolute inset-0 bg-black/10 group-hover:bg-black/0 transition duration-300" />
+          {post.duration ? (
+            <span className="absolute bottom-2.5 right-2.5 px-1.5 py-0.5 rounded bg-black/85 text-white text-[11px] font-semibold tracking-wide shadow pointer-events-none num">
+              {post.duration}
+            </span>
+          ) : null}
+          <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition duration-200 pointer-events-none">
+            <span className="w-12 h-12 rounded-full bg-black/75 backdrop-blur-md border border-white/20 flex items-center justify-center text-white shadow-2xl">
+              <Play className="w-5 h-5 fill-current ml-0.5" />
+            </span>
           </div>
         </div>
 
-        <div className="mt-auto flex items-center gap-1 border-t border-line pt-2">
+        <div className="flex items-start gap-3 pt-0.5 mt-3">
+          <div className="w-9 h-9 rounded-full overflow-hidden bg-neutral-800 flex-shrink-0 mt-0.5 shadow-sm">
+            {post.avatar ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={post.avatar} alt="" className="w-full h-full object-cover" />
+            ) : (
+              <span className="w-full h-full flex items-center justify-center text-xs font-black text-white/60">
+                {post.author.slice(0, 1)}
+              </span>
+            )}
+          </div>
+          <div className="flex-1 min-w-0 pr-1">
+            <h3 className="text-sm font-bold text-white line-clamp-2 leading-snug group-hover:text-neutral-200 transition">
+              {post.videoTitle || post.content}
+            </h3>
+            <div className="flex items-center gap-1 text-xs text-white/60 hover:text-white transition mt-1">
+              <span className="truncate font-medium">{post.productName || post.author}</span>
+              {post.verified ? (
+                <span className="w-3.5 h-3.5 rounded-full bg-[#0070F3] text-white font-black text-[9px] flex items-center justify-center flex-shrink-0" title="Official">
+                  ✓
+                </span>
+              ) : null}
+            </div>
+            <div className="text-xs text-white/50 flex items-center gap-1 mt-0.5">
+              {post.views ? <span className="num">{post.views} views</span> : null}
+              {post.views && age ? <span>•</span> : null}
+              {age ? <span>{age}</span> : null}
+            </div>
+          </div>
+        </div>
+      </button>
+
+      <div className="flex items-center justify-between pt-1 border-t border-white/5">
+        <div className="flex items-center gap-3">
           <button
             type="button"
             onClick={toggleLike}
             aria-pressed={liked}
-            className={`flex items-center gap-1 rounded-control px-2 py-1.5 text-xs font-semibold transition hover:bg-obsidian ${
-              liked ? 'text-cyan' : 'text-dim'
+            className={`flex items-center gap-1 text-xs font-semibold transition transform active:scale-125 ${
+              liked ? 'text-rose-500 font-bold' : 'text-white/60 hover:text-white'
             }`}
           >
-            <Heart size={14} fill={liked ? 'currentColor' : 'none'} />
-            <span className="num">{compact(upvotes)}</span>
+            <Heart className={`w-4 h-4 ${liked ? 'fill-rose-500 stroke-rose-500' : 'stroke-current'}`} />
+            <span className="font-mono text-[11px] num">{upvoteCount.toLocaleString()}</span>
           </button>
           <button
             type="button"
-            onClick={openDrawer}
-            aria-expanded={drawerOpen}
-            className="flex items-center gap-1 rounded-control px-2 py-1.5 text-xs font-semibold text-dim transition hover:bg-obsidian"
+            onClick={(e) => {
+              e.stopPropagation();
+              onSelect(post);
+            }}
+            className="flex items-center gap-1 text-xs font-semibold text-white/60 hover:text-white transition"
           >
-            <MessageSquare size={14} />
-            {comments ? <span className="num">{comments.length}</span> : null}
-            <ChevronDown size={12} className={`transition-transform ${drawerOpen ? 'rotate-180' : ''}`} />
+            <MessageCircle className="w-4 h-4" />
+            <span className="font-mono text-[11px] num">{(post.comments ?? []).length}</span>
           </button>
           <button
             type="button"
-            onClick={onOpenGifts}
-            title="Send a gift"
-            className="flex items-center gap-1 rounded-control px-2 py-1.5 text-xs font-semibold text-dim transition hover:bg-obsidian"
+            onClick={gift}
+            className="px-2.5 py-1 rounded-full bg-[#0070F3]/20 hover:bg-[#0070F3] border border-[#0070F3]/40 text-[#38B6FF] hover:text-white text-[11px] font-bold flex items-center gap-1 transition active:scale-95 shadow-sm"
           >
-            <GiftIcon size={14} />
+            <span className="text-xs" aria-hidden>🎁</span>
+            <span>Gift</span>
           </button>
-          <div className="flex-1" />
+        </div>
+        <div className="flex items-center gap-1">
           <button
             type="button"
             onClick={toggleSave}
-            aria-pressed={saved}
-            title={saved ? 'Remove from saved' : 'Save for later'}
-            className={`grid h-7 w-7 place-items-center rounded-control transition hover:bg-obsidian ${
-              saved ? 'text-cyan' : 'text-dim'
+            aria-pressed={savedState}
+            title={savedState ? 'Remove from Saved' : 'Save to Bookmarks'}
+            className={`flex items-center gap-1 text-xs font-semibold transition p-1 ${
+              savedState ? 'text-purple-400 font-bold' : 'text-white/40 hover:text-white'
             }`}
           >
-            <Bookmark size={14} fill={saved ? 'currentColor' : 'none'} />
+            <Bookmark className={`w-3.5 h-3.5 ${savedState ? 'fill-purple-400 text-purple-400' : 'stroke-current'}`} />
+          </button>
+          <button type="button" onClick={share} title="Copy link" className="text-white/40 hover:text-white transition p-1">
+            <Share2 className="w-3.5 h-3.5" />
           </button>
           <button
             type="button"
             onClick={share}
-            title="Copy a link to this post"
-            className="grid h-7 w-7 place-items-center rounded-control text-dim transition hover:bg-obsidian"
+            title="More"
+            className="w-8 h-8 rounded-full hover:bg-white/10 text-white/60 hover:text-white flex items-center justify-center transition flex-shrink-0 opacity-0 group-hover:opacity-100"
           >
-            <Share2 size={14} />
+            <MoreVertical className="w-4 h-4" />
           </button>
         </div>
-
-        {drawerOpen ? (
-          <div className="border-t border-line pt-2.5">
-            {heldNotice ? (
-              <p className="mb-2 rounded-control border border-amber/40 bg-amber/10 px-2.5 py-2 text-xs text-amber">
-                {heldNotice}
-              </p>
-            ) : null}
-            {commentsLoading ? (
-              <div className="space-y-2">
-                <div className="skeleton h-3.5 w-3/4" />
-                <div className="skeleton h-3.5 w-2/3" />
-              </div>
-            ) : comments && comments.length > 0 ? (
-              <ul className="max-h-44 space-y-2 overflow-y-auto">
-                {comments.map((c) => (
-                  <li key={String(c.id)} className={`text-xs ${c.optimistic ? 'opacity-60' : ''}`}>
-                    <span className="font-bold">{c.author}</span>{' '}
-                    <span className="text-dim">{c.text}</span>
-                    {c.flagged ? (
-                      <span className="ml-1.5 rounded-full bg-amber/15 px-1.5 py-0.5 text-[10px] font-bold text-amber">
-                        in review
-                      </span>
-                    ) : null}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="text-xs text-faint">No comments yet. Start the thread.</p>
-            )}
-            <form onSubmit={submitComment} className="mt-2.5 flex items-center gap-2">
-              <input
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                placeholder={signedIn ? 'Add a comment' : 'Sign in to comment'}
-                aria-label="Add a comment"
-                className="min-w-0 flex-1 rounded-control border border-line bg-base px-2.5 py-1.5 text-xs placeholder:text-faint focus:border-line-strong focus:outline-none"
-              />
-              <button
-                type="submit"
-                disabled={!draft.trim()}
-                className="rounded-control bg-obsidian px-2.5 py-1.5 text-xs font-bold transition hover:bg-line disabled:cursor-not-allowed disabled:opacity-45"
-              >
-                Post
-              </button>
-            </form>
-          </div>
-        ) : null}
       </div>
     </article>
   );

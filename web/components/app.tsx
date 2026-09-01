@@ -1,9 +1,15 @@
 'use client';
 
+// The NEU TV shell: splash → auth gate → the three-column app. Layout and
+// behaviour follow the original Central Stream frontend; underneath, the
+// stage is server-owned, the SSE stream drives the live surfaces, and every
+// optimistic action reconciles against the API.
+
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { AppData, Gift, LiveComment, LiveEvent, SessionUser, StageCard } from '@/lib/types';
+import { CheckCircle2 } from 'lucide-react';
+import type { AppData, Gift, LiveComment, LiveEvent, Post, SessionUser, Spotlight, StageCard } from '@/lib/types';
 import { NeuTVClient, sync } from '@/lib/client';
-import { Rail } from './rail';
+import { Rail, type MainTab } from './rail';
 import { TopBar } from './top-bar';
 import { Stage } from './stage';
 import { Reel } from './reel';
@@ -11,11 +17,14 @@ import { Feed } from './feed';
 import { ChatRail } from './chat-rail';
 import { GiftPalette } from './gift-palette';
 import { Gate } from './gate';
+import { Celebration } from './celebration';
+import { Splash } from './splash';
+import { VideoModal, type ModalVideo } from './video-modal';
 
 const EMOJIS = ['❤️', '🔥', '👏', '🎉', '🚀', '⭐', '💖', '💎'];
 
-type Particle = { id: number; emoji: string; right: number };
-type GiftBanner = { sender: string; giftName: string; cost: number };
+type Heart = { id: number; emoji: string; right: number };
+type GiftBanner = { sender: string; giftName: string; cost: number; emoji?: string };
 
 function toStageCard(raw: Record<string, unknown> | undefined | null, fallback?: StageCard): StageCard | null {
   if (!raw) return null;
@@ -24,26 +33,12 @@ function toStageCard(raw: Record<string, unknown> | undefined | null, fallback?:
     id: r.id,
     title: r.videoTitle || r.title || r.content || fallback?.title || 'Broadcast',
     description: r.content || r.description || '',
-    youtubeId: r.youtubeId ?? null,
-    videoUrl: r.videoMp4 || r.videoUrl || r.playbackUrl || null,
+    youtubeId: r.youtubeId ?? (typeof r.videoUrl === 'string' && !r.videoUrl.includes('/') ? r.videoUrl : null),
+    videoUrl: r.videoMp4 || (typeof r.videoUrl === 'string' && r.videoUrl.includes('/') ? r.videoUrl : null) || r.playbackUrl || null,
     posterUrl: r.mediaUrl || r.thumbnail || r.posterUrl || null,
     productId: r.productId ?? fallback?.productId,
     viewers: r.viewers ?? fallback?.viewers,
     likes: r.likes ?? fallback?.likes,
-  };
-}
-
-function eventToCard(event: LiveEvent, client: NeuTVClient): StageCard {
-  return {
-    id: event.id,
-    title: event.title,
-    description: event.description ?? '',
-    youtubeId: event.youtubeId ?? null,
-    videoUrl: client.absoluteMedia(event.playbackUrl) ?? null,
-    posterUrl: event.posterUrl ?? null,
-    productId: event.productId,
-    isLiveEvent: true,
-    isSegmented: event.source === 'browser',
   };
 }
 
@@ -66,8 +61,15 @@ export function App({ data }: { data: AppData }) {
     [bootstrap],
   );
 
-  // The stage is server-owned: these three decide what renders, and the server
-  // is re-read on mount so a reload mid-takeover recovers.
+  // Splash, then (for signed-out visitors) the gate.
+  const [splash, setSplash] = useState(true);
+  const [authResolved, setAuthResolved] = useState(false);
+  const [isGuest, setIsGuest] = useState(false);
+  const [gateOpen, setGateOpen] = useState(false);
+  const [celebration, setCelebration] = useState<{ name: string; badge?: string } | null>(null);
+
+  // The stage is server-owned: these three decide what renders, and the
+  // server is re-read on mount so a reload mid-takeover recovers.
   const [mainBroadcast, setMainBroadcast] = useState<StageCard>(seedCard);
   const [liveEvent, setLiveEvent] = useState<StageCard | null>(null);
   const [override, setOverride] = useState<StageCard | null>(null);
@@ -76,25 +78,21 @@ export function App({ data }: { data: AppData }) {
 
   const [user, setUser] = useState<SessionUser | null>(null);
   const [balance, setBalance] = useState(0);
-  const [gateOpen, setGateOpen] = useState(false);
 
   const [viewers, setViewers] = useState<number | null>(seedCard.viewers ?? null);
   const [tvLikes, setTvLikes] = useState<number>(seedCard.likes ?? 0);
   const [tvLiked, setTvLiked] = useState(false);
 
-  const [ticker, setTicker] = useState<LiveComment[]>([]);
+  const [ticker, setTicker] = useState<LiveComment[]>(() => (bootstrap.SAMPLE_LIVE_COMMENTS ?? []).slice(0, 3));
   const [giftBanner, setGiftBanner] = useState<GiftBanner | null>(null);
-  const [particles, setParticles] = useState<Particle[]>([]);
+  const [hearts, setHearts] = useState<Heart[]>([]);
   const [gifts, setGifts] = useState<Gift[]>([]);
   const [giftsOpen, setGiftsOpen] = useState(false);
+  const [selectedVideo, setSelectedVideo] = useState<ModalVideo | null>(null);
 
+  const [activeTab, setActiveTab] = useState<MainTab>('tv');
   const [activeProduct, setActiveProduct] = useState('all');
   const [search, setSearch] = useState('');
-  const [railCollapsed, setRailCollapsed] = useState(false);
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [chatOpen, setChatOpen] = useState(false);
-  const [chatUnread, setChatUnread] = useState(0);
-  const [skeletonPreview, setSkeletonPreview] = useState(false);
 
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -104,29 +102,65 @@ export function App({ data }: { data: AppData }) {
     toastTimer.current = setTimeout(() => setToast(null), 2600);
   }, []);
 
-  // SSE handlers read current state through this ref, so a frame that arrives
-  // an hour in still sees today's mainBroadcast — the CDN app got this wrong.
+  // SSE handlers read current state through this ref, so a frame arriving an
+  // hour in never closes over stale state.
   const stateRef = useRef({ mainBroadcast, override, user });
   useEffect(() => {
     stateRef.current = { mainBroadcast, override, user };
   }, [mainBroadcast, override, user]);
 
-  const spawnParticle = useCallback((emoji?: string) => {
+  const spawnHeart = useCallback((emoji?: string) => {
     const id = Date.now() + Math.random();
-    setParticles((prev) => [
+    setHearts((prev) => [
       ...prev.slice(-14),
-      { id, emoji: emoji ?? EMOJIS[Math.floor(Math.random() * EMOJIS.length)], right: 24 + Math.random() * 50 },
+      { id, emoji: emoji ?? EMOJIS[Math.floor(Math.random() * EMOJIS.length)], right: 30 + Math.random() * 50 },
     ]);
-    setTimeout(() => setParticles((prev) => prev.filter((p) => p.id !== id)), 1300);
+    setTimeout(() => setHearts((prev) => prev.filter((p) => p.id !== id)), 2200);
   }, []);
 
   const applyLiveEvent = useCallback(
     (event: LiveEvent) => {
       setLiveError(null);
-      setLiveEvent(eventToCard(event, client));
+      setLiveEvent({
+        id: event.id,
+        title: event.title,
+        description: event.description ?? '',
+        youtubeId: event.youtubeId ?? null,
+        videoUrl: client.absoluteMedia(event.playbackUrl) ?? null,
+        posterUrl: event.posterUrl ?? null,
+        productId: event.productId,
+        isLiveEvent: true,
+        isSegmented: event.source === 'browser',
+      });
     },
     [client],
   );
+
+  // Splash dismisses itself.
+  useEffect(() => {
+    const timer = setTimeout(() => setSplash(false), 2500);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Ambient hearts drift over the stage, as they always have.
+  useEffect(() => {
+    const timer = setInterval(() => spawnHeart(), 1400);
+    return () => clearInterval(timer);
+  }, [spawnHeart]);
+
+  // The floating ticker keeps rotating through the sample comments; real ones
+  // from the stream cut in on top.
+  useEffect(() => {
+    const samples = bootstrap.SAMPLE_LIVE_COMMENTS ?? [];
+    if (samples.length === 0) return;
+    let index = 0;
+    const timer = setInterval(() => {
+      index = (index + 1) % samples.length;
+      const next = { ...samples[index], id: `s-${samples[index].id}-${Date.now()}` };
+      setTicker((prev) => [next, ...prev].slice(0, 3));
+    }, 3500);
+    return () => clearInterval(timer);
+  }, [bootstrap.SAMPLE_LIVE_COMMENTS]);
 
   // Mount: adopt the server's stage, restore the session, start presence and
   // the event stream.
@@ -167,7 +201,11 @@ export function App({ data }: { data: AppData }) {
           setBalance(wallet.balance);
         }
         return me;
+      }).finally(() => {
+        if (!cancelled) setAuthResolved(true);
       });
+    } else {
+      setAuthResolved(true);
     }
 
     void sync(async () => {
@@ -182,7 +220,7 @@ export function App({ data }: { data: AppData }) {
       'live-event': (payload: { status: string; event?: LiveEvent }) => {
         if (payload.status === 'started' && payload.event) {
           applyLiveEvent(payload.event);
-          showToast(`${payload.event.title} is live`);
+          showToast(`🔴 ${payload.event.title} is live`);
         } else if (payload.status === 'ended') {
           setLiveEvent(null);
           setLiveError(null);
@@ -195,30 +233,24 @@ export function App({ data }: { data: AppData }) {
         if (!comment?.text) return;
         setTicker((prev) => [{ ...comment, id: `${comment.id}-${Date.now()}` }, ...prev].slice(0, 3));
       },
-      gift: (payload: { sender?: string; giftName?: string; name?: string; cost?: number }) => {
-        // Someone else's gift landing on the broadcast, live.
+      gift: (payload: { sender?: string; giftName?: string; name?: string; cost?: number; emoji?: string }) => {
         if (stateRef.current.user && payload.sender === stateRef.current.user.name) return;
         setGiftBanner({
           sender: payload.sender ?? 'A viewer',
           giftName: payload.giftName ?? payload.name ?? 'a gift',
           cost: payload.cost ?? 0,
+          emoji: payload.emoji,
         });
         setTimeout(() => setGiftBanner(null), 3500);
       },
-      reaction: (payload: { emoji?: string }) => {
-        spawnParticle(payload.emoji);
-      },
+      reaction: (payload: { emoji?: string }) => spawnHeart(payload.emoji),
       telemetry: (payload: { viewers?: number; baselineViewers?: number }) => {
         const count = payload.viewers ?? payload.baselineViewers;
         if (typeof count === 'number') setViewers(count);
       },
       stage: (payload: { mainBroadcast?: Record<string, unknown> }) => {
-        // An operator promoted a different broadcast for everyone.
         const card = toStageCard(payload.mainBroadcast, stateRef.current.mainBroadcast);
         if (card) setMainBroadcast(card);
-      },
-      chat: () => {
-        setChatUnread((n) => n + 1);
       },
     });
 
@@ -227,7 +259,7 @@ export function App({ data }: { data: AppData }) {
       stopPresence();
       stopStream();
     };
-  }, [client, seedCard, applyLiveEvent, showToast, spawnParticle]);
+  }, [client, seedCard, applyLiveEvent, showToast, spawnHeart]);
 
   // --- stage actions -------------------------------------------------------
 
@@ -237,41 +269,42 @@ export function App({ data }: { data: AppData }) {
       if (!card?.videoUrl && !card?.youtubeId) return;
       setOverride({ ...card, isTakeover: true });
       setMuted(false);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      setActiveTab('tv');
+      showToast('Now playing on the main stage 📺');
       if (card.id) void sync(() => client.takeStage(card.id!));
     },
-    [client],
+    [client, showToast],
   );
 
   const revertStage = useCallback(
     (announce: boolean) => {
       setOverride(null);
-      if (announce) showToast('Back to the live broadcast');
+      if (announce) showToast('Back to the live broadcast 📡');
       void sync(() => client.revertStage());
     },
     [client, showToast],
   );
 
   const likeTv = useCallback(() => {
-    setTvLiked((liked) => {
-      setTvLikes((n) => n + (liked ? -1 : 1));
-      return !liked;
+    setTvLiked((wasLiked) => {
+      setTvLikes((n) => Math.max(0, n + (wasLiked ? -1 : 1)));
+      return !wasLiked;
     });
-    spawnParticle('❤️');
+    spawnHeart('❤️');
     void sync(async () => {
       const res = await client.likeTv();
       if (typeof res.total === 'number') setTvLikes(res.total);
       if (typeof res.liked === 'boolean') setTvLiked(res.liked);
       return res;
     });
-  }, [client, spawnParticle]);
+  }, [client, spawnHeart]);
 
   const sendReaction = useCallback(
     (emoji: string) => {
-      spawnParticle(emoji);
+      spawnHeart(emoji);
       void sync(() => client.react(emoji));
     },
-    [client, spawnParticle],
+    [client, spawnHeart],
   );
 
   const sendLiveComment = useCallback(
@@ -295,7 +328,7 @@ export function App({ data }: { data: AppData }) {
         (err) => {
           if (err.status === 400) {
             setTicker((prev) => prev.filter((c) => c.id !== optimistic.id));
-            showToast(err.message || 'That message was held by moderation.');
+            showToast(err.message || 'That message was blocked by moderation.');
           }
         },
       );
@@ -303,20 +336,32 @@ export function App({ data }: { data: AppData }) {
     [client, showToast],
   );
 
+  const openGifts = useCallback(() => {
+    if (!stateRef.current.user) {
+      setGateOpen(true);
+      return;
+    }
+    setGiftsOpen(true);
+  }, []);
+
   const sendGift = useCallback(
     (gift: Gift) => {
       const me = stateRef.current.user;
       if (!me) {
+        setGiftsOpen(false);
         setGateOpen(true);
-        return false;
+        return;
       }
-      // The palette itself renders the insufficient-funds state; this is the
-      // server-authoritative path for a gift that should go through.
+      if (balance < gift.cost) {
+        showToast(`Insufficient balance! You need ${gift.cost.toLocaleString()} Coins for ${gift.name}.`);
+        return;
+      }
       setBalance((b) => b - gift.cost);
-      setGiftBanner({ sender: me.name, giftName: gift.name, cost: gift.cost });
+      setGiftBanner({ sender: me.name, giftName: gift.name, cost: gift.cost, emoji: gift.emoji });
       setTimeout(() => setGiftBanner(null), 3500);
-      for (let i = 0; i < 8; i++) setTimeout(() => spawnParticle(gift.emoji), i * 100);
-      showToast(`Sent ${gift.name}`);
+      for (let i = 0; i < 10; i++) setTimeout(() => spawnHeart(gift.emoji), i * 100);
+      setGiftsOpen(false);
+      showToast(`Sent ${gift.name} ${gift.emoji || '🎁'}! 🎉`);
       void sync(
         async () => {
           const res = await client.tip(gift.id, {
@@ -332,159 +377,182 @@ export function App({ data }: { data: AppData }) {
           showToast(err.message || 'That gift did not go through.');
         },
       );
-      return true;
     },
-    [client, showToast, spawnParticle],
+    [balance, client, showToast, spawnHeart],
   );
 
   const signOut = useCallback(() => {
     void client.logout();
     setUser(null);
     setBalance(0);
-    showToast('Signed out');
-  }, [client, showToast]);
+    setIsGuest(true);
+  }, [client]);
 
   const onSignedIn = useCallback(
-    (me: SessionUser) => {
+    (me: SessionUser, _platformName: string) => {
       setUser(me);
       setGateOpen(false);
-      showToast(`Signed in as ${me.name}`);
+      setIsGuest(false);
+      setCelebration({ name: me.name, badge: me.badge });
       void sync(async () => {
         const res = await client.balance();
         setBalance(res.balance);
         return res;
       });
     },
-    [client, showToast],
+    [client],
   );
 
+  const openPost = useCallback((post: Post) => {
+    setSelectedVideo({
+      id: post.id,
+      title: post.videoTitle || post.content || 'Broadcast',
+      description: post.content,
+      youtubeId: post.youtubeId ?? null,
+      videoUrl: post.videoMp4 ?? null,
+      thumbnail: post.mediaUrl ?? null,
+      productName: post.productName,
+      views: post.views,
+      raw: { ...post },
+    });
+  }, []);
+
+  const openSpotlight = useCallback((cr: Spotlight) => {
+    setSelectedVideo({
+      id: cr.id,
+      title: cr.title,
+      description: `${cr.name} (${cr.handle ?? ''}) — ${cr.tag ?? 'Creator Spotlight'}`,
+      youtubeId: cr.videoMp4 ? null : (cr.videoUrl ?? null),
+      videoUrl: cr.videoMp4 ?? null,
+      thumbnail: cr.thumbnail ?? null,
+      productName: cr.product,
+      views: cr.views,
+      creator: cr.name,
+      raw: { ...cr, youtubeId: cr.videoMp4 ? null : cr.videoUrl, videoMp4: cr.videoMp4 },
+    });
+  }, []);
+
   const stageCard = override ?? liveEvent ?? mainBroadcast;
+  const gateVisible = authResolved && !celebration && ((!user && !isGuest) || gateOpen);
 
   return (
-    <div className="flex min-h-dvh bg-base">
+    <div className="h-screen w-screen overflow-hidden flex bg-black text-white relative selection:bg-white selection:text-black font-sans">
+      {splash ? <Splash onDismiss={() => setSplash(false)} /> : null}
+
+      {gateVisible && !splash ? (
+        <Gate
+          products={bootstrap.PRODUCTS ?? []}
+          client={client}
+          card={stageCard}
+          viewers={viewers}
+          onGuest={() => {
+            setIsGuest(true);
+            setGateOpen(false);
+          }}
+          onSignedIn={onSignedIn}
+        />
+      ) : null}
+
+      {celebration ? (
+        <Celebration name={celebration.name} badge={celebration.badge} onEnter={() => setCelebration(null)} />
+      ) : null}
+
       <Rail
         products={bootstrap.PRODUCTS ?? []}
+        activeTab={activeTab}
+        onSelectTab={(tab) => {
+          setActiveTab(tab);
+          setActiveProduct('all');
+        }}
         activeProduct={activeProduct}
         onSelectProduct={setActiveProduct}
-        collapsed={railCollapsed}
-        onToggleCollapsed={() => setRailCollapsed((c) => !c)}
-        drawerOpen={drawerOpen}
-        onCloseDrawer={() => setDrawerOpen(false)}
-        skeletonPreview={skeletonPreview}
-        onToggleSkeletons={() => setSkeletonPreview((s) => !s)}
+        balance={balance}
+        user={user}
+        onOpenGifts={openGifts}
+        onOpenGate={() => {
+          setIsGuest(false);
+          setGateOpen(true);
+        }}
+        onSignOut={signOut}
       />
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <TopBar
-          search={search}
-          onSearch={setSearch}
-          viewers={viewers}
-          liveNow={Boolean(liveEvent)}
-          balance={balance}
-          user={user}
-          onOpenGate={() => setGateOpen(true)}
-          onSignOut={signOut}
-          onOpenDrawer={() => setDrawerOpen(true)}
-          onOpenGifts={() => setGiftsOpen(true)}
-        />
+      <main className="flex-1 h-screen overflow-y-auto min-w-0 p-4 md:p-8 space-y-10 border-r border-white/10 no-scrollbar relative">
+        {toast ? (
+          <output
+            aria-live="polite"
+            className="fixed top-6 left-1/2 -translate-x-1/2 z-[200] px-5 py-2.5 rounded-full bg-[#141418] border border-white/20 text-white font-bold text-xs shadow-2xl animate-bounce flex items-center gap-2"
+          >
+            <CheckCircle2 className="w-4 h-4 text-white" />
+            {toast}
+          </output>
+        ) : null}
 
-        <div className="mx-auto flex w-full max-w-[1440px] min-w-0 flex-1 items-start gap-6 px-4 py-5 md:px-6">
-          <main className="min-w-0 flex-1">
-            <div className="settle">
-              <Stage
-                card={stageCard}
-                isLiveEvent={Boolean(liveEvent) && !override}
-                isTakeover={Boolean(override)}
-                muted={muted}
-                onToggleMuted={() => setMuted((m) => !m)}
-                onRevert={() => revertStage(true)}
-                onEnded={() => revertStage(false)}
-                liveError={liveError}
-                onLiveError={setLiveError}
-                apiBase={apiBase}
-                viewers={viewers}
-                likes={tvLikes}
-                liked={tvLiked}
-                onLike={likeTv}
-                onReact={sendReaction}
-                onOpenGifts={() => setGiftsOpen(true)}
-                onSendComment={sendLiveComment}
-                ticker={ticker}
-                giftBanner={giftBanner}
-                particles={particles}
-                signedIn={Boolean(user)}
-                skeleton={skeletonPreview}
-              />
-            </div>
+        <TopBar activeTab={activeTab} onSelectTab={setActiveTab} search={search} onSearch={setSearch} />
 
-            <div className="settle-late">
-              <Reel spotlights={bootstrap.CREATOR_SPOTLIGHTS ?? []} onPromote={takeStage} skeleton={skeletonPreview} />
-
-              <Feed
-                posts={[...libraryPosts, ...(bootstrap.INITIAL_POSTS ?? [])]}
-                products={bootstrap.PRODUCTS ?? []}
-                activeProduct={activeProduct}
-                onSelectProduct={setActiveProduct}
-                search={search}
-                now={now}
-                client={client}
-                signedIn={Boolean(user)}
-                onRequireSignIn={() => setGateOpen(true)}
-                onPromote={takeStage}
-                onOpenGifts={() => setGiftsOpen(true)}
-                showToast={showToast}
-                skeleton={skeletonPreview}
-              />
-            </div>
-          </main>
-
-          <ChatRail
-            hubs={bootstrap.PRODUCT_COMMUNITY_HUBS ?? {}}
-            products={bootstrap.PRODUCTS ?? []}
-            activeProduct={activeProduct}
-            client={client}
-            user={user}
-            onRequireSignIn={() => setGateOpen(true)}
-            showToast={showToast}
-            sheetOpen={chatOpen}
-            onToggleSheet={() => {
-              setChatOpen((open) => !open);
-              setChatUnread(0);
-            }}
-            unread={chatUnread}
-            skeleton={skeletonPreview}
+        {activeTab === 'tv' ? (
+          <Stage
+            card={stageCard}
+            isLiveEvent={Boolean(liveEvent) && !override}
+            isTakeover={Boolean(override)}
+            muted={muted}
+            onToggleMuted={() => setMuted((m) => !m)}
+            onRevert={() => revertStage(true)}
+            onEnded={() => revertStage(false)}
+            liveError={liveError}
+            onLiveError={setLiveError}
+            apiBase={apiBase}
+            viewers={viewers}
+            likes={tvLikes}
+            liked={tvLiked}
+            onLike={likeTv}
+            onReact={sendReaction}
+            onOpenGifts={openGifts}
+            onSendComment={sendLiveComment}
+            ticker={ticker}
+            giftBanner={giftBanner}
+            hearts={hearts}
+            signedIn={Boolean(user)}
           />
-        </div>
-      </div>
+        ) : null}
+
+        {activeTab === 'tv' || activeTab === 'foryou' ? (
+          <Reel spotlights={bootstrap.CREATOR_SPOTLIGHTS ?? []} onSelect={openSpotlight} />
+        ) : null}
+
+        <Feed
+          posts={[...libraryPosts, ...(bootstrap.INITIAL_POSTS ?? [])]}
+          products={bootstrap.PRODUCTS ?? []}
+          activeProduct={activeProduct}
+          onSelectProduct={setActiveProduct}
+          activeTab={activeTab}
+          onSelectTab={setActiveTab}
+          search={search}
+          now={now}
+          client={client}
+          signedIn={Boolean(user)}
+          onRequireSignIn={() => setGateOpen(true)}
+          onOpenGifts={openGifts}
+          onSelect={openPost}
+          showToast={showToast}
+        />
+      </main>
+
+      <ChatRail
+        hubs={bootstrap.PRODUCT_COMMUNITY_HUBS ?? {}}
+        products={bootstrap.PRODUCTS ?? []}
+        activeProduct={activeProduct}
+        client={client}
+        user={user}
+        onRequireSignIn={() => setGateOpen(true)}
+        showToast={showToast}
+      />
 
       {giftsOpen ? (
-        <GiftPalette
-          gifts={gifts}
-          balance={balance}
-          signedIn={Boolean(user)}
-          onClose={() => setGiftsOpen(false)}
-          onSend={(gift) => {
-            if (sendGift(gift)) setGiftsOpen(false);
-          }}
-          onRequireSignIn={() => {
-            setGiftsOpen(false);
-            setGateOpen(true);
-          }}
-          products={bootstrap.PRODUCTS ?? []}
-        />
+        <GiftPalette gifts={gifts} balance={balance} onClose={() => setGiftsOpen(false)} onSend={sendGift} />
       ) : null}
 
-      {gateOpen ? (
-        <Gate products={bootstrap.PRODUCTS ?? []} client={client} onClose={() => setGateOpen(false)} onSignedIn={onSignedIn} />
-      ) : null}
-
-      {toast ? (
-        <output
-          className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-control border border-line bg-obsidian px-4 py-2.5 text-sm font-semibold shadow-overlay"
-          aria-live="polite"
-        >
-          {toast}
-        </output>
+      {selectedVideo ? (
+        <VideoModal video={selectedVideo} onClose={() => setSelectedVideo(null)} onPromote={takeStage} />
       ) : null}
     </div>
   );

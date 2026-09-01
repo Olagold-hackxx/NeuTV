@@ -50,6 +50,11 @@
     var queue = [];
     var appending = false;
     var lastSeq = -1;
+    // A viewer joining a broadcast already in progress starts at the live edge.
+    // Replaying the whole rolling window meant fetching up to 60 segments
+    // serially - two minutes of video - before the first frame. That was the
+    // ~30s hang on joining a live stream.
+    var joined = false;
     var haveInit = false;
     var stopped = false;
     var timer = null;
@@ -93,6 +98,14 @@
         .then(function (manifest) {
           if (stopped || !manifest) return;
           var wanted = manifest.segments.filter(function (s) { return s.seq > lastSeq; });
+
+          if (!joined) {
+            joined = true;
+            // Keep the init segment - nothing decodes without it - and only the
+            // newest couple of media segments, so playback starts at live.
+            var edge = Math.max(manifest.head - JOIN_TAIL, 0);
+            wanted = wanted.filter(function (s) { return s.seq === 0 || s.seq >= edge; });
+          }
 
           // The header comes first even if the window has moved past it.
           var chain = Promise.resolve();

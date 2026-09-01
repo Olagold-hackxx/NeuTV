@@ -13,6 +13,9 @@
 //      poll, so jump forward instead of accumulating delay.
 
 const MIME = 'video/webm; codecs="vp9,opus"';
+// How much of the buffer a joining viewer takes before following live.
+const JOIN_TAIL = 2;
+
 const FALLBACK_MIME = 'video/webm; codecs="vp8,opus"';
 
 function pickMime(): string | null {
@@ -46,6 +49,11 @@ export function playSegments(
   let queue: ArrayBuffer[] = [];
   let appending = false;
   let lastSeq = -1;
+  // A viewer joining a broadcast already in progress starts at the live edge.
+  // Replaying the whole rolling window first meant fetching up to 60 segments
+  // serially - two minutes of video, tens of megabytes - before a single frame
+  // appeared. That was the ~30s hang on joining a live stream.
+  let joined = false;
   let haveInit = false;
   let stopped = false;
   let timer: ReturnType<typeof setTimeout> | null = null;
@@ -89,9 +97,18 @@ export function playSegments(
     if (stopped) return;
     fetch(`${base}/live-event/${encodeURIComponent(eventId)}/manifest?after=${lastSeq}`)
       .then((res) => (res.ok ? res.json() : null))
-      .then((manifest: { segments: { seq: number }[] } | null) => {
+      .then((manifest: { segments: { seq: number }[]; head: number } | null) => {
         if (stopped || !manifest) return;
-        const wanted = manifest.segments.filter((s) => s.seq > lastSeq);
+        let wanted = manifest.segments.filter((s) => s.seq > lastSeq);
+
+        if (!joined) {
+          joined = true;
+          // Keep the init segment - nothing decodes without it - and only the
+          // newest couple of media segments, so playback starts at live rather
+          // than at the far end of the buffer.
+          const edge = Math.max(manifest.head - JOIN_TAIL, 0);
+          wanted = wanted.filter((s) => s.seq === 0 || s.seq >= edge);
+        }
 
         // The header comes first even if the window has moved past it.
         let chain: Promise<unknown> = Promise.resolve();

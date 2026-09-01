@@ -1,151 +1,136 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Play } from 'lucide-react';
+// Creator spotlights: the continuously panning marquee of autoplaying creator
+// cards, each themed to its ecosystem product.
+
+import { useRef } from 'react';
+import { ChevronLeft, ChevronRight, Eye, Play } from 'lucide-react';
 import type { Spotlight } from '@/lib/types';
+import { brandTheme } from '@/lib/brand';
 
 type ReelProps = {
   spotlights: Spotlight[];
-  onPromote: (card: Record<string, unknown>) => void;
-  skeleton: boolean;
+  onSelect: (spotlight: Spotlight) => void;
 };
 
-// A continuously panning row of creator cards — one of the page's two allowed
-// self-movers. Hover, focus, or the buttons pause it; reduced motion stops it.
-export function Reel({ spotlights, onPromote, skeleton }: ReelProps) {
-  const trackRef = useRef<HTMLDivElement>(null);
+export function Reel({ spotlights, onSelect }: ReelProps) {
   const scrollerRef = useRef<HTMLDivElement>(null);
-  const [paused, setPaused] = useState(false);
-  const [reduced, setReduced] = useState(false);
-
-  useEffect(() => {
-    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const apply = () => setReduced(mq.matches);
-    apply();
-    mq.addEventListener('change', apply);
-    return () => mq.removeEventListener('change', apply);
-  }, []);
-
-  const nudge = (dir: -1 | 1) => {
-    setPaused(true);
-    scrollerRef.current?.scrollBy({ left: dir * 300, behavior: 'smooth' });
-  };
-
-  if (skeleton) {
-    return (
-      <section className="mt-6" aria-label="Creator spotlights (loading)">
-        <div className="skeleton mb-3 h-5 w-44" />
-        <div className="flex gap-3 overflow-hidden">
-          {Array.from({ length: 4 }, (_, i) => (
-            <div key={i} className="skeleton h-40 w-64 shrink-0 rounded-panel" />
-          ))}
-        </div>
-      </section>
-    );
-  }
 
   if (spotlights.length === 0) return null;
 
-  // Cards are doubled so the pan loops seamlessly; the duplicates are hidden
-  // from assistive tech and the tab order.
-  const panning = !paused && !reduced;
+  const nudge = (dir: -1 | 1) => {
+    scrollerRef.current?.scrollBy({ left: dir * 320, behavior: 'smooth' });
+  };
 
   return (
-    <section className="mt-6" aria-label="Creator spotlights">
-      <div className="mb-2.5 flex items-center justify-between">
-        <h2 className="text-[15px] font-bold">Creator spotlights</h2>
-        <div className="flex gap-1">
+    <section className="w-full space-y-3 pt-2" aria-label="Creator spotlights">
+      <div className="flex items-center justify-between px-1">
+        <div className="flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-white/70 animate-pulse" aria-hidden />
+          <h2 className="text-base font-black text-white tracking-tight">Creator Spotlights</h2>
+        </div>
+        <div className="flex items-center gap-2">
           <button
             type="button"
+            title="Previous"
             onClick={() => nudge(-1)}
-            aria-label="Scroll back"
-            className="grid h-7 w-7 place-items-center rounded-control text-dim transition hover:bg-obsidian hover:text-ink"
+            className="w-8 h-8 rounded-full bg-[#141418] hover:bg-[#1E1E24] text-white/80 hover:text-white border border-white/15 flex items-center justify-center transition shadow-md hover:scale-105 active:scale-95"
           >
-            <ChevronLeft size={15} />
+            <ChevronLeft className="w-4 h-4" />
           </button>
           <button
             type="button"
+            title="Next"
             onClick={() => nudge(1)}
-            aria-label="Scroll forward"
-            className="grid h-7 w-7 place-items-center rounded-control text-dim transition hover:bg-obsidian hover:text-ink"
+            className="w-8 h-8 rounded-full bg-[#141418] hover:bg-[#1E1E24] text-white/80 hover:text-white border border-white/15 flex items-center justify-center transition shadow-md hover:scale-105 active:scale-95"
           >
-            <ChevronRight size={15} />
+            <ChevronRight className="w-4 h-4" />
           </button>
         </div>
       </div>
 
       <div
         ref={scrollerRef}
-        className="snap-x snap-mandatory overflow-x-auto pb-1 [scrollbar-width:thin]"
-        onPointerDown={() => setPaused(true)}
+        className="w-full overflow-x-auto no-scrollbar py-2 px-1 relative select-none cursor-grab active:cursor-grabbing"
       >
-        <div
-          ref={trackRef}
-          className={panning ? 'reel-track flex w-max gap-3' : 'flex w-max gap-3'}
-          data-paused={paused || undefined}
-          style={{ ['--reel-duration' as string]: `${Math.max(30, spotlights.length * 8)}s` }}
-        >
-          {spotlights.map((s) => (
-            <SpotlightCard key={s.id} spotlight={s} onPromote={onPromote} reduced={reduced} />
-          ))}
-          {panning
-            ? spotlights.map((s) => (
-                <div key={`dup-${s.id}`} aria-hidden className="contents">
-                  <SpotlightCard spotlight={s} onPromote={onPromote} reduced={reduced} inert />
-                </div>
-              ))
-            : null}
+        <div className="animate-marquee-left gap-4 flex items-center">
+          {[...spotlights, ...spotlights].map((cr, idx) => {
+            const dup = idx >= spotlights.length;
+            const theme = brandTheme(cr.productId);
+            return (
+              <button
+                key={`${cr.id}-${idx}`}
+                type="button"
+                tabIndex={dup ? -1 : 0}
+                aria-hidden={dup || undefined}
+                onClick={() => onSelect(cr)}
+                className="w-56 md:w-60 flex-shrink-0 relative aspect-[4/5] rounded-3xl overflow-hidden border border-white/15 bg-neutral-950 group cursor-pointer shadow-xl transition-all duration-500 hover:border-white/40 hover:shadow-[0_10px_30px_rgba(0,0,0,0.6)] hover:-translate-y-1.5 text-left"
+              >
+                {cr.videoMp4 ? (
+                  <video
+                    src={cr.videoMp4}
+                    poster={cr.thumbnail || undefined}
+                    autoPlay
+                    muted
+                    loop
+                    playsInline
+                    className="absolute inset-0 w-full h-full object-cover opacity-85 group-hover:opacity-100 group-hover:scale-105 transition duration-700 pointer-events-none"
+                  />
+                ) : cr.thumbnail ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={cr.thumbnail}
+                    alt=""
+                    className="absolute inset-0 w-full h-full object-cover opacity-85 group-hover:opacity-100 group-hover:scale-105 transition duration-700 pointer-events-none"
+                  />
+                ) : null}
+
+                <span className="absolute inset-0 bg-gradient-to-t from-black via-black/25 to-black/70 pointer-events-none z-10" />
+
+                <span className="absolute top-3 left-3 right-3 flex items-center justify-between z-20">
+                  <span className="flex items-center gap-2 min-w-0">
+                    {cr.avatar ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={cr.avatar} alt="" className="w-7 h-7 rounded-full object-cover border-2 border-white/20 flex-shrink-0" />
+                    ) : null}
+                    <span className="font-extrabold text-xs text-white truncate drop-shadow">{cr.name}</span>
+                  </span>
+                  {cr.product ? (
+                    <span
+                      className={`px-2 py-0.5 rounded-full bg-black/80 border ${theme.borderColor} text-[9px] font-bold ${theme.accentText} shadow flex-shrink-0`}
+                    >
+                      {cr.product}
+                    </span>
+                  ) : null}
+                </span>
+
+                <span className="absolute inset-0 flex items-center justify-center z-20 pointer-events-none">
+                  <span className="w-11 h-11 rounded-full bg-black/60 backdrop-blur-md border border-white/30 flex items-center justify-center text-white group-hover:bg-white group-hover:text-black group-hover:scale-110 transition duration-300 shadow-2xl">
+                    <Play className="w-4 h-4 fill-current ml-0.5" />
+                  </span>
+                </span>
+
+                <span className="absolute bottom-3 left-3 right-3 space-y-1 z-20 block">
+                  {cr.tag ? (
+                    <span className={`inline-block px-2 py-0.5 rounded-md bg-black/85 border border-white/15 text-[9px] font-extrabold ${theme.accentText}`}>
+                      {cr.tag}
+                    </span>
+                  ) : null}
+                  <span className="block text-xs md:text-sm font-black text-white leading-snug line-clamp-2 drop-shadow">{cr.title}</span>
+                  <span className="flex items-center justify-between text-[10px] text-white/80 font-mono pt-0.5">
+                    <span className="flex items-center gap-1 text-white font-bold">
+                      <Eye className="w-3 h-3" /> {cr.views}
+                    </span>
+                    {cr.duration ? (
+                      <span className="px-1.5 py-0.5 rounded bg-black/70 border border-white/15 font-bold text-white/90">{cr.duration}</span>
+                    ) : null}
+                  </span>
+                </span>
+              </button>
+            );
+          })}
         </div>
       </div>
     </section>
-  );
-}
-
-function SpotlightCard({
-  spotlight,
-  onPromote,
-  reduced,
-  inert,
-}: {
-  spotlight: Spotlight;
-  onPromote: (card: Record<string, unknown>) => void;
-  reduced: boolean;
-  inert?: boolean;
-}) {
-  const s = spotlight;
-  return (
-    <button
-      type="button"
-      tabIndex={inert ? -1 : 0}
-      onClick={() => onPromote({ ...s, youtubeId: s.videoUrl, videoMp4: s.videoMp4 })}
-      className="group w-64 shrink-0 snap-start overflow-hidden rounded-panel border border-line bg-midnight text-left transition hover:border-line-strong"
-    >
-      <div className="relative aspect-video bg-black">
-        {s.videoMp4 && !reduced ? (
-          <video src={s.videoMp4} muted loop autoPlay playsInline className="h-full w-full object-cover" />
-        ) : s.thumbnail ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={s.thumbnail} alt="" className="h-full w-full object-cover" />
-        ) : null}
-        {s.duration ? (
-          <span className="num absolute right-2 bottom-2 rounded-chip bg-black/70 px-1.5 py-0.5 text-[10px] font-bold">
-            {s.duration}
-          </span>
-        ) : null}
-        {/* The click's outcome, stated before the click. */}
-        <span className="absolute inset-0 grid place-items-center bg-black/0 opacity-0 transition group-hover:bg-black/40 group-hover:opacity-100 group-focus-visible:bg-black/40 group-focus-visible:opacity-100">
-          <span className="flex items-center gap-1.5 rounded-control bg-cyan px-3 py-1.5 text-xs font-bold text-deep">
-            <Play size={12} fill="currentColor" /> Watch on the stage
-          </span>
-        </span>
-      </div>
-      <div className="p-3">
-        <div className="truncate text-[13px] font-bold">{s.title}</div>
-        <div className="mt-1 flex items-center justify-between gap-2 text-xs text-dim">
-          <span className="truncate">{s.name}</span>
-          {s.views ? <span className="num shrink-0 text-faint">{s.views} views</span> : null}
-        </div>
-      </div>
-    </button>
   );
 }
