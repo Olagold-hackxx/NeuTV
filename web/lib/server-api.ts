@@ -50,6 +50,10 @@ function toFeedPost(video: Video, products: Bootstrap['PRODUCTS']): Post {
 function sanitizeAssets<T>(value: T): T {
   if (typeof value === 'string') {
     if (value.startsWith('./assets/logos/')) return value.replace('./assets/logos/', '/logos/') as T;
+    // Uploaded media is addressed relative to the API host. Left relative it
+    // resolves against THIS app's origin and 404s - which is a black stage
+    // for every uploaded creator video a viewer promotes.
+    if (value.startsWith('/media/')) return ((process.env.NEXT_PUBLIC_NEUTV_API_BASE ?? API_BASE) + value) as T;
     if (value.startsWith('data:') && value.length > 20_000) return undefined as T;
     return value;
   }

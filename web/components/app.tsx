@@ -158,6 +158,21 @@ export function App({ data }: { data: AppData }) {
     toastTimer.current = setTimeout(() => setToast(null), 2600);
   }, []);
 
+  // Uploaded media is addressed relative to the API host; anything reaching a
+  // card from a live API response has to be absolutised or the player asks
+  // this app's origin for bytes it does not have.
+  const absCard = useCallback(
+    <T extends StageCard | null>(card: T): T => {
+      if (!card) return card;
+      return {
+        ...card,
+        videoUrl: client.absoluteMedia(card.videoUrl) ?? card.videoUrl,
+        posterUrl: client.absoluteMedia(card.posterUrl) ?? card.posterUrl,
+      };
+    },
+    [client],
+  );
+
   // SSE handlers read current state through this ref, so a frame arriving an
   // hour in never closes over stale state.
   const stateRef = useRef({ mainBroadcast, override, user });
@@ -227,14 +242,14 @@ export function App({ data }: { data: AppData }) {
     void sync(async () => {
       const res = await client.liveState();
       if (cancelled) return null;
-      const main = toStageCard(res.stage.mainBroadcast ?? res.stage.revertsTo, seedCard);
+      const main = absCard(toStageCard(res.stage.mainBroadcast ?? res.stage.revertsTo, seedCard));
       if (main) {
         if (res.telemetry?.baselineViewers) main.viewers = res.telemetry.baselineViewers;
         setMainBroadcast(main);
         setViewers(main.viewers ?? null);
       }
       if (res.stage.isOverride && res.stage.current) {
-        const card = toStageCard(res.stage.current, main ?? seedCard);
+        const card = absCard(toStageCard(res.stage.current, main ?? seedCard));
         if (card) setOverride({ ...card, isTakeover: true });
       }
       if (res.likes) {
@@ -284,7 +299,14 @@ export function App({ data }: { data: AppData }) {
         }
         void sync(async () => {
           const res = await client.creatorSpotlights();
-          setCreatorSpots(res.spotlights ?? []);
+          // Raw API data: uploaded media arrives as /media/... relative to the
+          // API host and must be absolutised before a card renders it.
+          setCreatorSpots((res.spotlights ?? []).map((s) => ({
+            ...s,
+            videoMp4: client.absoluteMedia(s.videoMp4) ?? s.videoMp4,
+            livePlaybackUrl: client.absoluteMedia(s.livePlaybackUrl) ?? s.livePlaybackUrl,
+            thumbnail: client.absoluteMedia(s.thumbnail) ?? s.thumbnail,
+          })));
           return res;
         });
       },
@@ -320,7 +342,7 @@ export function App({ data }: { data: AppData }) {
         if (typeof count === 'number') setViewers(count);
       },
       stage: (payload: { mainBroadcast?: Record<string, unknown> }) => {
-        const card = toStageCard(payload.mainBroadcast, stateRef.current.mainBroadcast);
+        const card = absCard(toStageCard(payload.mainBroadcast, stateRef.current.mainBroadcast));
         if (card) setMainBroadcast(card);
       },
     });
@@ -330,13 +352,13 @@ export function App({ data }: { data: AppData }) {
       stopPresence();
       stopStream();
     };
-  }, [client, seedCard, applyLiveEvent, showToast, spawnHeart]);
+  }, [client, seedCard, applyLiveEvent, showToast, spawnHeart, absCard]);
 
   // --- stage actions -------------------------------------------------------
 
   const takeStage = useCallback(
     (raw: Record<string, unknown>) => {
-      const card = toStageCard(raw, stateRef.current.mainBroadcast);
+      const card = absCard(toStageCard(raw, stateRef.current.mainBroadcast));
       if (!card) return;
       if (raw.creatorHandle) card.creatorHandle = String(raw.creatorHandle);
       if (raw.isSegmented) card.isSegmented = true;
@@ -349,7 +371,7 @@ export function App({ data }: { data: AppData }) {
       // only resolves videos, so there is nothing to tell it.
       if (card.id && !raw.localOnly) void sync(() => client.takeStage(card.id!));
     },
-    [client, showToast],
+    [client, showToast, absCard],
   );
 
   const revertStage = useCallback(
@@ -358,7 +380,7 @@ export function App({ data }: { data: AppData }) {
       if (announce) showToast('Back to the live broadcast 📡');
       void sync(() => client.revertStage());
     },
-    [client, showToast],
+    [client, showToast, absCard],
   );
 
   const likeTv = useCallback(() => {
@@ -409,7 +431,7 @@ export function App({ data }: { data: AppData }) {
         },
       );
     },
-    [client, showToast],
+    [client, showToast, absCard],
   );
 
   const openGifts = useCallback(() => {
