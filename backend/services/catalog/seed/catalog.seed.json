@@ -1,7 +1,7 @@
 {
   "contractVersion": "1.0.0",
   "source": "committed catalog content (editorial); videos live in the admin store",
-  "checksum": "445d36990eb33c00",
+  "checksum": "f52be2982f146863",
   "content": {
     "AGGREGATED_HASHTAG_POSTS": [
       {
@@ -884,35 +884,35 @@
       {
         "badge": "SSO",
         "id": "worldstreet",
-        "logo": "https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?auto=format&fit=crop&w=150&q=80",
+        "logo": "./assets/logos/worldstreet_logo.svg",
         "name": "WorldStreet",
         "officialUrl": "https://www.tsionark.com/worldstreet"
       },
       {
         "badge": "SSO",
         "id": "market",
-        "logo": "./assets/logos/chat_cube_logo.png",
+        "logo": "./assets/logos/square_logo.svg",
         "name": "mARKet",
         "officialUrl": "https://www.tsionark.com/market"
       },
       {
         "badge": "SSO",
         "id": "linkpay",
-        "logo": "./assets/logos/kashplus_logo.png",
+        "logo": "./assets/logos/kashplus_logo.svg",
         "name": "KashPlus",
         "officialUrl": "https://www.tsionark.com/linkpay"
       },
       {
         "badge": "Ecosystem",
         "id": "ark",
-        "logo": "./assets/logos/ark_logo.png",
+        "logo": "./assets/logos/ark_logo.svg",
         "name": "ARK",
         "officialUrl": "https://www.tsionark.com/ark"
       },
       {
         "badge": "Ecosystem",
         "id": "tsioncars",
-        "logo": "https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&w=150&q=80",
+        "logo": "./assets/logos/tsion_logo.svg",
         "name": "Tsion Cars",
         "officialUrl": "https://www.tsionark.com/tsioncars"
       },

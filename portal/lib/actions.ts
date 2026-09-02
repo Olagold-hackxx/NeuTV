@@ -47,6 +47,41 @@ export async function signIn(_prev: ActionResult | null, form: FormData): Promis
   redirect('/');
 }
 
+/**
+ * Sign in with an ecosystem (SSO) account — the accounts that have no email
+ * on file and therefore can never pass the email form. Same semantics as the
+ * viewer gate: the API creates-on-first-use, so a mistyped handle signs you
+ * into a fresh viewer account rather than erroring; the dashboard's
+ * no-creator-standing state is the honest landing for that case.
+ */
+export async function signInSso(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {
+  const productId = String(form.get('productId') ?? '').trim();
+  const username = String(form.get('username') ?? '').trim();
+  const password = String(form.get('password') ?? '');
+  if (!productId || !username || !password) {
+    return { ok: false, error: 'Product, username and password are all required.' };
+  }
+
+  try {
+    const session = await call<{
+      user: { role: string };
+      session: { token: string; expiresAt: number };
+    }>('/identity/sso', { method: 'POST', body: { productId, username, password }, token: null, anonymous: true });
+
+    const store = await cookies();
+    store.set(SESSION_COOKIE, session.session.token, {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+      path: '/',
+      expires: new Date(session.session.expiresAt),
+    });
+  } catch (err) {
+    return fail(err);
+  }
+  redirect('/');
+}
+
 export async function signOut(): Promise<void> {
   try {
     await call('/identity/logout', { method: 'POST' });

@@ -430,9 +430,13 @@ body {
   box-shadow: 0 0 14px rgba(0, 112, 243, 0.55);
   user-select: none;
 }
+/* The K is the KashPlus brand glyph — the three bars from the logo — not a
+   typed letter. Inlined so the token needs no network fetch. */
 .kash-coin::before {
-  content: 'K';
-  font-size: 0.72em;
+  content: '';
+  width: 0.62em;
+  height: 0.84em;
+  background: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 35 47' fill='none'><path d='M0 41.1704V1.1346C0 0.647491 0.541217 0.355426 0.948374 0.622813L8.91818 5.85672C10.1299 6.6525 10.8597 8.00481 10.8597 9.45451V39.8706C10.8597 41.4084 10.0393 42.8294 8.70758 43.5982L6.45639 44.898C3.58688 46.5547 0 44.4838 0 41.1704Z' fill='white'/><path d='M14.0898 33.2284V9.07698C14.0898 8.58987 14.6311 8.29781 15.0382 8.5652L23.008 13.7991C24.2198 14.5949 24.9496 15.9472 24.9496 17.3969V31.9287C24.9496 33.4664 24.1292 34.8874 22.7974 35.6563L20.5462 36.956C17.6767 38.6127 14.0898 36.5418 14.0898 33.2284Z' fill='white'/><path d='M29.1242 16.7175C28.717 16.4502 28.1758 16.7422 28.1758 17.2293V26.6207C28.1758 29.2473 31.0192 30.889 33.2939 29.5757C34.3496 28.9661 35 27.8397 35 26.6207V22.4176C35 21.2684 34.4215 20.1964 33.4609 19.5655L29.1242 16.7175Z' fill='white'/></svg>") center / contain no-repeat;
 }
 
 /* Skeleton shimmer — loading states are part of the polish. */
