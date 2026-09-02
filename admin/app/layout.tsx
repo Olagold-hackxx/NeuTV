@@ -28,6 +28,7 @@ const LINKS = [
   { href: '/viewers', label: 'Viewers' },
   { href: '/moderation', label: 'Moderation' },
   { href: '/tasks', label: 'Tasks' },
+  { href: '/magazine', label: 'E-Magazine' },
 ];
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {

@@ -280,3 +280,43 @@ export async function rejectTask(taskId: string): Promise<ActionResult> {
     return fail(err);
   }
 }
+
+export async function createIssue(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {
+  const issueNumber = Number(form.get('issueNumber'));
+  try {
+    await call('/admin/magazine', {
+      method: 'POST',
+      body: {
+        title: String(form.get('title') ?? '').trim(),
+        description: String(form.get('description') ?? '').trim(),
+        ...(Number.isFinite(issueNumber) && issueNumber > 0 ? { issueNumber } : {}),
+        ...(String(form.get('coverUrl') ?? '').trim() ? { coverUrl: String(form.get('coverUrl')).trim() } : {}),
+        ...(String(form.get('fileUrl') ?? '').trim() ? { fileUrl: String(form.get('fileUrl')).trim() } : {}),
+      },
+    });
+    revalidatePath('/magazine');
+    return { ok: true };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+export async function setIssueStatus(id: string, status: 'published' | 'archived' | 'draft'): Promise<ActionResult> {
+  try {
+    await call(`/admin/magazine/${encodeURIComponent(id)}`, { method: 'PUT', body: { status } });
+    revalidatePath('/magazine');
+    return { ok: true };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+export async function deleteIssue(id: string): Promise<ActionResult> {
+  try {
+    await call(`/admin/magazine/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    revalidatePath('/magazine');
+    return { ok: true };
+  } catch (err) {
+    return fail(err);
+  }
+}

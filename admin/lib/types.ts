@@ -142,3 +142,16 @@ export interface LiveEvent {
   updatedAt: number;
   isLive: boolean;
 }
+
+export interface MagazineIssue {
+  id: string;
+  title: string;
+  description: string;
+  issueNumber: number | null;
+  coverUrl: string | null;
+  fileUrl: string | null;
+  status: 'draft' | 'published' | 'archived';
+  publishedAt: number | null;
+  createdAt: number;
+  updatedAt: number;
+}

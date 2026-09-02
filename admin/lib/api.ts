@@ -112,6 +112,7 @@ export const getProgramme = () => call<ProgrammeState>('/admin/programme');
 export const getViewers = () => call<{ viewers: Viewer[] }>('/admin/crm/viewers');
 export const getModerationQueue = () => call<{ queue: ModerationItem[] }>('/admin/crm/moderation');
 export const getProducts = () => call<{ products: Product[] }>('/catalog/products');
+export const getMagazine = () => call<{ issues: import('./types').MagazineIssue[] }>('/admin/magazine');
 export const getLiveEvents = () => call<{ events: LiveEvent[] }>('/admin/live-events');
 export const getLiveEvent = (id: string) => call<{ event: LiveEvent }>(`/admin/live-events/${encodeURIComponent(id)}`);
 
