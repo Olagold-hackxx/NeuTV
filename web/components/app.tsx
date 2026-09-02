@@ -237,7 +237,9 @@ export function App({ data }: { data: AppData }) {
         if (card) setOverride({ ...card, isTakeover: true });
       }
       if (res.likes) {
-        setTvLikes(res.likes.seeded + res.likes.total);
+        // seeded vanished with the invented counts; undefined + n is NaN,
+        // and NaN.toLocaleString() is the "NaN" that sat on the heart.
+        setTvLikes((res.likes.seeded ?? 0) + (res.likes.total ?? 0));
         setTvLiked(res.likes.liked);
       }
       return res;
@@ -594,6 +596,7 @@ export function App({ data }: { data: AppData }) {
             isLiveEvent={Boolean(liveEvent) && !override}
             isTakeover={Boolean(override)}
             muted={muted}
+            onAutoplayMuted={() => setMuted(true)}
             onToggleMuted={() => setMuted((m) => !m)}
             onRevert={() => revertStage(true)}
             onEnded={() => revertStage(false)}

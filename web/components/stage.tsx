@@ -54,6 +54,8 @@ type StageProps = {
   isTakeover: boolean;
   muted: boolean;
   onToggleMuted: () => void;
+  /** The browser refused unmuted autoplay, so playback started muted instead. */
+  onAutoplayMuted?: () => void;
   onRevert: () => void;
   onEnded: () => void;
   liveError: string | null;
@@ -98,8 +100,15 @@ function attachHls(el: HTMLVideoElement, url: string, onError: (msg: string) => 
       hls?.destroy?.();
       hls = null;
       attempts += 1;
-      if (attempts <= 5) setTimeout(start, Math.min(1000 * attempts, 3000));
-      else el.src = url;
+      if (attempts <= 5) {
+        setTimeout(start, Math.min(1000 * attempts, 3000));
+      } else if (el.canPlayType('application/vnd.apple.mpegurl')) {
+        // Safari can take the manifest natively; Chrome cannot, and handing
+        // it the URL anyway was a silent dead end - black, with no error.
+        el.src = url;
+      } else {
+        onError('The broadcast signal dropped. It reconnects on its own.');
+      }
     });
     hls.loadSource(url);
     hls.attachMedia(el);
@@ -128,6 +137,7 @@ export function Stage(props: StageProps) {
     isTakeover,
     muted,
     onToggleMuted,
+    onAutoplayMuted,
     onRevert,
     onEnded,
     liveError,
@@ -147,6 +157,19 @@ export function Stage(props: StageProps) {
     theater,
     onToggleTheater,
   } = props;
+
+  // Play, and if the browser refuses - unmuted autoplay is blocked in every
+  // major browser - mute and play anyway. Swallowing the rejection left a
+  // black stage with every endpoint returning 200: the decoder was fed and
+  // ready, and nothing was ever allowed to render. A live broadcast that
+  // starts silent beats one that does not start.
+  const armPlay = useCallback((el: HTMLVideoElement) => {
+    void el.play().catch(() => {
+      el.muted = true;
+      onAutoplayMuted?.();
+      void el.play().catch(() => { /* not an autoplay problem; the error path reports it */ });
+    });
+  }, [onAutoplayMuted]);
 
   const frameRef = useRef<HTMLElement>(null);
   const [comment, setComment] = useState('');
@@ -177,7 +200,7 @@ export function Stage(props: StageProps) {
         base: apiBase,
         onError: () => onLiveError('The broadcast signal dropped. It reconnects on its own.'),
       });
-      void el.play().catch(() => {});
+      armPlay(el);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [card.id, apiBase],
@@ -191,7 +214,7 @@ export function Stage(props: StageProps) {
       hlsCleanup.current = null;
       if (!el || !card.videoUrl) return;
       hlsCleanup.current = attachHls(el, card.videoUrl, (msg) => onLiveError(msg));
-      void el.play().catch(() => {});
+      armPlay(el);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [card.id, card.videoUrl],
