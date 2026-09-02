@@ -110,15 +110,41 @@ export function Studio({ event }: { event: LiveEvent }) {
       // it simply did not happen: nothing on air, nothing uploaded, zero bytes.
       // A broken fast path must fall back to the slow one, not replace it.
       if (event.whipUrl) {
+        // Only the media handshake may fall back to segments. Going on air is
+        // an API decision, and its failure used to be awaited and ignored:
+        // the camera connected, every studio light went green, and the media
+        // flowed into a path no viewer would ever be told about, because the
+        // event was never marked live. Green must mean "viewers can see this",
+        // not "the pipe is connected".
+        let publisher: Publisher | null = null;
         try {
-          const publisher = await publishWhip(event.whipUrl, stream, (state) => {
+          publisher = await publishWhip(event.whipUrl, stream, (state) => {
             if (state === 'failed' || state === 'disconnected') {
               setError('The connection to the broadcast server dropped.');
             }
           });
+        } catch (err) {
+          // Say which path is carrying the broadcast, so a silent downgrade to
+          // three-second latency is not mistaken for the sub-second one.
+          console.warn('WHIP ingest unavailable, falling back to segments:', err);
+          setNotice(
+            'The low-latency route was unavailable, so this is broadcasting over '
+            + 'the segment path instead. Viewers will see it a few seconds behind.',
+          );
+        }
+
+        if (publisher) {
+          if (!event.isLive) {
+            const res = await startLiveEvent(event.id, 'whip');
+            if (!res.ok) {
+              // Publishing to an event that is not on air is a broadcast to
+              // nobody. Stop the media and surface the real reason.
+              publisher.stop();
+              throw new Error(res.error ?? 'Could not put the event on air.');
+            }
+          }
           publisherRef.current = publisher;
           setRecording(true);
-          if (!event.isLive) await startLiveEvent(event.id, 'whip');
           router.refresh();
 
           // Stats come from the peer connection rather than from chunk sizes.
@@ -131,14 +157,6 @@ export function Studio({ event }: { event: LiveEvent }) {
           }, 1000);
           statsRef.current = timer;
           return;
-        } catch (err) {
-          // Say which path is carrying the broadcast, so a silent downgrade to
-          // three-second latency is not mistaken for the sub-second one.
-          console.warn('WHIP ingest unavailable, falling back to segments:', err);
-          setNotice(
-            'The low-latency route was unavailable, so this is broadcasting over '
-            + 'the segment path instead. Viewers will see it a few seconds behind.',
-          );
         }
       }
 
