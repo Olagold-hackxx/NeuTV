@@ -322,3 +322,51 @@ test('the transport viewers are told is the one the video actually takes', async
     );
   });
 });
+
+test('a MediaMTX event survives a domain migration', async (t) => {
+  // The playback URL viewers failed on was https://<old-domain>/hls/...,
+  // minted at creation and stored verbatim. The path is the event's identity;
+  // the hostname is deployment configuration, re-derived on every read.
+  const domain = (host) => createIngestProvider({
+    NEUTV_LIVE_DRIVER: 'mediamtx',
+    NEUTV_MEDIAMTX_RTMP_URL: `rtmp://${host}:1935`,
+    NEUTV_MEDIAMTX_HLS_BASE: `https://${host}/hls`,
+    NEUTV_MEDIAMTX_WHIP_BASE: `https://${host}/whip`,
+  });
+
+  const sharedStore = await testStore(openAdminStore);
+  const onOld = await build({ store: sharedStore, ingest: domain('neutv.tsionark.io') });
+  const { event: created } = await schedule(onOld.events, { source: 'browser', playbackUrl: undefined });
+  assert.match(created.playbackUrl, /tsionark\.io/, 'minted under the old domain');
+
+  // The server is redeployed under the new domain; the rows are untouched.
+  // (The runtime is shared: a fresh fakeRuntime would restart its
+  // deterministic uuid sequence and collide with the ids already stored.)
+  const onNew = await build({ store: sharedStore, runtime: onOld.runtime, ingest: domain('api.tsionneu.xyz') });
+
+  await t.test('every stored URL now answers from the new domain', async () => {
+    const { event } = await onNew.events.get(created.id);
+    assert.equal(event.playbackUrl, `https://api.tsionneu.xyz/hls/${created.streamKey}/index.m3u8`);
+    assert.equal(event.whipUrl, `https://api.tsionneu.xyz/whip/${created.streamKey}/whip`);
+    assert.equal(event.ingestUrl, 'rtmp://api.tsionneu.xyz:1935');
+  });
+
+  await t.test('viewers see the new domain too', async () => {
+    await onNew.events.start(created.id, { transport: 'whip' });
+    const { event } = await onNew.events.current();
+    assert.match(event.playbackUrl, /^https:\/\/api\.tsionneu\.xyz\//);
+    await onNew.events.stop(created.id);
+  });
+
+  await t.test('a hand-pasted playback URL is not rewritten', async () => {
+    const { event: ext } = await schedule(onNew.events, { source: 'browser', playbackUrl: undefined });
+    await onNew.events.update(ext.id, {
+      source: 'external',
+      playbackUrl: 'https://stream.mux.com/abc123.m3u8',
+    });
+    const again = await build({ store: sharedStore, runtime: onOld.runtime, ingest: domain('yet-another.example') });
+    const { event } = await again.events.get(ext.id);
+    assert.equal(event.playbackUrl, 'https://stream.mux.com/abc123.m3u8',
+      'the admin chose this URL; no relocation may second-guess it');
+  });
+});

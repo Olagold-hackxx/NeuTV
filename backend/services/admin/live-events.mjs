@@ -64,10 +64,39 @@ export const publicEvent = (row) => ({
 });
 
 export function createLiveEvents({ runtime, store, catalog, ingest, events }) {
+  /**
+   * Re-derive a MediaMTX event's endpoints from where the server is NOW.
+   *
+   * The stored URLs are whatever hostname the deployment had when the event
+   * was created. That was fine until the domain moved: every older event kept
+   * serving `https://<old-domain>/hls/...` to viewers, and the player failed
+   * against a hostname that no longer answered. The path (the stream key) is
+   * the event's identity and never changes; the hostname is deployment
+   * configuration and must never be trusted from storage.
+   *
+   * Only URLs the provider itself minted are rewritten - recognised by their
+   * `/<path>/...` suffix - so a playback URL an admin pasted by hand survives.
+   * A null whip_url is filled in too, which retroactively enables WHIP for
+   * events created before it was configured.
+   */
+  const located = (row) => {
+    if (!row || row.driver !== 'mediamtx' || typeof ingest.endpoints !== 'function') return row;
+    const path = row.provider_ref ?? row.stream_key;
+    if (!path) return row;
+    const now = ingest.endpoints(path);
+    const mintedHere = (url, suffix) => url == null || (typeof url === 'string' && url.endsWith(suffix));
+    return {
+      ...row,
+      ingest_url: now.ingestUrl,
+      whip_url: mintedHere(row.whip_url, `/${path}/whip`) ? now.whipUrl : row.whip_url,
+      playback_url: mintedHere(row.playback_url, `/${path}/index.m3u8`) ? now.playbackUrl : row.playback_url,
+    };
+  };
+
   const getRow = async (eventId) => {
     const row = await store.get('SELECT * FROM live_events WHERE id = ?', eventId);
     if (!row) throw notFound(`No live event "${eventId}".`);
-    return row;
+    return located(row);
   };
 
   const knownProduct = (productId) =>
@@ -78,7 +107,7 @@ export function createLiveEvents({ runtime, store, catalog, ingest, events }) {
       const rows = status
         ? await store.all('SELECT * FROM live_events WHERE status = ? ORDER BY created_at DESC LIMIT ?', status, Math.min(limit, 200))
         : await store.all('SELECT * FROM live_events ORDER BY created_at DESC LIMIT ?', Math.min(limit, 200));
-      return { events: rows.map(adminEvent) };
+      return { events: rows.map((r) => adminEvent(located(r))) };
     },
 
     async get(eventId) {
@@ -88,7 +117,7 @@ export function createLiveEvents({ runtime, store, catalog, ingest, events }) {
     /** The event on air, if any. Used by the live service and the viewer app. */
     async current() {
       const row = await store.get("SELECT * FROM live_events WHERE status = 'live' ORDER BY started_at DESC LIMIT 1");
-      return { event: row ? publicEvent(row) : null };
+      return { event: row ? publicEvent(located(row)) : null };
     },
 
     async create(actorId, input) {

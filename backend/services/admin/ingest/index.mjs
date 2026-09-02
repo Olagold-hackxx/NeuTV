@@ -122,19 +122,28 @@ function cloudflareProvider({ accountId, apiToken, fetchImpl = globalThis.fetch 
  * has to be unguessable: anyone who can publish to a path owns the broadcast.
  */
 function mediamtxProvider({ rtmpUrl, hlsBase, whipBase }) {
+  // One place builds every URL, and it is called at read time, not just at
+  // creation. These URLs are this deployment's addresses for a path, nothing
+  // more - but they used to be minted once and stored, which meant a domain
+  // migration left every existing event pointing at the old hostname. The
+  // path is the identity; the endpoints are wherever the path lives today.
+  const endpoints = (path) => ({
+    ingestUrl: rtmpUrl.replace(/\/$/, ''),
+    whipUrl: whipBase ? `${whipBase.replace(/\/$/, '')}/${path}/whip` : null,
+    playbackUrl: `${hlsBase.replace(/\/$/, '')}/${path}/index.m3u8`,
+  });
   return {
     driver: 'mediamtx',
+    endpoints,
     async provision() {
       const path = `live-${mintStreamKey().slice(3).toLowerCase()}`;
       return {
-        ingestUrl: rtmpUrl.replace(/\/$/, ''),
+        ...endpoints(path),
         streamKey: path,
         // WHIP lets the studio publish straight from the browser, which is what
         // makes sub-second ingest possible: a peer connection sends frames as
         // they are captured, where MediaRecorder could not send a chunk until
         // it had finished recording it.
-        whipUrl: whipBase ? `${whipBase.replace(/\/$/, '')}/${path}/whip` : null,
-        playbackUrl: `${hlsBase.replace(/\/$/, '')}/${path}/index.m3u8`,
         providerRef: path,
         instructions:
           `In OBS: Settings -> Stream -> Custom, Server "${rtmpUrl.replace(/\/$/, '')}", `
