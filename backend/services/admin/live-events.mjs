@@ -34,6 +34,7 @@ export const adminEvent = (row) => ({
   scheduledFor: row.scheduled_for,
   startedAt: row.started_at,
   endedAt: row.ended_at,
+  transport: row.transport ?? null,
   peakViewers: row.peak_viewers,
   createdBy: row.created_by,
   createdAt: row.created_at,
@@ -53,6 +54,8 @@ export const publicEvent = (row) => ({
   productId: row.product_id,
   status: row.status,
   source: row.source ?? 'external',
+  // Which player the viewer should open. Reported, never guessed.
+  transport: row.transport ?? null,
   playbackUrl: row.playback_url,
   youtubeId: row.youtube_id,
   posterUrl: row.poster_url,
@@ -181,7 +184,12 @@ export function createLiveEvents({ runtime, store, catalog, ingest, events }) {
       return { event: adminEvent(await getRow(eventId)) };
     },
 
-    async start(eventId) {
+    /**
+     * @param {{transport?: 'segments'|'whip'}} [input] how the studio is
+     *   actually sending video. Absent for an encoder event, whose transport is
+     *   whatever its playback URL says.
+     */
+    async start(eventId, input = {}) {
       const row = await getRow(eventId);
       if (row.status === 'live') throw conflict('That event is already on air.');
       if (row.status !== 'scheduled') throw conflict(`Cannot go on air from "${row.status}".`);
@@ -197,10 +205,18 @@ export function createLiveEvents({ runtime, store, catalog, ingest, events }) {
         throw conflict(`"${already.title}" is already on air. Stop it first.`, { liveEventId: already.id });
       }
 
+      const v = validate(input, {
+        transport: { type: 'string', required: false, enum: ['segments', 'whip'] },
+      });
+
       const now = runtime.now();
       await store.run(
-        "UPDATE live_events SET status = 'live', started_at = ?, updated_at = ? WHERE id = ?",
-        now, now, eventId,
+        "UPDATE live_events SET status = 'live', started_at = ?, updated_at = ?, transport = ? WHERE id = ?",
+        // Null means "nobody has said yet", which the viewer infers from the
+        // playback URL. Guessing 'segments' here for a browser event would be
+        // wrong for exactly the case this whole column exists to fix: an event
+        // started from the panel and then broadcast over WHIP.
+        now, now, v.transport ?? null, eventId,
       );
       const event = publicEvent(await getRow(eventId));
       // Viewers switch without reloading.

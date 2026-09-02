@@ -41,7 +41,7 @@ export function createAdminRouter(deps) {
   r.post('/admin/live-events',                async (req) => created(await service.liveEvents.create(req.auth.userId, req.body)), { auth: 'admin' });
   r.get('/admin/live-events/:eventId',        async (req) => ok(await service.liveEvents.get(req.params.eventId)), { auth: 'admin' });
   r.put('/admin/live-events/:eventId',        async (req) => ok(await service.liveEvents.update(req.params.eventId, req.body)), { auth: 'admin' });
-  r.post('/admin/live-events/:eventId/start', async (req) => ok(await service.liveEvents.start(req.params.eventId)), { auth: 'admin' });
+  r.post('/admin/live-events/:eventId/start', async (req) => ok(await service.liveEvents.start(req.params.eventId, req.body ?? {})), { auth: 'admin' });
   r.post('/admin/live-events/:eventId/stop',  async (req) => ok(await service.liveEvents.stop(req.params.eventId, req.body ?? {})), { auth: 'admin' });
   r.post('/admin/live-events/:eventId/rotate', async (req) => ok(await service.liveEvents.rotateKey(req.params.eventId)), { auth: 'admin' });
   r.del('/admin/live-events/:eventId',        async (req) => ok(await service.liveEvents.cancel(req.params.eventId)), { auth: 'admin' });

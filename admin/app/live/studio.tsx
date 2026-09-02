@@ -118,7 +118,7 @@ export function Studio({ event }: { event: LiveEvent }) {
           });
           publisherRef.current = publisher;
           setRecording(true);
-          if (!event.isLive) await startLiveEvent(event.id);
+          if (!event.isLive) await startLiveEvent(event.id, 'whip');
           router.refresh();
 
           // Stats come from the peer connection rather than from chunk sizes.
@@ -178,7 +178,7 @@ export function Studio({ event }: { event: LiveEvent }) {
       // on, and the operator has to be told rather than left watching a preview
       // of a broadcast that never started.
       if (!event.isLive) {
-        const res = await startLiveEvent(event.id);
+        const res = await startLiveEvent(event.id, 'segments');
         if (!res.ok) throw new Error(res.error ?? 'Could not put the event on air.');
       }
 

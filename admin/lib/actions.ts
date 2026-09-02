@@ -179,9 +179,20 @@ export async function updateLiveEvent(
 }
 
 /** Going on air changes what every viewer is watching, so revalidate broadly. */
-export async function startLiveEvent(id: string): Promise<ActionResult> {
+/**
+ * @param transport how the studio is sending video. The viewer opens a
+ *   different player for each, and guessing it from the event's source is what
+ *   sent viewers to the segment player for a WHIP broadcast that had none.
+ */
+export async function startLiveEvent(
+  id: string,
+  transport?: 'segments' | 'whip',
+): Promise<ActionResult> {
   try {
-    await call(`/admin/live-events/${encodeURIComponent(id)}/start`, { method: 'POST', body: {} });
+    await call(`/admin/live-events/${encodeURIComponent(id)}/start`, {
+      method: 'POST',
+      body: transport ? { transport } : {},
+    });
     revalidatePath('/', 'layout');
     return { ok: true };
   } catch (err) {

@@ -102,6 +102,17 @@ const MIGRATIONS = {
   '005_whip_url': `
     ALTER TABLE live_events ADD COLUMN whip_url TEXT;
   `,
+  // How the video is actually reaching viewers, as opposed to who is sending
+  // it. 'source' answers who - browser or encoder - and the viewer used to
+  // infer the transport from it: source 'browser' meant HTTP segments, because
+  // when that was written it always did. WHIP made a browser broadcast arrive
+  // as WebRTC and play back as HLS, so the inference started sending viewers to
+  // the segment player for a broadcast that had no segments, and every one of
+  // them got "No segment 0 for that broadcast". The studio knows which path it
+  // took; this is where it says so.
+  '006_event_transport': `
+    ALTER TABLE live_events ADD COLUMN transport TEXT;
+  `,
 };
 
 export const openAdminStore = (target, options) => openStore(target, MIGRATIONS, options);

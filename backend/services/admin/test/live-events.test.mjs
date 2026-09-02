@@ -274,3 +274,51 @@ test('mediamtx without its URLs fails at boot rather than at go-live', () => {
   assert.throws(() => createIngestProvider({ NEUTV_LIVE_DRIVER: 'mediamtx' }),
     /needs NEUTV_MEDIAMTX_RTMP_URL and NEUTV_MEDIAMTX_HLS_BASE/);
 });
+
+test('the transport viewers are told is the one the video actually takes', async (t) => {
+  // The viewer opens a different player per transport, so a wrong answer here
+  // is a broadcast nobody sees: it inferred "segments" from source=browser
+  // until WHIP made that false, and every viewer asked for a segment 0 that
+  // did not exist.
+  await t.test('the studio declares WHIP at start', async () => {
+    const { events } = await build();
+    const { event } = await schedule(events, { source: 'browser', playbackUrl: undefined });
+    await events.start(event.id, { transport: 'whip' });
+    assert.equal((await events.current()).event.transport, 'whip');
+  });
+
+  await t.test('a start from the panel declares nothing', async () => {
+    const { events } = await build();
+    const { event } = await schedule(events, { source: 'browser', playbackUrl: undefined });
+    await events.start(event.id);
+    // Null, not a guess: defaulting to 'segments' would repeat the original
+    // bug for a panel-started event that then broadcasts over WHIP.
+    assert.equal((await events.current()).event.transport, null);
+  });
+
+  await t.test('the first segment settles it regardless', async (sub) => {
+    const { admin, events } = await build();
+    const { event } = await schedule(events, { source: 'browser', playbackUrl: undefined });
+    await events.start(event.id, { transport: 'whip' });
+    const { Readable } = await import('node:stream');
+    await admin.liveSegments.append(event.id, {
+      stream: Readable.from([Buffer.from('webmish header bytes')]),
+      contentType: 'video/webm',
+      contentLength: 20,
+      init: true,
+    });
+    assert.equal((await events.current()).event.transport, 'segments',
+      'proof of arrival beats the declaration');
+  });
+
+  await t.test('rejects a transport that is neither', async () => {
+    const { events } = await build();
+    const { event } = await schedule(events, { source: 'browser', playbackUrl: undefined });
+    await assert.rejects(
+      () => events.start(event.id, { transport: 'carrier-pigeon' }),
+      // The validator's message is the generic one; the field is in details.
+      (err) => err.status === 400
+        && JSON.stringify(err.details ?? '').includes('transport'),
+    );
+  });
+});

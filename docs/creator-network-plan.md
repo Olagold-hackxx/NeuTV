@@ -83,7 +83,7 @@ And the subscriptions themselves:
 ## 5. The network rules
 
 - **Everything points home.** Every ecosystem platform (WorldStreet,
-  KashPlus, mARKet, ARK, Tsion Cars, WorldSpace) shows teasers, clips and
+  mARKet) shows teasers, clips and
   headlines only — full content lives on NEU Network and every card links
   here. No platform carries full content about itself on itself.
 - **E-News.** A downloadable magazine (monthly, PDF/EPUB) assembled from the

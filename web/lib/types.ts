@@ -129,6 +129,7 @@ export type Video = {
   productId?: string;
   durationSeconds?: number;
   posterUrl?: string;
+  transport?: 'segments' | 'whip' | null;
   playbackUrl?: string | null;
   youtubeId?: string | null;
   createdAt?: number;
@@ -140,6 +141,7 @@ export type LiveEvent = {
   description?: string;
   productId?: string;
   posterUrl?: string;
+  transport?: 'segments' | 'whip' | null;
   playbackUrl?: string | null;
   youtubeId?: string | null;
   source?: 'browser' | 'external' | string;

@@ -25,6 +25,25 @@ import { VideoModal, type ModalVideo } from './video-modal';
 // the room is live without covering the video, which is the subject.
 const TICKER_LIMIT = 2;
 
+/**
+ * Which player a live event needs.
+ *
+ * This used to be `source === 'browser'`, which read "the operator is
+ * broadcasting from a browser" and meant "the video arrives as HTTP segments".
+ * Those were the same thing until WHIP, which sends a browser broadcast over
+ * WebRTC and plays it back as HLS. Viewers kept being sent to the segment
+ * player for a broadcast that had no segments, and every one of them got
+ * "No segment 0 for that broadcast".
+ *
+ * The server now reports the transport the studio actually used. `transport`
+ * is absent only on events that went on air before it existed, so those fall
+ * back to the old reading - but prefer HLS when there is a manifest to play.
+ */
+function isSegmentedEvent(event: { transport?: string | null; source?: string; playbackUrl?: string | null }) {
+  if (event.transport) return event.transport === 'segments';
+  return event.source === 'browser' && !(event.playbackUrl ?? '').includes('.m3u8');
+}
+
 type Heart = { id: number; emoji: string; right: number };
 type GiftBanner = { sender: string; giftName: string; cost: number; emoji?: string };
 
@@ -164,7 +183,7 @@ export function App({ data }: { data: AppData }) {
         posterUrl: event.posterUrl ?? null,
         productId: event.productId,
         isLiveEvent: true,
-        isSegmented: event.source === 'browser',
+        isSegmented: isSegmentedEvent(event),
       });
     },
     [client],

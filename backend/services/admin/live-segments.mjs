@@ -143,6 +143,12 @@ export function createLiveSegments({
             eventId, `${eventId}/0.webm`, bytes, mime, runtime.now(),
           );
           seq = 0;
+          // A segment arriving is proof of the transport, whatever was declared
+          // when the event went on air. The studio reports its path at start,
+          // but an event started from the events panel and broadcast into
+          // afterwards never went through that call - and a viewer sent to the
+          // wrong player sees nothing at all.
+          await store.run("UPDATE live_events SET transport = 'segments' WHERE id = ?", eventId);
         } else {
           for (let attempt = 1; ; attempt++) {
             try {
