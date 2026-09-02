@@ -114,6 +114,14 @@ export const ROUTES = [
   { service: 'admin', method: 'GET',    path: '/live-event/:eventId/segment/:seq',    auth: 'none',  summary: 'One segment of a browser broadcast.', stream: true },
 
   // Public: what is on air. Never carries the stream key.
+  // --- the E-magazine: monthly issues on a public shelf --------------------
+  { service: 'admin', method: 'GET',    path: '/magazine/issues',           auth: 'none',  summary: 'Published magazine issues, newest first.' },
+  { service: 'admin', method: 'GET',    path: '/magazine/issues/:issueId',  auth: 'none',  summary: 'One issue, for a kept link. Never a draft.' },
+  { service: 'admin', method: 'GET',    path: '/admin/magazine',            auth: 'admin', summary: 'Every issue, any status.' },
+  { service: 'admin', method: 'POST',   path: '/admin/magazine',            auth: 'admin', summary: 'Draft a new issue.' },
+  { service: 'admin', method: 'PUT',    path: '/admin/magazine/:issueId',   auth: 'admin', summary: 'Edit an issue; publishing needs a file URL.' },
+  { service: 'admin', method: 'DELETE', path: '/admin/magazine/:issueId',   auth: 'admin', summary: 'Delete a draft or archived issue.' },
+
   { service: 'admin', method: 'GET',    path: '/live-event/current',                 auth: 'none',  summary: 'The live event on air right now, if any.' },
 
   { service: 'admin', method: 'GET',    path: '/programme/current',          auth: 'none',  summary: 'The main broadcast the stage returns to.' },

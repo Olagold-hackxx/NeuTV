@@ -216,6 +216,11 @@ export class NeuTVClient {
     return this.post<{ comment?: import('./types').LiveComment }>('/live/comments', { text });
   }
 
+  /** The E-magazine shelf: published issues, newest first. */
+  magazineIssues(limit = 24) {
+    return this.get<{ issues: import('./types').MagazineIssue[] }>(`/magazine/issues?limit=${limit}`);
+  }
+
   /** The floating ticker's backlog: what people have actually said. */
   liveComments(limit = 8) {
     return this.get<{ comments: import('./types').LiveComment[] }>(`/live/comments?limit=${limit}`);

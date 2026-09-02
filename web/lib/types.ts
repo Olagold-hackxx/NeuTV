@@ -214,3 +214,14 @@ export type AppData = {
   apiBase: string;
   now: number;
 };
+
+export interface MagazineIssue {
+  id: string;
+  title: string;
+  description: string;
+  issueNumber: number | null;
+  coverUrl: string | null;
+  fileUrl: string | null;
+  status: 'published' | 'archived';
+  publishedAt: number | null;
+}

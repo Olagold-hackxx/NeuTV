@@ -16,6 +16,7 @@ import { createIngestProvider } from './ingest/index.mjs';
 import { createLiveEvents } from './live-events.mjs';
 import { createLiveSegments } from './live-segments.mjs';
 import { createCreatorSurface } from './creators.mjs';
+import { createMagazine } from './magazine.mjs';
 
 const STATUSES = ['draft', 'ready', 'published', 'archived'];
 
@@ -74,6 +75,7 @@ export function createAdminService({
     runtime, store,
     root: segmentsRoot || `${uploadsRoot || './services/admin/data'}/../live-segments`,
   });
+  const magazine = createMagazine({ runtime, store });
   const creators = createCreatorSurface({
     runtime, store, catalog, files,
     serializeVideo: (row) => publicVideo(row, mediaBase, mediaTransform),
@@ -92,6 +94,7 @@ export function createAdminService({
     catalog.products().products.some((p) => p.id === productId);
 
   return {
+    magazine,
     // The back office manages the NETWORK library. Creator channels live in
     // the same table, scoped by owner_id, and are managed from the portal.
     async listVideos({ status = null, productId = null, limit = 50 } = {}) {

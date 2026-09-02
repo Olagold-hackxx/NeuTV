@@ -149,6 +149,25 @@ const MIGRATIONS = {
     CREATE INDEX idx_tasks_status ON tasks(status, created_at DESC);
     CREATE INDEX idx_tasks_assignee ON tasks(assignee_id, status);
   `,
+  // E-magazine issues. Cover and file are URLs - the editorial pipeline that
+  // assembles the PDF lives outside this system, and hosting is the media
+  // CDN's job - so the magazine works identically on every storage driver.
+  '010_magazine': `
+    CREATE TABLE magazine_issues (
+      id           TEXT PRIMARY KEY,
+      title        TEXT NOT NULL,
+      description  TEXT NOT NULL DEFAULT '',
+      issue_no     INTEGER,
+      cover_url    TEXT,
+      file_url     TEXT,
+      status       TEXT NOT NULL,   -- 'draft' | 'published' | 'archived'
+      published_at INTEGER,
+      created_by   TEXT NOT NULL,
+      created_at   INTEGER NOT NULL,
+      updated_at   INTEGER NOT NULL
+    );
+    CREATE INDEX idx_magazine_status ON magazine_issues(status, published_at DESC);
+  `,
 };
 
 export const openAdminStore = (target, options) => openStore(target, MIGRATIONS, options);

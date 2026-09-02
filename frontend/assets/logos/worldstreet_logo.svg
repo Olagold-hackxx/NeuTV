@@ -1,5 +1,13 @@
-<svg width="386" height="340" viewBox="0 0 386 340" fill="none" xmlns="http://www.w3.org/2000/svg">
-<rect x="2" y="2" width="382" height="336" rx="46" fill="#EFFF3B"/>
-<path d="M46 90H172L238 250L46 90Z" fill="black"/>
-<path d="M224 90H344L136 250L224 90Z" fill="black"/>
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Layer_1" data-name="Layer 1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <defs>
+    <style>
+      .cls-1 {
+        fill: #febe10;
+        stroke-width: 0px;
+      }
+    </style>
+  </defs>
+  <polygon class="cls-1" points="22.74 34.51 40.15 65.49 49.99 47.97 42.44 34.51 22.74 34.51"/>
+  <polygon class="cls-1" points="57.56 34.51 49.99 47.97 59.85 65.49 77.26 34.51 57.56 34.51"/>
 </svg>

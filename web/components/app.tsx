@@ -10,6 +10,7 @@ import { CheckCircle2 } from 'lucide-react';
 import type { AppData, Gift, LiveComment, LiveEvent, Post, SessionUser, Spotlight, StageCard } from '@/lib/types';
 import { NeuTVClient, sync } from '@/lib/client';
 import { Rail, type MainTab } from './rail';
+import { Magazine } from './magazine';
 import { TopBar } from './top-bar';
 import { Stage } from './stage';
 import { Reel } from './reel';
@@ -623,7 +624,9 @@ export function App({ data }: { data: AppData }) {
           <Reel spotlights={[...creatorSpots, ...(bootstrap.CREATOR_SPOTLIGHTS ?? [])]} onSelect={openSpotlight} />
         ) : null}
 
-        <Feed
+        {activeTab === 'magazine' ? <Magazine client={client} /> : null}
+
+        {activeTab === 'magazine' ? null : <Feed
           posts={[...libraryPosts, ...(bootstrap.INITIAL_POSTS ?? [])]}
           products={bootstrap.PRODUCTS ?? []}
           activeProduct={activeProduct}
@@ -638,7 +641,7 @@ export function App({ data }: { data: AppData }) {
           onOpenGifts={openGifts}
           onSelect={openPost}
           showToast={showToast}
-        />
+        />}
       </main>
 
       {!theater ? (

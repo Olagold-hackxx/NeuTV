@@ -124,5 +124,14 @@ export function createAdminRouter(deps) {
   })), { auth: 'none' });
   r.get('/videos/:videoId',   async (req) => ok(await service.publishedVideo(req.params.videoId)), { auth: 'none' });
 
+  // --- the E-magazine ------------------------------------------------------
+  // Viewers browse the shelf without an account; only editors touch it.
+  r.get('/magazine/issues',           async (req) => ok(await service.magazine.listPublished({ limit: Number(req.query.limit) || 24 })), { auth: 'none' });
+  r.get('/magazine/issues/:issueId',  async (req) => ok(await service.magazine.getPublished(req.params.issueId)), { auth: 'none' });
+  r.get('/admin/magazine',            async ()    => ok(await service.magazine.list()), { auth: 'admin' });
+  r.post('/admin/magazine',           async (req) => created(await service.magazine.create(req.auth.userId, req.body)), { auth: 'admin' });
+  r.put('/admin/magazine/:issueId',   async (req) => ok(await service.magazine.update(req.params.issueId, req.body)), { auth: 'admin' });
+  r.del('/admin/magazine/:issueId',   async (req) => ok(await service.magazine.remove(req.params.issueId)), { auth: 'admin' });
+
   return Object.assign(r, { service });
 }
