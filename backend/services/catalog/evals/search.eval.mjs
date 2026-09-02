@@ -19,7 +19,9 @@ const EXPECTATIONS = [
   ['market', 'product:market'],
   ['david_trades', 'spotlight:cr-1'],
   ['20x', 'spotlight:cr-1'],
-  ['apple pay', 'spotlight:cr-2'],
+  // 'apple pay' -> cr-2 lived here until that content was removed from the
+  // catalog as off-ecosystem; the query must track what the catalog carries.
+  ['offramp', 'spotlight:cr-7'],
   ['storefront', 'spotlight:cr-3'],
 ];
 
