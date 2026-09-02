@@ -113,6 +113,42 @@ const MIGRATIONS = {
   '006_event_transport': `
     ALTER TABLE live_events ADD COLUMN transport TEXT;
   `,
+  // Who a video belongs to. Null is the network's own library - everything
+  // that existed before creators did - so no backfill is needed and every
+  // existing query that now filters on "owner_id IS NULL" keeps returning
+  // exactly what it returned before this column existed.
+  '007_video_owner': `
+    ALTER TABLE videos ADD COLUMN owner_id TEXT;
+    CREATE INDEX idx_videos_owner ON videos(owner_id, created_at DESC);
+  `,
+  // Creator live channels. scope 'network' is the main stage - the singleton
+  // the stage machine resolves; scope 'creator' is a spotlight channel that
+  // must never take the main view. Owner is the creator's user id.
+  '008_event_scope': `
+    ALTER TABLE live_events ADD COLUMN scope TEXT NOT NULL DEFAULT 'network';
+    ALTER TABLE live_events ADD COLUMN owner_id TEXT;
+    CREATE INDEX idx_live_events_scope ON live_events(scope, status);
+  `,
+  // Commissioned work. The network posts a brief with a KashCoin bounty;
+  // a creator accepts it, delivers a video, and approval pays out.
+  '009_tasks': `
+    CREATE TABLE tasks (
+      id                TEXT PRIMARY KEY,
+      title             TEXT NOT NULL,
+      brief             TEXT NOT NULL DEFAULT '',
+      product_id        TEXT NOT NULL,
+      bounty            INTEGER NOT NULL,
+      deadline          INTEGER,
+      status            TEXT NOT NULL,   -- 'open' | 'accepted' | 'delivered' | 'approved' | 'rejected'
+      assignee_id       TEXT,
+      delivery_video_id TEXT,
+      created_by        TEXT NOT NULL,
+      created_at        INTEGER NOT NULL,
+      updated_at        INTEGER NOT NULL
+    );
+    CREATE INDEX idx_tasks_status ON tasks(status, created_at DESC);
+    CREATE INDEX idx_tasks_assignee ON tasks(assignee_id, status);
+  `,
 };
 
 export const openAdminStore = (target, options) => openStore(target, MIGRATIONS, options);

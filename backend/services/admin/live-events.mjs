@@ -24,6 +24,8 @@ export const adminEvent = (row) => ({
   productId: row.product_id,
   status: row.status,
   source: row.source ?? 'external',
+  scope: row.scope ?? 'network',
+  ownerId: row.owner_id ?? null,
   driver: row.driver,
   ingestUrl: row.ingest_url,
   whipUrl: row.whip_url,
@@ -54,6 +56,7 @@ export const publicEvent = (row) => ({
   productId: row.product_id,
   status: row.status,
   source: row.source ?? 'external',
+  scope: row.scope ?? 'network',
   // Which player the viewer should open. Reported, never guessed.
   transport: row.transport ?? null,
   playbackUrl: row.playback_url,
@@ -103,10 +106,19 @@ export function createLiveEvents({ runtime, store, catalog, ingest, events }) {
     catalog.products().products.some((p) => p.id === productId);
 
   return {
-    async list({ status = null, limit = 50 } = {}) {
-      const rows = status
-        ? await store.all('SELECT * FROM live_events WHERE status = ? ORDER BY created_at DESC LIMIT ?', status, Math.min(limit, 200))
-        : await store.all('SELECT * FROM live_events ORDER BY created_at DESC LIMIT ?', Math.min(limit, 200));
+    // The back office lists the network's own events by default: a creator's
+    // channel is their business, and the studio must never offer to broadcast
+    // into one. ownerId narrows to a single creator's events instead.
+    async list({ status = null, limit = 50, scope = 'network', ownerId = null } = {}) {
+      const where = [];
+      const params = [];
+      if (status) { where.push('status = ?'); params.push(status); }
+      if (ownerId) { where.push('owner_id = ?'); params.push(ownerId); }
+      else if (scope !== 'all') { where.push('scope = ?'); params.push(scope); }
+      const rows = await store.all(
+        `SELECT * FROM live_events ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY created_at DESC LIMIT ?`,
+        ...params, Math.min(limit, 200),
+      );
       return { events: rows.map((r) => adminEvent(located(r))) };
     },
 
@@ -114,13 +126,23 @@ export function createLiveEvents({ runtime, store, catalog, ingest, events }) {
       return { event: adminEvent(await getRow(eventId)) };
     },
 
-    /** The event on air, if any. Used by the live service and the viewer app. */
+    /**
+     * The event on the MAIN stage, if any. Used by the live service and the
+     * viewer app. Creator-scope channels never appear here: they live in the
+     * spotlight, and the main view is decided by the network alone.
+     */
     async current() {
-      const row = await store.get("SELECT * FROM live_events WHERE status = 'live' ORDER BY started_at DESC LIMIT 1");
+      const row = await store.get(
+        "SELECT * FROM live_events WHERE status = 'live' AND scope = 'network' ORDER BY started_at DESC LIMIT 1",
+      );
       return { event: row ? publicEvent(located(row)) : null };
     },
 
-    async create(actorId, input) {
+    /**
+     * @param {{scope?: 'network'|'creator', ownerId?: string}} [opts] internal
+     *   scoping, set by the creator surface - never by a request body.
+     */
+    async create(actorId, input, opts = {}) {
       const v = validate(input, {
         title: { type: 'string', required: true, min: 2, max: 160 },
         description: { type: 'string', required: false, default: '', max: 2_000 },
@@ -144,11 +166,13 @@ export function createLiveEvents({ runtime, store, catalog, ingest, events }) {
       const id = `evt_${runtime.uuid()}`;
       const now = runtime.now();
       await store.run(
-        `INSERT INTO live_events (id, title, description, product_id, status, source, driver, ingest_url,
-                                  whip_url, stream_key, playback_url, youtube_id, poster_url, provider_ref,
-                                  scheduled_for, created_by, created_at, updated_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-        id, v.title, v.description, v.productId, 'scheduled', v.source, ingest.driver,
+        `INSERT INTO live_events (id, title, description, product_id, status, source, scope, owner_id,
+                                  driver, ingest_url, whip_url, stream_key, playback_url, youtube_id,
+                                  poster_url, provider_ref, scheduled_for, created_by, created_at, updated_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        id, v.title, v.description, v.productId, 'scheduled', v.source,
+        opts.scope ?? 'network', opts.ownerId ?? null,
+        ingest.driver,
         provisioned.ingestUrl ?? null,
         provisioned.whipUrl ?? null,
         // Even the manual driver gets a key: it is what a future self-hosted
@@ -229,7 +253,14 @@ export function createLiveEvents({ runtime, store, catalog, ingest, events }) {
         throw conflict('That event has no playback URL yet, so viewers would see nothing.');
       }
 
-      const already = await store.get("SELECT id, title FROM live_events WHERE status = 'live' LIMIT 1");
+      // What blocks going on air depends on the scope. The main stage is a
+      // singleton: one network event, full stop. A creator channel only blocks
+      // itself - two creators live at once is the product working, but one
+      // creator live twice is a mistake.
+      const scope = row.scope ?? 'network';
+      const already = scope === 'network'
+        ? await store.get("SELECT id, title FROM live_events WHERE status = 'live' AND scope = 'network' LIMIT 1")
+        : await store.get("SELECT id, title FROM live_events WHERE status = 'live' AND owner_id = ? LIMIT 1", row.owner_id);
       if (already) {
         throw conflict(`"${already.title}" is already on air. Stop it first.`, { liveEventId: already.id });
       }
@@ -248,8 +279,10 @@ export function createLiveEvents({ runtime, store, catalog, ingest, events }) {
         now, now, v.transport ?? null, eventId,
       );
       const event = publicEvent(await getRow(eventId));
-      // Viewers switch without reloading.
-      events.emit('live-event', { status: 'started', event });
+      // Viewers switch without reloading - but only a NETWORK event may move
+      // every stage. A creator going live announces itself on its own channel
+      // so the spotlight rail can light up, and nothing else changes.
+      events.emit(scope === 'network' ? 'live-event' : 'creator-live', { status: 'started', event });
       return { event: adminEvent(await getRow(eventId)) };
     },
 
@@ -267,7 +300,9 @@ export function createLiveEvents({ runtime, store, catalog, ingest, events }) {
       // moved on; a dangling live input is a billing problem, not an outage.
       try { await ingest.teardown(row.provider_ref); } catch { /* logged by the provider */ }
 
-      events.emit('live-event', { status: 'ended', event: publicEvent(await getRow(eventId)) });
+      events.emit((row.scope ?? 'network') === 'network' ? 'live-event' : 'creator-live', {
+        status: 'ended', event: publicEvent(await getRow(eventId)),
+      });
       return { event: adminEvent(await getRow(eventId)) };
     },
 

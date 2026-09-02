@@ -280,6 +280,44 @@ export function createIdentityService({
       return { user: publicUser(user), sessionsRevoked: revoked.changes };
     },
 
+    // Grant or revoke creator standing. Reachable only through an admin route:
+    // creators are approved, never self-appointed. The admin role itself stays
+    // deployment-config-only - this method refuses to mint or demote admins,
+    // so a compromised back-office session cannot escalate anyone.
+    async setRole(userId, role) {
+      const { role: next } = validate({ role }, {
+        role: { type: 'string', required: true, enum: ['viewer', 'creator'] },
+      });
+      const user = await store.get('SELECT * FROM users WHERE id = ?', String(userId || ''));
+      if (!user) throw notFound('No such account.');
+      if ((user.role ?? 'viewer') === 'admin') {
+        throw badRequest('Admin accounts are managed by deployment config, not by role changes.');
+      }
+      await store.run('UPDATE users SET role = ? WHERE id = ?', next, user.id);
+      return { user: publicUser({ ...user, role: next }) };
+    },
+
+    // Port for the wallet's creator gift split: a gift target names a handle,
+    // and the spendable balance lives on the user account behind it. Handles
+    // are stored lowercase without the leading @, the same normalisation the
+    // wallet applies to target ids.
+    async userIdByHandle(handle) {
+      const normalized = String(handle || '').trim().toLowerCase().replace(/^@/, '');
+      if (!normalized) return null;
+      const row = await store.get('SELECT id FROM users WHERE handle = ?', normalized);
+      return row?.id ?? null;
+    },
+
+    // Port for the creator spotlight: the public face of one account, nothing
+    // more. Null rather than a throw - an orphaned content row is the caller's
+    // condition to handle, not an error.
+    async profileById(userId) {
+      const row = await store.get('SELECT * FROM users WHERE id = ?', String(userId || ''));
+      if (!row) return null;
+      const user = publicUser(row);
+      return { id: user.id, name: user.name, handle: user.handle, avatar: user.avatar, productId: user.productId };
+    },
+
     // --- read ports for the admin CRM (see services/admin/ports.mjs) ------
 
     async viewerSummary() {

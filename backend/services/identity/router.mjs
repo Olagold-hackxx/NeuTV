@@ -14,5 +14,8 @@ export function createIdentityRouter(deps) {
   r.get('/identity/me',                  (req) => ok(service.me(req.auth)),          { auth: 'required' });
   r.get('/identity/session',             (req) => ok(service.session(req.auth)),     { auth: 'optional' });
 
+  // Creators are approved from the back office, never self-appointed.
+  r.put('/admin/creators/:userId', async (req) => ok(await service.setRole(req.params.userId, req.body?.role)), { auth: 'admin' });
+
   return Object.assign(r, { service });
 }

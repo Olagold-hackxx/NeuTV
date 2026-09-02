@@ -71,6 +71,50 @@ export function createAdminRouter(deps) {
     file: await service.liveSegments.locate(req.params.eventId, req.params.seq),
   }), { auth: 'none', stream: true });
 
+  // --- creator surface ---------------------------------------------------
+  // Auth level 'creator': the gateway admits the creator role (and admins).
+  // The subscription gate lives in the service, where the wallet port is.
+
+  r.get('/creator/videos',  async (req) => ok(await service.creators.listOwn(req.auth, { limit: Number(req.query.limit) || 50 })), { auth: 'creator' });
+  r.post('/creator/videos', async (req) => created(await service.creators.createOwn(req.auth, req.body)), { auth: 'creator' });
+  r.put('/creator/videos/:videoId', async (req) => ok(await service.creators.updateOwn(req.auth, req.params.videoId, req.body)), { auth: 'creator' });
+  r.put('/creator/videos/:videoId/file', async (req) => ok(await service.creators.uploadFileOwn(req.auth, req.params.videoId, req.raw)), {
+    auth: 'creator', raw: true,
+  });
+  r.post('/creator/videos/:videoId/upload-signature', async (req) => ok(
+    await service.creators.uploadSignatureOwn(req.auth, req.params.videoId),
+  ), { auth: 'creator' });
+  r.post('/creator/videos/:videoId/upload-complete', async (req) => ok(
+    await service.creators.completeUploadOwn(req.auth, req.params.videoId, req.body),
+  ), { auth: 'creator' });
+
+  r.get('/creator/live',  async (req) => ok(await service.creators.listLive(req.auth, { limit: Number(req.query.limit) || 20 })), { auth: 'creator' });
+  r.post('/creator/live', async (req) => created(await service.creators.createLive(req.auth, req.body)), { auth: 'creator' });
+  r.post('/creator/live/:eventId/start', async (req) => ok(await service.creators.startLive(req.auth, req.params.eventId, req.body ?? {})), { auth: 'creator' });
+  r.post('/creator/live/:eventId/stop',  async (req) => ok(await service.creators.stopLive(req.auth, req.params.eventId, req.body ?? {})), { auth: 'creator' });
+  r.put('/creator/live/:eventId/segment', async (req) => created(
+    await service.creators.appendSegmentOwn(req.auth, req.params.eventId, {
+      ...req.raw,
+      init: req.query.init === '1' || req.query.init === 'true',
+    }),
+  ), { auth: 'creator', raw: true });
+
+  r.get('/creator/tasks', async (req) => ok(await service.creators.creatorListTasks(req.auth, { limit: Number(req.query.limit) || 50 })), { auth: 'creator' });
+  r.post('/creator/tasks/:taskId/accept',  async (req) => ok(await service.creators.acceptTask(req.auth, req.params.taskId)), { auth: 'creator' });
+  r.post('/creator/tasks/:taskId/deliver', async (req) => ok(await service.creators.deliverTask(req.auth, req.params.taskId, req.body)), { auth: 'creator' });
+
+  // Tasks, back-office side.
+  r.get('/admin/tasks',  async (req) => ok(await service.creators.adminListTasks({
+    status: req.query.status || null, limit: Number(req.query.limit) || 50,
+  })), { auth: 'admin' });
+  r.post('/admin/tasks', async (req) => created(await service.creators.adminCreateTask(req.auth.userId, req.body)), { auth: 'admin' });
+  r.post('/admin/tasks/:taskId/approve', async (req) => ok(await service.creators.adminApproveTask(req.params.taskId)), { auth: 'admin' });
+  r.post('/admin/tasks/:taskId/reject',  async (req) => ok(await service.creators.adminRejectTask(req.params.taskId)), { auth: 'admin' });
+
+  // Public: the creator spotlight rail, and the videos its cards promote.
+  r.get('/creators/spotlights', async (req) => ok(await service.creators.spotlights({ limit: Number(req.query.limit) || 24 })), { auth: 'none' });
+  r.get('/creators/videos/:videoId', async (req) => ok(await service.creators.publishedOwn(req.params.videoId)), { auth: 'none' });
+
   // Public: what the stage reverts to, and how the stage resolves a takeover.
   r.get('/programme/current', async () => ok(await service.currentProgramme()), { auth: 'none' });
   // Declared before the parameterised route so "videos" cannot be read as an id.

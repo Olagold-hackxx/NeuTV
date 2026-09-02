@@ -105,6 +105,19 @@ export function createLiveService({
           durationSeconds: v.durationSeconds,
         };
       }
+
+      // Published creator videos: a spotlight card's takeover resolves here.
+      // The network library excludes creator content, so this is a separate
+      // public route rather than a wider filter on the one above.
+      const creator = await programmeClient.call('admin', 'GET', `/creators/videos/${videoId}`, {});
+      if (creator.status === 200 && creator.body?.video) {
+        const v = creator.body.video;
+        return {
+          id: v.id, title: v.title, kind: 'creator', productId: v.productId,
+          videoUrl: v.playbackUrl, youtubeId: v.youtubeId, posterUrl: v.posterUrl,
+          durationSeconds: v.durationSeconds,
+        };
+      }
     }
     return null;
   };

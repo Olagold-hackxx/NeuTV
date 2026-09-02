@@ -160,9 +160,13 @@ export async function createGateway(options = {}) {
     const auth = await app.services.identity.authenticate(token);
 
     const level = route.auth;
-    if ((level === 'required' || level === 'admin') && !auth) throw unauthorized();
-    // The admin gate lives here, once, rather than in eleven handlers.
+    if ((level === 'required' || level === 'admin' || level === 'creator') && !auth) throw unauthorized();
+    // The role gates live here, once, rather than in the handlers. Admins pass
+    // the creator gate too: the back office can act on a channel's behalf.
     if (level === 'admin' && auth.role !== 'admin') throw forbidden('That is back-office only.');
+    if (level === 'creator' && auth.role !== 'creator' && auth.role !== 'admin') {
+      throw forbidden('That needs creator standing. Apply from the portal.');
+    }
 
     // --- rate limit ------------------------------------------------------
     const router = app.routers[route.service];

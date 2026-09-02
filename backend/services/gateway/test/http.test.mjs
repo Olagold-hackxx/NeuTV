@@ -51,7 +51,7 @@ test('health reports the contract and what is wired', async () => {
   const { status, body } = await call('/health');
   assert.equal(status, 200);
   assert.equal(body.ok, true);
-  assert.equal(body.contractVersion, '2.0.0');
+  assert.equal(body.contractVersion, '2.1.0');
   assert.ok(body.services.includes('admin'));
   assert.ok(!body.services.includes('llm'), 'the LLM service was removed in 2.0.0');
 });

@@ -2,6 +2,10 @@
 // and update both sides in the same commit (services-first rule: a coordinated
 // cross-service edit IS a contract change and gets called out explicitly).
 //
+// 2.1.0 - additive: the creator surface (creator-scoped videos and live
+//         channels, the public spotlight rail, tasks with KashCoin bounties),
+//         KashCoin subscriptions on the wallet, the creator gift split, the
+//         admin role-grant route, and a 'creator' auth level.
 // 2.0.0 - BREAKING: removed the llm service and the moderation escalation that
 //         used it. The deterministic ruleset scores 100% recall and 100%
 //         precision on the eval corpus without it, and ambiguous speech now
@@ -10,5 +14,5 @@
 // 1.1.0 - additive: the admin/CRM service (video library, programming, CRM
 //         rollups), the broadcast stage state machine on live, and a `role`
 //         claim on the identity session. No existing route changed shape.
-export const CONTRACT_VERSION = '2.0.0';
+export const CONTRACT_VERSION = '2.1.0';
 export const API_PREFIX = '/api/v1';

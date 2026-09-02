@@ -87,6 +87,9 @@ export async function compose({
     // The wallet does not know the live stage exists. The gift banner on the
     // broadcast is this wire, and nothing else.
     events: { emit: (type, payload) => { if (type === 'gift') live.onGift(payload); } },
+    // The creator gift split needs the user behind a handle; identity chose to
+    // expose exactly that lookup, nothing wider.
+    identity: { userIdByHandle: (handle) => identity.userIdByHandle(handle) },
   });
 
   const social = createSocialService({
@@ -124,6 +127,13 @@ export async function compose({
       spend: { summary: () => wallet.spendSummary(), byUser: () => wallet.spendByUser() },
       moderation: { summary: () => moderation.summary(), queue: (o) => moderation.queue(o) },
       engagement: { summary: () => social.engagementSummary() },
+      // The creator surface: the wallet gates publishing on an active plan and
+      // pays task bounties; identity resolves owner ids into spotlight cards.
+      wallet: {
+        subscriptionActive: (userId, plan) => wallet.subscriptionActive(userId, plan),
+        payBounty: (userId, amount, reference, memo) => wallet.payBounty(userId, amount, reference, memo),
+      },
+      identity: { profile: (userId) => identity.profileById(userId) },
     },
     // A live event going on or off air reaches viewers over SSE, so the stage
     // switches without anyone reloading.

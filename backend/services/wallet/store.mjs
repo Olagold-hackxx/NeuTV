@@ -10,7 +10,7 @@ const MIGRATIONS = {
       txn_id     TEXT NOT NULL,
       account    TEXT NOT NULL,      -- 'user:<id>' | 'creator:<handle>' | 'stream:<id>' | 'system:treasury'
       amount     INTEGER NOT NULL,   -- positive credit, negative debit, whole coins
-      kind       TEXT NOT NULL,      -- 'tip' | 'topup' | 'reward'
+      kind       TEXT NOT NULL,      -- 'tip' | 'topup' | 'reward' | 'payout' | 'subscription'
       memo       TEXT NOT NULL,
       created_at INTEGER NOT NULL
     );
@@ -27,6 +27,23 @@ const MIGRATIONS = {
       payload    TEXT NOT NULL,      -- JSON snapshot of the response
       created_at INTEGER NOT NULL
     );
+  `,
+  // Subscriptions: the access gate for creators and the loop-feeder for
+  // viewers (a viewer plan includes a KashCoin allowance that gets gifted
+  // onward). The charge itself is ledger entries; this table holds only the
+  // entitlement window.
+  '002_subscriptions': `
+    CREATE TABLE subscriptions (
+      id         TEXT PRIMARY KEY,
+      user_id    TEXT NOT NULL,
+      plan       TEXT NOT NULL,      -- 'viewer' | 'creator'
+      started_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL,
+      cost       INTEGER NOT NULL,
+      txn_id     TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX idx_subscriptions_user ON subscriptions(user_id, plan, expires_at DESC);
   `,
 };
 

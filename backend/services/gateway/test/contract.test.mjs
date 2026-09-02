@@ -42,11 +42,14 @@ test('auth levels in the router match the contract exactly', async () => {
   for (const declared of ROUTES) {
     const router = app.routers[declared.service];
     const found = router.routes.find((r) => r.method === declared.method && r.pattern === declared.path);
-    // 'admin' is enforced by the gateway from the manifest, so a router may
-    // carry 'admin' or the weaker 'required'; it must never be looser.
+    // 'admin' and 'creator' are enforced by the gateway from the manifest, so
+    // a router may carry the level or the weaker 'required'; never looser.
     if (declared.auth === 'admin') {
       assert.ok(['admin', 'required'].includes(found.auth),
         `${declared.path} is admin-only in the contract but "${found.auth}" in the router`);
+    } else if (declared.auth === 'creator') {
+      assert.ok(['creator', 'required'].includes(found.auth),
+        `${declared.path} is creator-only in the contract but "${found.auth}" in the router`);
     } else {
       assert.equal(found.auth, declared.auth, `auth level drift on ${declared.method} ${declared.path}`);
     }

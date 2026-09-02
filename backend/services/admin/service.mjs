@@ -15,6 +15,7 @@ import { createStorage } from './storage/local.mjs';
 import { createIngestProvider } from './ingest/index.mjs';
 import { createLiveEvents } from './live-events.mjs';
 import { createLiveSegments } from './live-segments.mjs';
+import { createCreatorSurface } from './creators.mjs';
 
 const STATUSES = ['draft', 'ready', 'published', 'archived'];
 
@@ -73,6 +74,13 @@ export function createAdminService({
     runtime, store,
     root: segmentsRoot || `${uploadsRoot || './services/admin/data'}/../live-segments`,
   });
+  const creators = createCreatorSurface({
+    runtime, store, catalog, files,
+    serializeVideo: (row) => publicVideo(row, mediaBase, mediaTransform),
+    liveEvents, liveSegments,
+    wallet: ports.wallet ?? {},
+    identity: ports.identity ?? {},
+  });
 
   const getRow = async (videoId) => {
     const row = await store.get('SELECT * FROM videos WHERE id = ?', videoId);
@@ -84,10 +92,12 @@ export function createAdminService({
     catalog.products().products.some((p) => p.id === productId);
 
   return {
+    // The back office manages the NETWORK library. Creator channels live in
+    // the same table, scoped by owner_id, and are managed from the portal.
     async listVideos({ status = null, productId = null, limit = 50 } = {}) {
       const rows = status
-        ? await store.all('SELECT * FROM videos WHERE status = ? ORDER BY created_at DESC LIMIT ?', status, Math.min(limit, 200))
-        : await store.all('SELECT * FROM videos ORDER BY created_at DESC LIMIT ?', Math.min(limit, 200));
+        ? await store.all('SELECT * FROM videos WHERE status = ? AND owner_id IS NULL ORDER BY created_at DESC LIMIT ?', status, Math.min(limit, 200))
+        : await store.all('SELECT * FROM videos WHERE owner_id IS NULL ORDER BY created_at DESC LIMIT ?', Math.min(limit, 200));
       const filtered = productId ? rows.filter((r) => r.product_id === productId) : rows;
       return { videos: filtered.map((r) => publicVideo(r, mediaBase, mediaTransform)), total: filtered.length };
     },
@@ -98,7 +108,9 @@ export function createAdminService({
     // guessing its id, and archived content stops being reachable.
     async publishedVideo(videoId) {
       const row = await getRow(videoId);
-      if (row.status !== 'published') throw notFound(`No published video "${videoId}".`);
+      // Creator content is served by the creator routes; here it answers as
+      // absent, the same as a draft, so the two libraries cannot blur.
+      if (row.status !== 'published' || row.owner_id) throw notFound(`No published video "${videoId}".`);
       return { video: publicVideo(row, mediaBase, mediaTransform) };
     },
 
@@ -109,7 +121,7 @@ export function createAdminService({
     // page by being listed.
     async publishedVideos({ productId = null, limit = 60 } = {}) {
       const rows = await store.all(
-        'SELECT * FROM videos WHERE status = ? ORDER BY created_at DESC LIMIT ?',
+        'SELECT * FROM videos WHERE status = ? AND owner_id IS NULL ORDER BY created_at DESC LIMIT ?',
         'published', Math.min(Math.max(Number(limit) || 60, 1), 200),
       );
       const filtered = productId ? rows.filter((r) => r.product_id === productId) : rows;
@@ -421,6 +433,9 @@ export function createAdminService({
     // --- live events ------------------------------------------------------
     liveEvents,
     liveSegments,
+
+    // --- the creator surface (see creators.mjs) ---------------------------
+    creators,
 
     close: () => store.close(),
   };

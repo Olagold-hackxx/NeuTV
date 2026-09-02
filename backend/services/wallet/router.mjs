@@ -10,5 +10,11 @@ export function createWalletRouter(deps) {
   r.post('/wallet/tip',    async (req) => created(await service.tip(req.auth.userId, req.body)),    { auth: 'required', limit: { tokens: 30, windowMs: 60_000 } });
   r.post('/wallet/credit', async (req) => created(await service.credit(req.auth.userId, req.body)), { auth: 'required', limit: { tokens: 10, windowMs: 60_000 } });
 
+  // Subscriptions: charged from the KashCoin balance through the same ledger
+  // as everything else. The plan catalog rides along on the status read so a
+  // portal can render prices without a second endpoint.
+  r.post('/subscriptions',   async (req) => created(await service.subscribe(req.auth.userId, req.body)), { auth: 'required', limit: { tokens: 10, windowMs: 60_000 } });
+  r.get('/subscriptions/me', async (req) => ok(await service.subscriptionStatus(req.auth.userId)),       { auth: 'required' });
+
   return Object.assign(r, { service });
 }

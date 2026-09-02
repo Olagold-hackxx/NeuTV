@@ -11,6 +11,22 @@ import { giftCatalog, giftById } from './gifts.mjs';
 const TREASURY = 'system:treasury';
 const userAccount = (userId) => `user:${userId}`;
 
+// The creator gift split: a gift on creator content pays the creator this
+// share of it, credited to their spendable balance; the remainder stays on the
+// creator's tally account as the network's share. Whole coins, floor'd, so the
+// books always balance in integers.
+export const CREATOR_GIFT_SHARE = 0.7;
+
+// KashCoin subscriptions - the gate, not the incentive (see
+// docs/creator-network-plan.md §4). The viewer plan includes an allowance
+// that is credited straight back, so subscription money circulates through
+// creators rather than around them.
+export const SUBSCRIPTION_PLANS = {
+  viewer: { cost: 500, allowance: 250 },
+  creator: { cost: 250, allowance: 0 },
+};
+export const SUBSCRIPTION_PERIOD_MS = 30 * 24 * 60 * 60 * 1000;
+
 const targetAccount = (target) => {
   if (target.type === 'creator') return `creator:${String(target.id).replace(/^@/, '').toLowerCase()}`;
   if (target.type === 'stream') return `stream:${target.id}`;
@@ -22,6 +38,7 @@ export function createWalletService({
   runtime,
   store,
   events = { emit: () => {} },   // injected at the composition root, never an import
+  identity = {},                 // { userIdByHandle } - resolves a creator's spendable account
   maxTopUp = 1_000_000,
 }) {
   const balanceOf = async (account) =>
@@ -47,7 +64,7 @@ export function createWalletService({
           `ent_${runtime.uuid()}`, txnId, leg.account, leg.amount, kind, memo, now,
         );
       }
-      const payload = { ...(await response(txnId, now)), transactionId: txnId, at: now };
+      const payload = { ...(await response(txnId, now, t)), transactionId: txnId, at: now };
       await t.run(
         'INSERT INTO transactions (id, reference, kind, actor, payload, created_at) VALUES (?,?,?,?,?,?)',
         txnId, reference ?? null, kind, actor, JSON.stringify(payload), now,
@@ -122,6 +139,31 @@ export function createWalletService({
       });
 
       if (!result.replayed) {
+        // The creator split. The tip itself stays two legs - the leaderboard
+        // and the spend rollups key on that shape - and the payout is its own
+        // transaction: the tally account passes the creator's share on to
+        // their spendable balance, keyed by the tip's transaction id so a
+        // replayed tip can never pay twice. A handle with no account behind it
+        // (the seeded editorial spotlights) accrues on the tally account until
+        // one exists.
+        if (type === 'creator') {
+          const share = Math.floor(gift.cost * CREATOR_GIFT_SHARE);
+          const creatorUserId = share > 0 ? await identity.userIdByHandle?.(id) : null;
+          if (creatorUserId) {
+            await post({
+              kind: 'payout',
+              reference: `${result.transactionId}-payout`,
+              actor: userId,
+              memo: `Creator share of ${gift.name}`,
+              legs: [
+                { account: to, amount: -share },
+                { account: userAccount(creatorUserId), amount: share },
+              ],
+              response: () => ({ paid: share, creatorUserId }),
+            });
+          }
+        }
+
         // The live stage renders the bouncing gift banner from this event. The
         // wallet does not know the live service exists; the gateway wires it.
         events.emit('gift', {
@@ -134,6 +176,114 @@ export function createWalletService({
         });
       }
       return result;
+    },
+
+    // --- subscriptions ----------------------------------------------------
+
+    /**
+     * Charge a plan and extend the entitlement window. Renewing before expiry
+     * stacks: the new month starts where the old one ends, so renewing early
+     * never costs days. The row update rides inside the charge's transaction -
+     * a subscription that charged but did not extend cannot exist.
+     */
+    async subscribe(userId, input) {
+      const { plan, reference } = validate(input, {
+        plan: { type: 'string', required: true, enum: Object.keys(SUBSCRIPTION_PLANS) },
+        reference: { type: 'string', required: false, max: 80 },
+      });
+      const price = SUBSCRIPTION_PLANS[plan];
+      const account = userAccount(userId);
+      const balance = await balanceOf(account);
+      if (balance < price.cost) {
+        throw paymentRequired(`Insufficient balance. The ${plan} plan costs ${price.cost} Coins.`, {
+          balance, required: price.cost, shortfall: price.cost - balance, plan,
+        });
+      }
+
+      const result = await post({
+        kind: 'subscription',
+        reference,
+        actor: userId,
+        memo: `${plan} subscription`,
+        legs: [
+          { account, amount: -price.cost },
+          { account: TREASURY, amount: price.cost },
+        ],
+        response: async (txnId, now, t) => {
+          const current = await t.get(
+            'SELECT expires_at FROM subscriptions WHERE user_id = ? AND plan = ? ORDER BY expires_at DESC LIMIT 1',
+            userId, plan,
+          );
+          const startsFrom = Math.max(now, current?.expires_at ?? 0);
+          const expiresAt = startsFrom + SUBSCRIPTION_PERIOD_MS;
+          await t.run(
+            'INSERT INTO subscriptions (id, user_id, plan, started_at, expires_at, cost, txn_id, created_at) VALUES (?,?,?,?,?,?,?,?)',
+            `sub_${runtime.uuid()}`, userId, plan, now, expiresAt, price.cost, txnId, now,
+          );
+          return { plan, expiresAt, cost: price.cost, balance: balance - price.cost };
+        },
+      });
+
+      // The viewer plan's included allowance, credited straight back so it can
+      // be gifted onward. Its own transaction, keyed off the charge, so a
+      // replayed subscribe cannot mint the allowance twice.
+      if (!result.replayed && price.allowance > 0) {
+        await post({
+          kind: 'reward',
+          reference: `${result.transactionId}-allowance`,
+          actor: userId,
+          memo: `${plan} subscription allowance`,
+          legs: [
+            { account, amount: price.allowance },
+            { account: TREASURY, amount: -price.allowance },
+          ],
+          response: () => ({ credited: price.allowance }),
+        });
+      }
+      return { ...result, allowance: price.allowance, balance: result.balance + (result.replayed ? 0 : price.allowance) };
+    },
+
+    async subscriptionStatus(userId) {
+      const now = runtime.now();
+      const rows = await store.all(
+        `SELECT plan, MAX(expires_at) AS "expiresAt" FROM subscriptions WHERE user_id = ? GROUP BY plan`,
+        userId,
+      );
+      const plans = {};
+      for (const plan of Object.keys(SUBSCRIPTION_PLANS)) {
+        const row = rows.find((r) => r.plan === plan);
+        plans[plan] = row
+          ? { active: row.expiresAt > now, expiresAt: row.expiresAt, cost: SUBSCRIPTION_PLANS[plan].cost }
+          : { active: false, expiresAt: null, cost: SUBSCRIPTION_PLANS[plan].cost };
+      }
+      return { plans, at: now };
+    },
+
+    /** Port for the creator surface's publish gate. */
+    async subscriptionActive(userId, plan) {
+      const row = await store.get(
+        'SELECT MAX(expires_at) AS latest FROM subscriptions WHERE user_id = ? AND plan = ?',
+        userId, plan,
+      );
+      return Boolean(row?.latest && row.latest > runtime.now());
+    },
+
+    /** Port for the task bounty: approval pays, idempotently by reference. */
+    async payBounty(userId, amount, reference, memo) {
+      if (!userId) throw badRequest('That task has no assignee to pay.');
+      const account = userAccount(userId);
+      const opening = await balanceOf(account);
+      return post({
+        kind: 'reward',
+        reference,
+        actor: 'system:tasks',
+        memo: memo ?? 'Task bounty',
+        legs: [
+          { account, amount },
+          { account: TREASURY, amount: -amount },
+        ],
+        response: () => ({ credited: amount, balance: opening + amount }),
+      });
     },
 
     async credit(userId, input) {

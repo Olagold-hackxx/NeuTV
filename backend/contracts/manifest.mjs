@@ -35,6 +35,7 @@ export const ROUTES = [
   { service: 'identity', method: 'POST', path: '/identity/logout',               auth: 'required', summary: 'Revoke the current session.' },
   { service: 'identity', method: 'GET',  path: '/identity/me',                   auth: 'required', summary: 'Current viewer, badge and granted scopes.' },
   { service: 'identity', method: 'GET',  path: '/identity/session',              auth: 'optional', summary: 'Session probe. Never 401s; reports guest state.' },
+  { service: 'identity', method: 'PUT',  path: '/admin/creators/:userId',        auth: 'admin',    summary: 'Grant or revoke creator standing. Admins stay config-only.' },
 
   // --- wallet: KashCoin balance, ledger, gifting ---------------------------
   { service: 'wallet', method: 'GET',  path: '/wallet',        auth: 'required', summary: 'Balance. Opens at 0, no sign-in bonus.' },
@@ -42,6 +43,8 @@ export const ROUTES = [
   { service: 'wallet', method: 'GET',  path: '/wallet/ledger', auth: 'required', summary: 'Double-entry ledger for this viewer.' },
   { service: 'wallet', method: 'POST', path: '/wallet/tip',    auth: 'required', summary: 'Spend coins on a gift to a stream or creator.' },
   { service: 'wallet', method: 'POST', path: '/wallet/credit', auth: 'required', summary: 'Credit coins (topup/reward). Idempotent by reference.' },
+  { service: 'wallet', method: 'POST', path: '/subscriptions',    auth: 'required', summary: 'Buy or renew a viewer/creator plan with KashCoin.' },
+  { service: 'wallet', method: 'GET',  path: '/subscriptions/me', auth: 'required', summary: 'This viewer subscription windows and plan prices.' },
 
   // --- social: the official announcements feed -----------------------------
   { service: 'social', method: 'GET',  path: '/social/posts',                auth: 'optional', summary: 'Feed, filterable by product, cursor paginated.' },
@@ -123,13 +126,36 @@ export const ROUTES = [
   { service: 'admin', method: 'GET',    path: '/videos',                     auth: 'none',  summary: 'Every published video, newest first.' },
   { service: 'admin', method: 'GET',    path: '/videos/:videoId',            auth: 'none',  summary: 'A published video, for stage playback.' },
 
+  // --- the creator surface: publish to the spotlight, never the stage ------
+  { service: 'admin', method: 'GET',    path: '/creator/videos',                            auth: 'creator', summary: 'This creator channel: every video, any status.' },
+  { service: 'admin', method: 'POST',   path: '/creator/videos',                            auth: 'creator', summary: 'Add a video to this creator channel.' },
+  { service: 'admin', method: 'PUT',    path: '/creator/videos/:videoId',                   auth: 'creator', summary: 'Edit or publish a video on this creator channel.' },
+  { service: 'admin', method: 'PUT',    path: '/creator/videos/:videoId/file',              auth: 'creator', summary: 'Upload the file for an owned video. Raw binary body.', raw: true },
+  { service: 'admin', method: 'POST',   path: '/creator/videos/:videoId/upload-signature',  auth: 'creator', summary: 'Direct-to-storage credentials for an owned video.' },
+  { service: 'admin', method: 'POST',   path: '/creator/videos/:videoId/upload-complete',   auth: 'creator', summary: 'Record a direct upload that landed in storage.' },
+  { service: 'admin', method: 'GET',    path: '/creator/live',                              auth: 'creator', summary: 'This creator channel live sessions.' },
+  { service: 'admin', method: 'POST',   path: '/creator/live',                              auth: 'creator', summary: 'Create a spotlight live session. Never the main stage.' },
+  { service: 'admin', method: 'POST',   path: '/creator/live/:eventId/start',               auth: 'creator', summary: 'Go live on this creator channel only.' },
+  { service: 'admin', method: 'POST',   path: '/creator/live/:eventId/stop',                auth: 'creator', summary: 'End this creator channel broadcast.' },
+  { service: 'admin', method: 'PUT',    path: '/creator/live/:eventId/segment',             auth: 'creator', summary: 'Append one recorded segment to an owned session.', raw: true },
+  { service: 'admin', method: 'GET',    path: '/creator/tasks',                             auth: 'creator', summary: 'Open briefs plus the tasks this creator holds.' },
+  { service: 'admin', method: 'POST',   path: '/creator/tasks/:taskId/accept',              auth: 'creator', summary: 'Take an open brief. First accept wins.' },
+  { service: 'admin', method: 'POST',   path: '/creator/tasks/:taskId/deliver',             auth: 'creator', summary: 'Deliver an owned video against an accepted brief.' },
+  { service: 'admin', method: 'GET',    path: '/admin/tasks',                               auth: 'admin',   summary: 'Every commissioned brief, filterable by status.' },
+  { service: 'admin', method: 'POST',   path: '/admin/tasks',                               auth: 'admin',   summary: 'Post a brief with a KashCoin bounty.' },
+  { service: 'admin', method: 'POST',   path: '/admin/tasks/:taskId/approve',               auth: 'admin',   summary: 'Approve a delivery: publishes it and pays the bounty.' },
+  { service: 'admin', method: 'POST',   path: '/admin/tasks/:taskId/reject',                auth: 'admin',   summary: 'Reject a delivery. The creator keeps the video.' },
+  // Public: the spotlight rail and the creator videos its cards promote.
+  { service: 'admin', method: 'GET',    path: '/creators/spotlights',                       auth: 'none',    summary: 'Live creator channels and their latest published work.' },
+  { service: 'admin', method: 'GET',    path: '/creators/videos/:videoId',                  auth: 'none',    summary: 'A published creator video, for stage takeovers.' },
+
   // --- moderation: the gate every piece of user text passes through --------
   { service: 'moderation', method: 'POST', path: '/moderation/check',  auth: 'optional', summary: 'Classify user text against the deterministic ruleset.' },
   { service: 'moderation', method: 'GET',  path: '/moderation/health', auth: 'none',     summary: 'Ruleset version, thresholds and decision counts.' },
 
 ];
 
-export const AUTH_LEVELS = ['none', 'optional', 'required', 'admin'];
+export const AUTH_LEVELS = ['none', 'optional', 'required', 'creator', 'admin'];
 
 export const SERVICES = [...new Set(ROUTES.map((r) => r.service))];
 
