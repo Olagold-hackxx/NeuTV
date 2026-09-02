@@ -20,7 +20,14 @@
 	}
 
 	handle_path /hls/* {
-		reverse_proxy mediamtx:8888
+		reverse_proxy mediamtx:8888 {
+			# handle_path strips /hls before MediaMTX sees the request, so its
+			# redirects come back root-relative - Location: /<path>/index.m3u8 -
+			# and the browser follows them straight into the API's 404. Every
+			# HLS session begins with such a redirect (the cookie-support
+			# probe), so without this rewrite playback never starts.
+			header_down Location ^/ /hls/
+		}
 	}
 
 	handle {

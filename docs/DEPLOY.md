@@ -240,6 +240,118 @@ Nothing host-specific goes in `deploy/mediamtx.yml` — it has no variable
 substitution. Override with `MTX_<NAME>` environment variables in compose, the
 way `MTX_WEBRTCADDITIONALHOSTS` supplies the public hostname.
 
+### Fanning live out through Fastly
+
+Direct `/hls` from the VPS is fine for hundreds of viewers. Beyond that, the
+origin must serve each segment once, not once per viewer — which is the whole
+reason playback is HLS-over-HTTPS: it is the only transport a CDN can cache.
+
+The live CDN gets **its own hostname**. One hostname, one system — the rule at
+the top of this document. `cdn.` fronts Cloudinary and cannot also front the
+VPS.
+
+**1. A secret, so the CDN can introduce itself.** MediaMTX greets each new HLS
+session with a cookie-support probe (a 302 adding `?cookieCheck=1`). Cached by
+a CDN, that probe would be handed to every viewer; stripped, it loops. A fetch
+carrying `Authorization: Bearer <secret>` skips the probe entirely — that is
+what `hlsCDNSecret` is for.
+
+```bash
+openssl rand -hex 24    # keep it; it goes in .env AND in the Fastly snippet
+```
+
+In `.env`:
+
+```bash
+NEUTV_HLS_CDN_SECRET=<that secret>
+```
+
+**2. The Fastly service.** Create a new service:
+
+| Setting | Value |
+| --- | --- |
+| Domain | `live.example.com` |
+| Origin host | `api.example.com`, port 443, TLS on |
+| SNI / cert hostname | `api.example.com` |
+| **Override host** | `api.example.com` — without this the origin sees the CDN hostname and Caddy has no site for it |
+
+**3. VCL snippets.** Four of them. As before: set **Placement** to the phase
+named — never "none" — and paste the *body only*, no `sub vcl_... { }` wrapper.
+
+`recv`:
+
+```vcl
+# This service serves live HLS and nothing else - it must not be usable
+# as a free proxy to the rest of the API.
+if (req.url.path !~ "^/hls/") {
+  error 403 "live CDN serves /hls only";
+}
+# Viewer cookies must not fragment the cache, and a viewer-supplied
+# Authorization must not impersonate the CDN at the origin.
+unset req.http.Cookie;
+unset req.http.Authorization;
+```
+
+`miss` — and the same single line again as a `pass` snippet, because a request
+that skips the cache still has to introduce itself:
+
+```vcl
+set bereq.http.Authorization = "Bearer <that secret>";
+```
+
+`fetch`:
+
+```vcl
+unset beresp.http.Set-Cookie;
+if (req.url.ext == "m3u8") {
+  # The playlist is the only thing that changes. One second keeps every
+  # viewer within a segment of the edge while collapsing their requests
+  # into one origin fetch.
+  set beresp.ttl = 1s;
+  set beresp.stale_while_revalidate = 2s;
+} else {
+  # Segments and parts are immutable: a given URL only ever holds one
+  # thing, and after the live window nobody asks again.
+  set beresp.ttl = 1h;
+}
+```
+
+**4. DNS, then verify before flipping anything:**
+
+```
+live.example.com    CNAME    <your-service>.map.fastly.net
+```
+
+```bash
+npm run check:domain -- --api api.example.com --cdn live.example.com
+curl -sI "https://live.example.com/hls/nothing/index.m3u8"   # 404 - NOT a 302
+```
+
+A 302 with `cookieCheck` from that curl means the secret is not reaching the
+origin: the `miss`/`pass` snippets are missing, or the secret differs from
+`.env`.
+
+**5. Point playback at it.** In `.env`:
+
+```bash
+NEUTV_MEDIAMTX_HLS_BASE=https://live.example.com/hls
+```
+
+`docker compose up -d --build`. Every event — existing ones included — serves
+CDN URLs immediately, because playback endpoints are re-derived from this value
+on every read. WHIP stays on the api hostname: ingest is one broadcaster, and
+WebRTC cannot be cached.
+
+While on air, prove the cache is doing the work:
+
+```bash
+curl -sI "https://live.example.com/hls/<path>/index.m3u8" | grep -i x-cache
+```
+
+Fetch a segment URL from the playlist twice; the second must say `HIT`. Expect
+playback ~1–2s further behind than direct — that is the manifest TTL buying the
+million-viewer fan-out.
+
 Then `docker compose up -d --build`. A restart is not enough: it reuses the
 image, so a code or config change does not take.
 

@@ -36,7 +36,11 @@ services:
       # Live: OBS publishes RTMP to MediaMTX, viewers get HLS through Caddy.
       NEUTV_LIVE_DRIVER: ${NEUTV_LIVE_DRIVER:-mediamtx}
       NEUTV_MEDIAMTX_RTMP_URL: rtmp://${API_DOMAIN:?set API_DOMAIN}:1935
-      NEUTV_MEDIAMTX_HLS_BASE: https://${API_DOMAIN}/hls
+      # Where viewers fetch live HLS. Defaults to the origin; point it at the
+      # live CDN hostname once Fastly fronts /hls, and every event - existing
+      # ones included - serves CDN URLs on the next restart, because playback
+      # endpoints are re-derived from this value at read time.
+      NEUTV_MEDIAMTX_HLS_BASE: ${NEUTV_MEDIAMTX_HLS_BASE:-https://${API_DOMAIN}/hls}
       # WHIP: the studio publishes WebRTC straight to MediaMTX, so ingest is
       # sub-second instead of one MediaRecorder chunk behind. The API only
       # hands a whipUrl to the studio when this is set, so leaving it blank
@@ -83,6 +87,11 @@ services:
       # variable substitution inside its config file, so anything host-specific
       # is passed as MTX_<NAME> instead.
       MTX_WEBRTCADDITIONALHOSTS: ${API_DOMAIN:?set API_DOMAIN}
+      # MediaMTX greets each new HLS session with a cookie-support probe - a
+      # 302 that a CDN would cache or strip until nothing plays. A fetch that
+      # arrives with "Authorization: Bearer <this secret>" is trusted as the
+      # CDN and skips the probe entirely. Empty disables the bypass.
+      MTX_HLSCDNSECRET: ${NEUTV_HLS_CDN_SECRET:-}
     volumes:
       - ./deploy/mediamtx.yml:/mediamtx.yml:ro
     ports:
