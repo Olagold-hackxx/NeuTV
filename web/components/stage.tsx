@@ -84,11 +84,22 @@ function attachHls(el: HTMLVideoElement, url: string, onError: (msg: string) => 
   }
   let destroyed = false;
   let hls: any = null;
+  let attempts = 0;
   const start = () => {
     if (destroyed || !window.Hls) return;
     hls = new window.Hls({ lowLatencyMode: true });
     hls.on(window.Hls.Events.ERROR, (_e: unknown, data: { fatal?: boolean }) => {
-      if (data?.fatal) el.src = url;
+      if (!data?.fatal || destroyed) return;
+      // A live origin has moments of legitimate failure: the HLS muxer dies
+      // when lossy ingest corrupts too many frames, and every request until
+      // its recreation is a 500. Giving up on the first one turned a two-
+      // second gap into a permanently black stage. Retry with backoff; hand
+      // over to the native player only once that has genuinely failed.
+      hls?.destroy?.();
+      hls = null;
+      attempts += 1;
+      if (attempts <= 5) setTimeout(start, Math.min(1000 * attempts, 3000));
+      else el.src = url;
     });
     hls.loadSource(url);
     hls.attachMedia(el);

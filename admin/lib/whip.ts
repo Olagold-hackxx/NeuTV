@@ -41,7 +41,14 @@ export async function publishWhip(
   // browser the operator opened, which is not something to leave to chance.
   const video = stream.getVideoTracks()[0];
   if (video) {
-    const sender = pc.addTransceiver(video, { direction: 'sendonly', streams: [stream] });
+    const sender = pc.addTransceiver(video, {
+      direction: 'sendonly',
+      streams: [stream],
+      // The cap rides in the transceiver init because setParameters before
+      // negotiation is unreliable across browsers; the setParameters below is
+      // the belt to this suspender.
+      sendEncodings: [{ maxBitrate: 1_200_000 }],
+    });
     const capabilities = RTCRtpSender.getCapabilities('video');
     const h264 = capabilities?.codecs.filter((c) => c.mimeType.toLowerCase() === 'video/h264') ?? [];
     if (h264.length === 0) {
@@ -56,6 +63,19 @@ export async function publishWhip(
     if (typeof sender.setCodecPreferences === 'function') {
       sender.setCodecPreferences([...h264, ...repair]);
     }
+    // Cap the uplink. The ingest logs show steady RTP loss from real
+    // broadcasts, and each lost fragment costs a whole frame; enough of them
+    // and the HLS muxer cannot recover timestamps and dies, taking playback
+    // with it. An unconstrained encoder pushes a weak connection into exactly
+    // that loss. 1.2 Mbps is plenty for 720p talking-head content, and a
+    // stream that degrades resolution under pressure beats one that corrupts.
+    try {
+      const params = sender.sender.getParameters();
+      params.encodings = params.encodings?.length ? params.encodings : [{}];
+      params.encodings[0].maxBitrate = 1_200_000;
+      params.degradationPreference = 'maintain-framerate';
+      await sender.sender.setParameters(params);
+    } catch { /* older browsers; the cap is a mitigation, not a requirement */ }
   }
   for (const track of stream.getAudioTracks()) {
     pc.addTransceiver(track, { direction: 'sendonly', streams: [stream] });

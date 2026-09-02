@@ -25,6 +25,15 @@ hlsVariant: lowLatency
 # browser without a plugin. Sub-second needs WebRTC and a different player.
 hlsSegmentCount: 7
 hlsSegmentDuration: 1s
+# Parts jitter with the publisher's uplink; a roomier floor stops the
+# "part duration changed" churn that upsets iOS clients.
+hlsPartDuration: 500ms
+# Mux from the moment a stream publishes, not from the first viewer request.
+# The muxer dies when lossy WebRTC input corrupts too many frames ("unable to
+# extract DTS"), and every playlist request between death and recreation is a
+# 500. Always remuxing shrinks that window to nothing a retrying player will
+# notice - and removes the first-viewer wake-up delay besides.
+hlsAlwaysRemux: yes
 hlsAllowOrigin: "*"
 
 # Everything else off. Each enabled protocol is another listener to reason
