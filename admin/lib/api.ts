@@ -118,3 +118,19 @@ export const getLiveEvent = (id: string) => call<{ event: LiveEvent }>(`/admin/l
 // Re-exported so pages import their types from one place.
 import type { Viewer } from './types';
 export type { Viewer };
+
+export const getTasks = () => call<{ tasks: AdminTask[] }>('/admin/tasks');
+
+export type AdminTask = {
+  id: string;
+  title: string;
+  brief: string;
+  productId: string;
+  bounty: number;
+  deadline: number | null;
+  status: 'open' | 'accepted' | 'delivered' | 'approved' | 'rejected';
+  assigneeId: string | null;
+  deliveryVideoId: string | null;
+  createdAt: number;
+  updatedAt: number;
+};

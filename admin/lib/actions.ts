@@ -229,3 +229,54 @@ export async function cancelLiveEvent(id: string): Promise<ActionResult> {
     return fail(err);
   }
 }
+
+// --- the creator surface ---------------------------------------------------
+
+export async function setCreatorRole(userId: string, role: 'creator' | 'viewer'): Promise<ActionResult> {
+  try {
+    await call(`/admin/creators/${encodeURIComponent(userId)}`, { method: 'PUT', body: { role } });
+    revalidatePath('/viewers');
+    return { ok: true };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+export async function createTask(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {
+  const bounty = Number(form.get('bounty'));
+  try {
+    await call('/admin/tasks', {
+      method: 'POST',
+      body: {
+        title: String(form.get('title') ?? '').trim(),
+        brief: String(form.get('brief') ?? '').trim(),
+        productId: String(form.get('productId') ?? 'neutv'),
+        bounty: Number.isFinite(bounty) ? bounty : 0,
+      },
+    });
+    revalidatePath('/tasks');
+    return { ok: true };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+export async function approveTask(taskId: string): Promise<ActionResult> {
+  try {
+    await call(`/admin/tasks/${encodeURIComponent(taskId)}/approve`, { method: 'POST', body: {} });
+    revalidatePath('/tasks');
+    return { ok: true };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+export async function rejectTask(taskId: string): Promise<ActionResult> {
+  try {
+    await call(`/admin/tasks/${encodeURIComponent(taskId)}/reject`, { method: 'POST', body: {} });
+    revalidatePath('/tasks');
+    return { ok: true };
+  } catch (err) {
+    return fail(err);
+  }
+}

@@ -89,6 +89,12 @@ export function Reel({ spotlights, onSelect }: ReelProps) {
 
                 <span className="absolute top-3 left-3 right-3 flex items-center justify-between z-20">
                   <span className="flex items-center gap-2 min-w-0">
+                    {cr.isLive ? (
+                      <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-600 text-white text-[9px] font-black flex-shrink-0">
+                        <span className="w-1.5 h-1.5 rounded-full bg-white animate-live" aria-hidden />
+                        LIVE
+                      </span>
+                    ) : null}
                     {cr.avatar ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={cr.avatar} alt="" className="w-7 h-7 rounded-full object-cover border-2 border-white/20 flex-shrink-0" />

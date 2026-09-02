@@ -1,5 +1,6 @@
 import { getViewers } from '@/lib/api';
 import { coins, timestamp } from '@/lib/format';
+import { CreatorToggle } from './creator-toggle';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,6 +32,7 @@ export default async function ViewersPage() {
                 <th className="num-col">Coins spent</th>
                 <th className="num-col">Gifts</th>
                 <th>Joined</th>
+                <th>Creator standing</th>
               </tr>
             </thead>
             <tbody>
@@ -46,7 +48,9 @@ export default async function ViewersPage() {
                   <td>
                     {v.role === 'admin'
                       ? <span className="pill pill-admin">admin</span>
-                      : <span className="pill">{v.role}</span>}
+                      : v.role === 'creator'
+                        ? <span className="pill pill-published">creator</span>
+                        : <span className="pill">{v.role}</span>}
                   </td>
                   <td>
                     <span className="pill">{v.authMethod}</span>
@@ -62,6 +66,7 @@ export default async function ViewersPage() {
                   <td className="num num-col">{coins(v.coinsSpent)}</td>
                   <td className="num num-col">{v.gifts || '—'}</td>
                   <td className="mono">{timestamp(v.createdAt)}</td>
+                  <td><CreatorToggle userId={v.id} role={v.role} /></td>
                 </tr>
               ))}
             </tbody>

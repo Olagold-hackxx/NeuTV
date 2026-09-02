@@ -198,6 +198,9 @@ export class NeuTVClient {
   liveEvent() {
     return this.get<{ event: import('./types').LiveEvent | null }>('/live-event/current', false);
   }
+  creatorSpotlights() {
+    return this.get<{ spotlights: import('./types').Spotlight[] }>('/creators/spotlights', false);
+  }
   takeStage(videoId: string, durationMs?: number) {
     return this.post('/live/stage', { videoId, viewerId: this.viewerId(), scope: 'viewer', durationMs });
   }

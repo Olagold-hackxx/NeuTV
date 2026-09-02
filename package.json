@@ -19,6 +19,9 @@
     "web": "npm run dev --prefix web",
     "web:build": "npm run build --prefix web",
     "web:start": "npm start --prefix web",
+    "portal": "npm run dev --prefix portal",
+    "portal:build": "npm run build --prefix portal",
+    "portal:start": "npm start --prefix portal",
     "admin:create": "npm run admin:create --prefix backend --"
   }
 }

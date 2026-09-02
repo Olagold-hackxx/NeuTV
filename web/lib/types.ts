@@ -94,6 +94,12 @@ export type Spotlight = {
   videoMp4?: string | null;
   views?: string;
   duration?: string;
+  // Real creator channels, served by /creators/spotlights.
+  creator?: boolean;
+  isLive?: boolean;
+  liveEventId?: string | null;
+  liveTransport?: 'segments' | 'whip' | null;
+  livePlaybackUrl?: string | null;
 };
 
 export type ScheduleItem = {
@@ -165,6 +171,9 @@ export type StageCard = {
   isTakeover?: boolean;
   isLiveEvent?: boolean;
   isSegmented?: boolean;
+  // Set when the takeover is creator content: gifts sent while watching it
+  // target the creator, so the 70/30 split pays them.
+  creatorHandle?: string;
 };
 
 export type SessionUser = {
@@ -199,6 +208,9 @@ export type Bootstrap = {
 export type AppData = {
   bootstrap: Bootstrap;
   libraryPosts: Post[];
+  // Live creator channels and their latest published work, ahead of the
+  // seeded editorial cards in the rail.
+  creatorSpotlights: Spotlight[];
   apiBase: string;
   now: number;
 };

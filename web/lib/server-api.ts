@@ -80,6 +80,17 @@ export async function loadAppData(): Promise<AppData | null> {
     videos = [];
   }
 
+  // Real creator channels for the spotlight rail. Also non-fatal: the seeded
+  // editorial cards still fill the rail on a fresh install.
+  let creatorSpotlights: import('./types').Spotlight[] = [];
+  try {
+    ({ spotlights: creatorSpotlights } = await getJson<{ spotlights: import('./types').Spotlight[] }>(
+      '/creators/spotlights',
+    ));
+  } catch {
+    creatorSpotlights = [];
+  }
+
   // Only the slices the screen renders cross to the client — the raw
   // bootstrap carries several unrendered collections that would otherwise be
   // serialized twice (HTML + flight data).
@@ -97,6 +108,7 @@ export async function loadAppData(): Promise<AppData | null> {
   return {
     bootstrap: trimmed,
     libraryPosts: sanitizeAssets(videos.map((v) => toFeedPost(v, bootstrap.PRODUCTS ?? []))),
+    creatorSpotlights: sanitizeAssets(creatorSpotlights),
     // What the *browser* should call. In production the public hostname can
     // differ from the address this server render used.
     apiBase: process.env.NEXT_PUBLIC_NEUTV_API_BASE ?? API_BASE,

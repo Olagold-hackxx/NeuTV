@@ -64,7 +64,9 @@ function toStageCard(raw: Record<string, unknown> | undefined | null, fallback?:
 }
 
 export function App({ data }: { data: AppData }) {
-  const { bootstrap, libraryPosts, apiBase, now } = data;
+  const { bootstrap, libraryPosts, creatorSpotlights, apiBase, now } = data;
+  // Real creator channels lead the rail; the seeded editorial cards follow.
+  const [creatorSpots, setCreatorSpots] = useState<Spotlight[]>(creatorSpotlights ?? []);
   const client = useMemo(() => new NeuTVClient(apiBase), [apiBase]);
 
   const seedCard: StageCard = useMemo(
@@ -271,6 +273,18 @@ export function App({ data }: { data: AppData }) {
     const stopPresence = client.startPresence();
 
     const stopStream = client.subscribe({
+      'creator-live': (payload: { status: string; event?: { title?: string } }) => {
+        // A creator going on or off air redraws their spotlight card - and
+        // nothing else. The main stage is not involved by design.
+        if (payload.status === 'started' && payload.event?.title) {
+          showToast(`🔴 ${payload.event.title} is live in the spotlight`);
+        }
+        void sync(async () => {
+          const res = await client.creatorSpotlights();
+          setCreatorSpots(res.spotlights ?? []);
+          return res;
+        });
+      },
       'live-event': (payload: { status: string; event?: LiveEvent }) => {
         if (payload.status === 'started' && payload.event) {
           applyLiveEvent(payload.event);
@@ -320,12 +334,17 @@ export function App({ data }: { data: AppData }) {
   const takeStage = useCallback(
     (raw: Record<string, unknown>) => {
       const card = toStageCard(raw, stateRef.current.mainBroadcast);
-      if (!card?.videoUrl && !card?.youtubeId) return;
+      if (!card) return;
+      if (raw.creatorHandle) card.creatorHandle = String(raw.creatorHandle);
+      if (raw.isSegmented) card.isSegmented = true;
+      if (!card.videoUrl && !card.youtubeId && !card.isSegmented) return;
       setOverride({ ...card, isTakeover: true });
       setMuted(false);
       setActiveTab('tv');
       showToast('Now playing on the main stage 📺');
-      if (card.id) void sync(() => client.takeStage(card.id!));
+      // A creator live session is played directly - the server stage machine
+      // only resolves videos, so there is nothing to tell it.
+      if (card.id && !raw.localOnly) void sync(() => client.takeStage(card.id!));
     },
     [client, showToast],
   );
@@ -416,12 +435,16 @@ export function App({ data }: { data: AppData }) {
       for (let i = 0; i < 10; i++) setTimeout(() => spawnHeart(gift.emoji), i * 100);
       setGiftsOpen(false);
       showToast(`Sent ${gift.name} ${gift.emoji || '🎁'}! 🎉`);
+      // Watching creator content, the gift targets the creator - that is what
+      // routes their 70% share through the ledger. Otherwise it lands on the
+      // broadcast stream as before.
+      const watching = stateRef.current.override;
+      const target = watching?.creatorHandle
+        ? { type: 'creator', id: watching.creatorHandle }
+        : { type: 'stream', id: stateRef.current.mainBroadcast.id ?? 'main' };
       void sync(
         async () => {
-          const res = await client.tip(gift.id, {
-            type: 'stream',
-            id: stateRef.current.mainBroadcast.id ?? 'main',
-          });
+          const res = await client.tip(gift.id, target);
           setBalance(res.balance);
           return res;
         },
@@ -472,6 +495,21 @@ export function App({ data }: { data: AppData }) {
   }, []);
 
   const openSpotlight = useCallback((cr: Spotlight) => {
+    // A live creator channel goes straight to the stage: the broadcast is the
+    // point, and a modal in front of it would only be in the way.
+    if (cr.isLive && cr.liveEventId) {
+      takeStage({
+        id: cr.liveEventId,
+        title: cr.title,
+        videoUrl: cr.livePlaybackUrl ?? null,
+        isSegmented: cr.liveTransport !== 'whip' && !cr.livePlaybackUrl?.includes('.m3u8'),
+        posterUrl: cr.thumbnail ?? null,
+        productId: cr.productId,
+        creatorHandle: cr.handle,
+        localOnly: true,
+      });
+      return;
+    }
     setSelectedVideo({
       id: cr.id,
       title: cr.title,
@@ -482,9 +520,14 @@ export function App({ data }: { data: AppData }) {
       productName: cr.product,
       views: cr.views,
       creator: cr.name,
-      raw: { ...cr, youtubeId: cr.videoMp4 ? null : cr.videoUrl, videoMp4: cr.videoMp4 },
+      raw: {
+        ...cr,
+        youtubeId: cr.videoMp4 ? null : cr.videoUrl,
+        videoMp4: cr.videoMp4,
+        ...(cr.creator ? { creatorHandle: cr.handle } : {}),
+      },
     });
-  }, []);
+  }, [takeStage]);
 
   const stageCard = override ?? liveEvent ?? mainBroadcast;
   const gateVisible = authResolved && !celebration && ((!user && !isGuest) || gateOpen);
@@ -574,7 +617,7 @@ export function App({ data }: { data: AppData }) {
         ) : null}
 
         {activeTab === 'tv' || activeTab === 'foryou' ? (
-          <Reel spotlights={bootstrap.CREATOR_SPOTLIGHTS ?? []} onSelect={openSpotlight} />
+          <Reel spotlights={[...creatorSpots, ...(bootstrap.CREATOR_SPOTLIGHTS ?? [])]} onSelect={openSpotlight} />
         ) : null}
 
         <Feed

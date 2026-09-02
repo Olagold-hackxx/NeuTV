@@ -4,7 +4,6 @@ import './globals.css';
 import { NavLink } from './nav-link';
 import { getSession } from '@/lib/api';
 import { signOut } from '@/lib/actions';
-import { Logo } from './logo';
 
 const jakarta = Plus_Jakarta_Sans({
   subsets: ['latin'],
@@ -12,29 +11,23 @@ const jakarta = Plus_Jakarta_Sans({
 });
 
 export const metadata: Metadata = {
-  title: 'NEU Network — Back Office',
-  description: 'Video library, programming and CRM for NEU Network.',
+  title: 'NEU Network — Creators',
+  description: 'Tasks, publishing and earnings for NEU Network creators.',
 };
 
-// Nothing here may be cached: the roster, the queue and what is on air all
-// change from outside this app.
+// Nothing here may be cached: briefs, live state and earnings all change from
+// outside this app.
 export const dynamic = 'force-dynamic';
 
 const LINKS = [
   { href: '/', label: 'Dashboard' },
-  { href: '/videos', label: 'Videos' },
-  { href: '/live', label: 'Go Live' },
-  { href: '/programme', label: 'Programme' },
-  { href: '/viewers', label: 'Viewers' },
-  { href: '/moderation', label: 'Moderation' },
   { href: '/tasks', label: 'Tasks' },
+  { href: '/publish', label: 'Publish' },
 ];
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const user = await getSession();
 
-  // The login page renders its own shell. Without a session there is no nav to
-  // draw, so the layout gets out of the way.
   if (!user) {
     return (
       <html lang="en" className={jakarta.variable}>
@@ -49,20 +42,27 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <div className="shell">
           <aside className="sidebar">
             <div>
-              <Logo width={96} />
-              <div className="brand-sub">Back Office</div>
+              <div className="brand">
+                <span className="brand-neu gradient-text">NEU</span>
+                <span className="brand-tv">CREATORS</span>
+              </div>
+              <div className="brand-sub">Creators Portal</div>
             </div>
 
             <nav className="nav">
               {LINKS.map((link) => (
                 <NavLink key={link.href} href={link.href}>{link.label}</NavLink>
               ))}
+              {/* The creator community lives on WorldSpace, not here. */}
+              <a href="https://www.tsionark.com" target="_blank" rel="noreferrer">
+                Community <span className="mono">WorldSpace ↗</span>
+              </a>
             </nav>
 
             <div className="sidebar-foot">
               <div className="who">
                 <div className="who-name">{user.name}</div>
-                <div className="who-role">{user.role}</div>
+                <div className="who-role">{user.role === 'creator' ? 'Creator' : user.role}</div>
               </div>
               <form action={signOut}>
                 <button type="submit" className="btn btn-sm btn-block">Sign out</button>

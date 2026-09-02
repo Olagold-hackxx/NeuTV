@@ -193,11 +193,13 @@ export function Stage(props: StageProps) {
   };
 
   let player: React.ReactNode;
-  if (isLiveEvent && card.isSegmented) {
+  // A segmented or HLS source can be the network's live event OR a creator's
+  // spotlight session playing as a takeover - the same players serve both.
+  if (card.isSegmented && (isLiveEvent || isTakeover)) {
     player = (
       <video key={`seg-${card.id}`} ref={segVideoRef} muted={muted} autoPlay playsInline className="w-full h-full object-cover border-0" />
     );
-  } else if (isLiveEvent && isHls(card.videoUrl)) {
+  } else if ((isLiveEvent || isTakeover) && isHls(card.videoUrl)) {
     player = (
       <video key={`hls-${card.id}`} ref={hlsVideoRef} muted={muted} autoPlay playsInline className="w-full h-full object-cover border-0" />
     );
