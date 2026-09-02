@@ -14,7 +14,7 @@ type TopBarProps = {
 };
 
 const TABS: { tab: MainTab; label: string }[] = [
-  { tab: 'tv', label: 'NEU TV Live' },
+  { tab: 'tv', label: 'NEU Network Live' },
   { tab: 'foryou', label: 'For You Feed' },
   { tab: 'following', label: 'Following' },
   { tab: 'saved', label: 'Saved' },
@@ -64,8 +64,8 @@ export function TopBar({ activeTab, onSelectTab, search, onSearch }: TopBarProps
           type="search"
           value={search}
           onChange={(e) => onSearch(e.target.value)}
-          placeholder="Search NEU TV broadcasts, signals & videos..."
-          aria-label="Search NEU TV broadcasts"
+          placeholder="Search NEU Network broadcasts, signals & videos..."
+          aria-label="Search NEU Network broadcasts"
           className="w-full bg-[#141418]/70 border border-white/15 rounded-full pl-9 pr-4 py-1.5 text-xs text-white placeholder-white/40 outline-none focus:border-white/25 focus:bg-[#141418] transition"
         />
         {search ? (

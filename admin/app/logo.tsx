@@ -1,7 +1,7 @@
 import Image from 'next/image';
 
 /**
- * The NEU TV mark: the supplied brand banner, used whole.
+ * The NEU Network mark: the supplied brand banner, used whole.
  *
  * Same lockup as the viewer app. The back office is a different surface, not a
  *
@@ -22,7 +22,7 @@ export function Logo({ width = 150, compact = false }: { width?: number; compact
     return (
       <Image
         src="/logos/neu-cube-n.png"
-        alt="NEU TV"
+        alt="NEU Network"
         width={28}
         height={28}
         priority
@@ -35,7 +35,7 @@ export function Logo({ width = 150, compact = false }: { width?: number; compact
   return (
     <Image
       src="/logos/neu-brand-banner-alpha.png"
-      alt="NEU TV"
+      alt="NEU Network"
       width={width}
       height={height}
       priority

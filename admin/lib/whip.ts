@@ -30,7 +30,36 @@ export async function publishWhip(
     iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
   });
 
-  for (const track of stream.getTracks()) pc.addTrack(track, stream);
+  // The video codec has to be H264, and has to be said out loud.
+  //
+  // Nothing here used to state a preference, so the browser picked: Chrome
+  // offered VP8, Safari offered H264, and MediaMTX accepted whichever arrived.
+  // Ingest looked healthy either way - "stream is available and online, 2
+  // tracks (Opus, VP8)" - but VP8 cannot be carried by HLS, and neither hls.js
+  // nor Safari can decode it, so the VP8 half of the time the viewer got
+  // nothing at all. Whether a broadcast reached anyone depended on which
+  // browser the operator opened, which is not something to leave to chance.
+  const video = stream.getVideoTracks()[0];
+  if (video) {
+    const sender = pc.addTransceiver(video, { direction: 'sendonly', streams: [stream] });
+    const capabilities = RTCRtpSender.getCapabilities('video');
+    const h264 = capabilities?.codecs.filter((c) => c.mimeType.toLowerCase() === 'video/h264') ?? [];
+    if (h264.length === 0) {
+      // Better to take the segment path, which works, than to publish
+      // something no viewer can decode.
+      throw new Error('This browser cannot encode H264, which live playback requires.');
+    }
+    // Retransmission and error correction stay in the list: the ingest logs
+    // show real packet loss, and rtx is what repairs it.
+    const repair = capabilities?.codecs.filter((c) =>
+      ['video/rtx', 'video/red', 'video/ulpfec'].includes(c.mimeType.toLowerCase())) ?? [];
+    if (typeof sender.setCodecPreferences === 'function') {
+      sender.setCodecPreferences([...h264, ...repair]);
+    }
+  }
+  for (const track of stream.getAudioTracks()) {
+    pc.addTransceiver(track, { direction: 'sendonly', streams: [stream] });
+  }
   if (onStateChange) pc.onconnectionstatechange = () => onStateChange(pc.connectionState);
 
   const offer = await pc.createOffer();

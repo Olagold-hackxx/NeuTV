@@ -1,7 +1,7 @@
 import Image from 'next/image';
 
 /**
- * The NEU TV mark.
+ * The NEU Network mark.
  *
  * neu-brand-banner.png is the finished lockup: the N-E-U cube tiles over the
  * "NEW ECONOMY UNVEIL NETWORK" bar. It is used whole rather than rebuilt from
@@ -41,7 +41,7 @@ export function Logo({
     return (
       <Image
         src="/logos/neu-cube-n.png"
-        alt="NEU TV"
+        alt="NEU Network"
         width={28}
         height={28}
         priority={priority}
@@ -56,7 +56,7 @@ export function Logo({
   return (
     <Image
       src={BANNER.src}
-      alt="NEU TV"
+      alt="NEU Network"
       width={width}
       height={height}
       priority={priority}

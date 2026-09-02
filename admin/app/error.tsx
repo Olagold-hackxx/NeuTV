@@ -28,7 +28,7 @@ export default function Error({ error, reset }: { error: Error & { digest?: stri
   let explanation = 'Something failed while rendering this page.';
   if (looksUnreachable) {
     explanation =
-      'The NEU TV API is not responding, so this page had nothing to render. ' +
+      'The NEU Network API is not responding, so this page had nothing to render. ' +
       'Start the backend (npm start, port 4173) or wait for it to finish restarting, then try again.';
   } else if (looksLikeSkew) {
     explanation =

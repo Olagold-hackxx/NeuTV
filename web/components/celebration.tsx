@@ -71,7 +71,7 @@ export function Celebration({
           </span>
           <h2 className="text-2xl md:text-3xl font-black tracking-tight text-white">Welcome, {name}!</h2>
           <p className="text-xs md:text-sm text-white/60 font-medium max-w-sm mx-auto">
-            Your NEU Passport is active. You now have full access to NEU TV broadcasts and official hubs.
+            Your NEU Passport is active. You now have full access to NEU Network broadcasts and official hubs.
           </p>
         </div>
 

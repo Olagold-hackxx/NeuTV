@@ -14,7 +14,7 @@ export default function GlobalError({ error, reset }: { error: Error & { digest?
         fontFamily: '-apple-system, BlinkMacSystemFont, system-ui, sans-serif',
       }}>
         <div style={{ textAlign: 'center', padding: 32, maxWidth: 460 }}>
-          <h1 style={{ fontSize: 24, marginBottom: 10 }}>NEU TV back office failed to start</h1>
+          <h1 style={{ fontSize: 24, marginBottom: 10 }}>NEU Network back office failed to start</h1>
           <p style={{ opacity: 0.6, fontSize: 14, lineHeight: 1.5, marginBottom: 24 }}>
             The API may be unreachable. Check that it is running on port 4173.
           </p>

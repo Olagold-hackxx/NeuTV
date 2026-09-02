@@ -412,6 +412,29 @@ body {
   animation: scaleUp 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
+/* The KashCoin token: the platform's own currency stands in for the generic
+   ambient emoji. Sized in em so a parent's font-size scales it. */
+.kash-coin {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5em;
+  height: 1.5em;
+  border-radius: 9999px;
+  background: radial-gradient(circle at 35% 30%, #a8e4ff 0%, #38b6ff 55%, #0070f3 100%);
+  color: #ffffff;
+  font-weight: 900;
+  font-size: inherit;
+  line-height: 1;
+  border: 2px solid rgba(255, 255, 255, 0.55);
+  box-shadow: 0 0 14px rgba(0, 112, 243, 0.55);
+  user-select: none;
+}
+.kash-coin::before {
+  content: 'K';
+  font-size: 0.72em;
+}
+
 /* Skeleton shimmer — loading states are part of the polish. */
 @keyframes shimmer {
   from {

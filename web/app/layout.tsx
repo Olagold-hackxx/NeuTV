@@ -8,7 +8,7 @@ const jakarta = Plus_Jakarta_Sans({
 });
 
 export const metadata: Metadata = {
-  title: 'NEU TV — The New Economy, On Screen.',
+  title: 'NEU Network — The New Economy, On Screen.',
   description: '24/7 live central broadcast network for the New Economy.',
 };
 

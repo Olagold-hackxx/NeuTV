@@ -11,7 +11,7 @@ export function Offline() {
           N
         </div>
         <div className="space-y-2">
-          <h1 className="text-xl font-black tracking-tight">NEU TV is temporarily unavailable</h1>
+          <h1 className="text-xl font-black tracking-tight">NEU Network is temporarily unavailable</h1>
           <p className="text-xs text-white/60 leading-relaxed">
             We can&rsquo;t load the broadcast right now. This is on our side &mdash; please try
             again in a moment.

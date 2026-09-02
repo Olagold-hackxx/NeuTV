@@ -1,6 +1,6 @@
 'use client';
 
-// The NEU TV shell: splash → auth gate → the three-column app. Layout and
+// The NEU Network shell: splash → auth gate → the three-column app. Layout and
 // behaviour follow the original Central Stream frontend; underneath, the
 // stage is server-owned, the SSE stream drives the live surfaces, and every
 // optimistic action reconciles against the API.
@@ -24,8 +24,6 @@ import { VideoModal, type ModalVideo } from './video-modal';
 // How many floating comments sit over the stage at once. Two is enough to show
 // the room is live without covering the video, which is the subject.
 const TICKER_LIMIT = 2;
-
-const EMOJIS = ['❤️', '🔥', '👏', '🎉', '🚀', '⭐', '💖', '💎'];
 
 type Heart = { id: number; emoji: string; right: number };
 type GiftBanner = { sender: string; giftName: string; cost: number; emoji?: string };
@@ -145,12 +143,12 @@ export function App({ data }: { data: AppData }) {
     stateRef.current = { mainBroadcast, override, user };
   }, [mainBroadcast, override, user]);
 
+  // Without an explicit emoji this floats a KashCoin — the platform's own
+  // token carries the ambient atmosphere; emoji are reserved for deliberate
+  // reactions and gifts.
   const spawnHeart = useCallback((emoji?: string) => {
     const id = Date.now() + Math.random();
-    setHearts((prev) => [
-      ...prev.slice(-14),
-      { id, emoji: emoji ?? EMOJIS[Math.floor(Math.random() * EMOJIS.length)], right: 30 + Math.random() * 50 },
-    ]);
+    setHearts((prev) => [...prev.slice(-14), { id, emoji: emoji ?? '', right: 30 + Math.random() * 50 }]);
     setTimeout(() => setHearts((prev) => prev.filter((p) => p.id !== id)), 2200);
   }, []);
 

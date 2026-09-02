@@ -38,6 +38,7 @@ export function Studio({ event }: { event: LiveEvent }) {
 
   const [source, setSource] = useState<Source>('camera');
   const [recording, setRecording] = useState(false);
+  const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [sent, setSent] = useState(0);
@@ -67,7 +68,18 @@ export function Studio({ event }: { event: LiveEvent }) {
     setKbps(Math.round((blob.size * 8) / CHUNK_MS));
   }, [event.id]);
 
+  // Going on air is not re-entrant.
+  //
+  // `recording` only becomes true once capture, the handshake and the go-live
+  // call have all finished, so a second click during the permission prompt used
+  // to start a second capture and a second peer connection. Both published to
+  // the same path, the newer one evicted the older - "closing existing
+  // publisher" - and the restart broke the muxer's continuity mid-broadcast.
+  const startingRef = useRef(false);
+
   const begin = async () => {
+    if (startingRef.current) return;
+    startingRef.current = true;
     setError(null);
     setNotice(null);
     try {
@@ -184,6 +196,8 @@ export function Studio({ event }: { event: LiveEvent }) {
       stopTracks();
       setRecording(false);
       setError(err instanceof Error ? err.message : 'Could not start capture.');
+    } finally {
+      startingRef.current = false;
     }
   };
 
@@ -255,8 +269,12 @@ export function Studio({ event }: { event: LiveEvent }) {
               End broadcast
             </button>
           ) : (
-            <button type="button" className="btn btn-primary" onClick={() => void begin()}>
-              Go on air from this browser
+            <button
+              type="button" className="btn btn-primary"
+              disabled={starting}
+              onClick={() => { setStarting(true); void begin().finally(() => setStarting(false)); }}
+            >
+              {starting ? 'Going on air…' : 'Go on air from this browser'}
             </button>
           )}
         </div>

@@ -484,7 +484,7 @@ export function Stage(props: StageProps) {
             className="flying-heart text-3xl select-none pointer-events-none"
             style={{ right: `${heart.right}px`, bottom: '5rem' }}
           >
-            {heart.emoji}
+            {heart.emoji || <span className="kash-coin" />}
           </span>
         ))}
 

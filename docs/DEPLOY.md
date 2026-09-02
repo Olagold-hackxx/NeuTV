@@ -217,6 +217,17 @@ That port cannot be proxied. Caddy carries the signalling on `/whip`, but the
 browser sends media straight to 8189 — so signalling succeeding while the port is
 closed gives you a connection that looks established and carries no video.
 
+The studio publishes **H264**, and has to. The ingest log names the codec:
+
+```
+[path live-xxx] stream is available and online, 2 tracks (Opus, H264)
+```
+
+`VP8` there means viewers will see nothing, however healthy the rest looks — HLS
+cannot carry it and hls.js cannot decode it. The publisher pins H264 explicitly,
+because left to itself Chrome offers VP8 and Safari offers H264, which made
+whether a broadcast reached anyone depend on the operator's browser.
+
 Confirm WebRTC actually started, because a config MediaMTX cannot parse leaves it
 restarting with the other listeners up:
 

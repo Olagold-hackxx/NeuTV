@@ -172,7 +172,7 @@ function EmptyState({ tab, onExplore }: { tab: MainTab; onExplore: () => void })
         className="px-5 py-2 rounded-full bg-white text-black font-black text-xs hover:bg-neutral-200 transition shadow-lg inline-flex items-center gap-1.5"
       >
         <Tv className="w-3.5 h-3.5" />
-        Explore NEU TV Live
+        Explore NEU Network Live
       </button>
     </div>
   );

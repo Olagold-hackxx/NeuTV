@@ -76,7 +76,7 @@ export function VideoModal({ video, onClose, onPromote }: VideoModalProps) {
                   Creator Spotlight: <strong className="text-white font-extrabold">{video.creator}</strong>
                 </>
               ) : (
-                'NEU TV Official'
+                'NEU Network Official'
               )}
             </span>
             <button

@@ -12,8 +12,8 @@ const jakarta = Plus_Jakarta_Sans({
 });
 
 export const metadata: Metadata = {
-  title: 'NEU TV — Back Office',
-  description: 'Video library, programming and CRM for the NEU TV network.',
+  title: 'NEU Network — Back Office',
+  description: 'Video library, programming and CRM for NEU Network.',
 };
 
 // Nothing here may be cached: the roster, the queue and what is on air all

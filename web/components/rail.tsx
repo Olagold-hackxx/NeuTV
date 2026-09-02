@@ -24,7 +24,7 @@ type RailProps = {
 };
 
 const NAV: { tab: MainTab; label: string }[] = [
-  { tab: 'tv', label: 'NEU TV Live' },
+  { tab: 'tv', label: 'NEU Network Live' },
   { tab: 'foryou', label: 'For You' },
   { tab: 'following', label: 'Following' },
   { tab: 'saved', label: 'Saved Videos' },
@@ -69,11 +69,11 @@ export function Rail({
               onSelectTab('tv');
               onSelectProduct('all');
             }}
-            title="NEU TV Live"
+            title="NEU Network Live"
             className="w-10 h-10 flex items-center justify-center hover:scale-105 transition duration-300"
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/logos/neu-cube-n.png" alt="NEU TV" className="w-full h-full object-contain drop-shadow" />
+            <img src="/logos/neu-cube-e.png" alt="NEU Network" className="w-full h-full object-contain drop-shadow" />
           </button>
 
           <button
@@ -163,7 +163,7 @@ export function Rail({
             <button
               type="button"
               onClick={onOpenGate}
-              title="Sign In to NEU TV"
+              title="Sign In to NEU Network"
               className="w-9 h-9 rounded-full bg-white text-black flex items-center justify-center hover:bg-white/90 transition shadow-lg"
             >
               <LogIn className="w-4 h-4" />
@@ -189,11 +189,11 @@ export function Rail({
           >
             <div className="h-10 flex-shrink-0 group-hover:scale-105 transition duration-300">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/logos/neu-brand-banner.png" alt="NEU TV" className="h-full w-auto object-contain drop-shadow" />
+              <img src="/logos/neu-brand-banner.png" alt="NEU Network" className="h-full w-auto object-contain drop-shadow" />
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-1 leading-none">
-                <span className="text-white text-[11px] font-black tracking-widest">TV LIVE</span>
+                <span className="text-white text-[11px] font-black tracking-widest">NETWORK</span>
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse ml-1 shadow-[0_0_8px_rgba(52,211,153,0.5)]" aria-hidden />
               </div>
               <p className="text-[8px] font-mono tracking-wider text-white/50 uppercase mt-1 font-bold truncate">
@@ -373,7 +373,7 @@ export function Rail({
             className="w-full py-2.5 rounded-full bg-white text-black font-extrabold text-xs hover:bg-white/90 transition shadow-lg text-center flex items-center justify-center gap-2"
           >
             <LogIn className="w-3.5 h-3.5" />
-            Sign In to NEU TV
+            Sign In to NEU Network
           </button>
         )}
       </div>

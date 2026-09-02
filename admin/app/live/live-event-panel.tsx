@@ -41,7 +41,7 @@ export function LiveEventPanel({ event, compact = false }: { event: LiveEvent; c
           ) : (
             <div className="alert alert-warn">
               This event uses the <strong>manual</strong> ingest driver: stream wherever you
-              already do, and NEU TV broadcasts the playback URL below. Configure
+              already do, and NEU Network broadcasts the playback URL below. Configure
               <code> NEUTV_LIVE_DRIVER</code> to have an RTMP endpoint minted for you.
             </div>
           )}

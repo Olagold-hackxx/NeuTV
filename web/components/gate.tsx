@@ -1,6 +1,6 @@
 'use client';
 
-// The front door: the full-screen NEU TV auth gate, with the live broadcast
+// The front door: the full-screen NEU Network auth gate, with the live broadcast
 // playing behind the hero copy. Signed-out visitors land here; "Explore as
 // Guest" drops them straight onto the stage in read-only mode.
 
@@ -24,9 +24,7 @@ import {
 import type { Product, SessionUser, StageCard } from '@/lib/types';
 import { NeuTVClient, sync } from '@/lib/client';
 
-const POP_EMOJIS = ['🔥', '🚀', '💎', '🎉', '⚡', '👏', '💖', '⭐'];
-
-type PopEmoji = { id: number; emoji: string; leftPos: number; size: number };
+type PopCoin = { id: number; leftPos: number; size: number };
 
 type GateProps = {
   products: Product[];
@@ -82,14 +80,13 @@ export function Gate({ products, client, card, viewers, onGuest, onSignedIn }: G
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
 
-  const [pops, setPops] = useState<PopEmoji[]>([]);
+  const [pops, setPops] = useState<PopCoin[]>([]);
   const spawnPop = (leftPos?: number) => {
     const id = Date.now() + Math.random();
     setPops((prev) => [
       ...prev.slice(-19),
       {
         id,
-        emoji: POP_EMOJIS[Math.floor(Math.random() * POP_EMOJIS.length)],
         leftPos: leftPos ?? Math.random() * 90 + 5,
         size: 1 + Math.random() * 1.2,
       },
@@ -97,7 +94,7 @@ export function Gate({ products, client, card, viewers, onGuest, onSignedIn }: G
     setTimeout(() => setPops((prev) => prev.filter((p) => p.id !== id)), 3200);
   };
 
-  // Ambient reactions drift up while the gate is open.
+  // Ambient KashCoins drift up while the gate is open.
   useEffect(() => {
     const timer = setInterval(() => spawnPop(), 500);
     return () => clearInterval(timer);
@@ -142,7 +139,7 @@ export function Gate({ products, client, card, viewers, onGuest, onSignedIn }: G
           ? client.signup({ name: displayName, email: email.trim(), password, platform: 'neutv' })
           : client.signin(email.trim(), password),
       (err) => setError(err.status === 401 ? 'That email and password do not match.' : err.message),
-    ).then((res) => finish(res, 'NEU TV'));
+    ).then((res) => finish(res, 'NEU Network'));
   };
 
   return (
@@ -150,7 +147,7 @@ export function Gate({ products, client, card, viewers, onGuest, onSignedIn }: G
       className="fixed inset-0 z-50 bg-black/75 backdrop-blur-2xl flex items-center justify-center p-3 md:p-8 overflow-y-auto no-scrollbar animate-fadeIn select-none"
       role="dialog"
       aria-modal="true"
-      aria-label="Sign in to NEU TV"
+      aria-label="Sign in to NEU Network"
       onClick={(e) => {
         if (e.target === e.currentTarget) {
           const x = (e.clientX / window.innerWidth) * 100;
@@ -166,7 +163,7 @@ export function Gate({ products, client, card, viewers, onGuest, onSignedIn }: G
           className="auth-popping-emoji"
           style={{ left: `${item.leftPos}%`, fontSize: `${item.size}rem` }}
         >
-          {item.emoji}
+          <span className="kash-coin" />
         </span>
       ))}
 
@@ -176,7 +173,7 @@ export function Gate({ products, client, card, viewers, onGuest, onSignedIn }: G
           <div className="absolute inset-0 pointer-events-none overflow-hidden">
             {card.youtubeId ? (
               <iframe
-                title="Live NEU TV Broadcast"
+                title="Live NEU Network Broadcast"
                 allow="autoplay; encrypted-media; fullscreen"
                 className="w-full h-full object-cover scale-[1.38] opacity-80 group-hover:scale-150 transition duration-1000"
                 src={`https://www.youtube-nocookie.com/embed/${card.youtubeId}?autoplay=1&mute=1&playsinline=1&controls=0&loop=1&playlist=${card.youtubeId}&modestbranding=1&rel=0`}
@@ -192,7 +189,7 @@ export function Gate({ products, client, card, viewers, onGuest, onSignedIn }: G
           <div className="relative z-10 flex items-center justify-between">
             <div className="flex items-center gap-2.5 px-4 py-2 rounded-full bg-black/70 backdrop-blur-md border border-white/20 shadow-xl">
               <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-live shadow-lg" aria-hidden />
-              <span className="font-black text-xs tracking-wider text-white">NEU TV</span>
+              <span className="font-black text-xs tracking-wider text-white">NEU Network</span>
               <span className="text-white/40 text-xs">|</span>
               <span className="text-[11px] text-white/90 font-extrabold uppercase tracking-wider num">
                 {(viewers ?? card.viewers ?? 0).toLocaleString()} ON AIR
@@ -337,7 +334,7 @@ export function Gate({ products, client, card, viewers, onGuest, onSignedIn }: G
             <div className="space-y-6 flex flex-col justify-between h-full">
               <div className="space-y-1.5 text-left">
                 <h2 className="text-2xl md:text-3xl font-black text-white tracking-tight font-sans">
-                  {authMode === 'signup' ? 'Create NEU Passport' : 'Welcome Back to NEU TV'}
+                  {authMode === 'signup' ? 'Create NEU Passport' : 'Welcome Back to NEU Network'}
                 </h2>
                 <p className="text-xs md:text-sm text-white/60 font-medium">
                   {authMode === 'signup'
@@ -451,7 +448,7 @@ export function Gate({ products, client, card, viewers, onGuest, onSignedIn }: G
                   disabled={pending}
                   className="w-full py-3.5 rounded-full bg-white hover:bg-white/90 disabled:opacity-60 text-black font-black text-xs md:text-sm transition shadow-2xl flex items-center justify-center gap-2 transform active:scale-95 mt-1"
                 >
-                  {pending ? 'Verifying…' : authMode === 'signup' ? 'Create NEU Passport' : 'Sign In to NEU TV'}
+                  {pending ? 'Verifying…' : authMode === 'signup' ? 'Create NEU Passport' : 'Sign In to NEU Network'}
                   <ArrowRight className="w-4 h-4 stroke-[3]" />
                 </button>
               </form>
