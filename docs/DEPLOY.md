@@ -400,7 +400,7 @@ origin this service no longer has.
 # This service serves live HLS and nothing else - it must not be usable
 # as a free proxy to the rest of the API.
 if (req.url.path !~ "^/hls/") {
-  error 403 "live CDN serves /hls only";
+  error 403 "live CDN serves /hls/<stream>/... only";
 }
 # Viewer cookies must not fragment the cache, and a viewer-supplied
 # Authorization must not impersonate the CDN at the origin.
@@ -450,9 +450,32 @@ npm run check:domain -- --api api.example.com --cdn live.example.com
 curl -sI "https://live.example.com/hls/nothing/index.m3u8"   # 404 - NOT a 302
 ```
 
-A 302 with `cookieCheck` from that curl means the secret is not reaching the
-origin: the `miss`/`pass` snippets are missing, or the secret differs from
-`.env`.
+Read that response carefully — three outcomes, only one of them good:
+
+| Response | Meaning |
+| --- | --- |
+| `404`, `server: mediamtx` | **Working.** The request reached MediaMTX, which correctly reports no such stream. |
+| `302` with `cookieCheck` | The secret is not reaching the origin: `miss`/`pass` snippets missing, or the secret differs from `.env`. |
+| `200`, `content-length: 0`, `server: Caddy` | **The Host override is not in effect.** Caddy matches site blocks by `Host`; a request carrying the CDN's name matches none, and Caddy's answer to that is a bare empty 200. Every path looks identical because none of them reach MediaMTX. |
+
+That last one has a nasty second act: the empty 200 gets cached, and any
+`Range` request against a zero-byte object returns `416 Range Not Satisfiable`
+with `content-range: bytes */0`. A 416 on a live manifest is this fault, not a
+MediaMTX one — MediaMTX answers a ranged 404 with a 404.
+
+Three things that let it happen once, all worth checking before blaming the
+origin:
+
+- **Activate the version.** Fastly edits land in a draft version and do nothing
+  until you click Activate. The console showing the right value proves nothing;
+  only the edge does. Test with a cache-buster (`?v=<random>`) so you are not
+  reading a stale object.
+- **Segmented caching is a service setting, not a snippet.** Deleting the
+  VOD-era VCL does not turn it off. It sends `Range` requests to the origin,
+  which is where the 416 comes from once an empty object is cached.
+- **Purge all after fixing.** The empty object is cached independently at every
+  edge that saw a request — three continents' worth, in one outage — under the
+  one-hour segment TTL. Fixing the origin does not evict it.
 
 **5. Point playback at it.** In `.env`:
 
