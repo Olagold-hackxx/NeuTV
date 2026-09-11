@@ -17,7 +17,7 @@ export default async function PressEventsPage() {
         </div>
         <div className="panel">
           <div className="empty">
-            This account does not hold a press card. <Link href="/press">Apply for accreditation</Link>.
+            This account does not hold a press card. <Link href="/accreditation">Apply for accreditation</Link>.
           </div>
         </div>
       </>

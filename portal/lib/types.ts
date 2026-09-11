@@ -71,46 +71,6 @@ export type SubscriptionStatus = {
   at: number;
 };
 
-// --- the press desk ----------------------------------------------------------
-
-export type PressApplication = {
-  userId: string;
-  outlet: string;
-  title: string;
-  beat: string;
-  website: string | null;
-  note: string;
-  status: 'pending' | 'verified' | 'rejected' | 'revoked';
-  card: { id: string; issuedAt: number; expiresAt: number } | null;
-  reviewedAt: number | null;
-  createdAt: number;
-  updatedAt: number;
-  name?: string;
-  handle?: string;
-  avatar?: string;
-  role?: Role;
-};
-
-export type PressStatus = {
-  application: PressApplication | null;
-  press: boolean;
-  cardValid?: boolean;
-  at: number;
-};
-
-export type PressEvent = {
-  id: string;
-  title: string;
-  description: string;
-  productId: string;
-  status: 'scheduled' | 'live';
-  scheduledFor: number | null;
-  startedAt: number | null;
-  posterUrl: string | null;
-  isLive: boolean;
-  access: 'press';
-};
-
 // --- decoder channels and the viewers choice --------------------------------
 
 export type DecoderChannel = {

@@ -66,7 +66,7 @@ export default async function PressPage() {
           <span className="mono num">{pending.length}</span>
         </div>
         {pending.length === 0 ? (
-          <div className="empty">Nothing pending. New applications land here as they are filed from the portal.</div>
+          <div className="empty">Nothing pending. New applications land here as they are filed from the press portal.</div>
         ) : (
           <table>
             <thead><tr><th>Applicant</th><th>Outlet</th><th>Status</th><th>Card</th><th>Filed</th><th></th></tr></thead>

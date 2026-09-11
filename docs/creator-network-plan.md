@@ -124,8 +124,10 @@ or editor reads it. The routes and identifiers (`/creators/spotlights`,
 - **The press desk.** Anyone with a passport applies (`POST /press/apply`:
   outlet, title, beat); the back office verifies from the Press desk page.
   Verification grants the `press` role and mints a **NEU PRESS e-card**
-  (`NEU-PRESS-000001`, valid a year); the card page in the portal is the ID,
-  printable. A verified card admits its holder to the network's real events
+  (`NEU-PRESS-000001`, valid a year). The press have their **own portal**
+  (`press/`, port 4177, cookie `neutv_press_session`): register, apply,
+  the e-card page is the ID, printable, and the events page. The creators
+  portal knows nothing about press. A verified card admits its holder to the network's real events
   (`GET /press/events`, auth level `press`). Revoking takes role and card
   back together.
 - **The incentive, made explicit on the creator dashboard:** the audience

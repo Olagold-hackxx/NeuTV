@@ -1,4 +1,4 @@
-/* NEU TV back office.
+/* NEU Network press portal.
    Tokens follow docs/design-brief.md: surfaces separate by value (base →
    midnight → obsidian), not by blur; color only ever carries meaning — cyan is
    interactive/active, red is reserved for a genuinely live broadcast, amber is
@@ -306,52 +306,6 @@ textarea { resize: vertical; min-height: 74px; }
 .hint { font-size: 11.5px; color: var(--faint); margin-top: 5px; line-height: 1.45; }
 .divider { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--line); }
 
-/* --- file drop zone ------------------------------------------------------ */
-
-/* A raw <input type=file> renders as the browser's default button inside a
-   text box. This is the replacement: one large click-or-drop target. The real
-   input stays in the DOM (visually hidden) so keyboard focus, the form's
-   FormData and form.reset() all keep working. */
-.dropzone {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  padding: 22px 16px;
-  border: 1.5px dashed var(--line-strong);
-  border-radius: var(--radius-control);
-  background: var(--base);
-  color: var(--muted);
-  font-size: 12.5px;
-  font-weight: 600;
-  text-align: center;
-  cursor: pointer;
-  transition: border-color var(--t-fast) var(--ease), background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
-}
-.dropzone svg { color: var(--faint); transition: color var(--t-fast) var(--ease); }
-.dropzone:hover:not([data-disabled='true']),
-.dropzone:focus-within,
-.dropzone[data-drag='true'] {
-  border-color: var(--neu-cyan);
-  background: var(--obsidian);
-  color: var(--text);
-}
-.dropzone:hover:not([data-disabled='true']) svg,
-.dropzone:focus-within svg,
-.dropzone[data-drag='true'] svg { color: var(--neu-cyan); }
-.dropzone[data-disabled='true'] { opacity: 0.5; cursor: not-allowed; }
-.dropzone-sub { font-size: 11px; font-weight: 500; color: var(--faint); }
-.dropzone-file { font-size: 12px; color: var(--neu-cyan); word-break: break-all; }
-.dropzone-input {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
-  overflow: hidden;
-  clip-path: inset(50%);
-}
-
 .alert { padding: 11px 14px; border-radius: var(--radius-control); font-size: 12.5px; margin-bottom: 15px; line-height: 1.5; }
 .alert-error { background: rgba(244, 101, 124, 0.1); border: 1px solid rgba(244, 101, 124, 0.35); color: var(--danger); }
 .alert-ok { background: rgba(0, 246, 167, 0.09); border: 1px solid rgba(0, 246, 167, 0.32); color: var(--neu-cyan); }
@@ -371,23 +325,57 @@ textarea { resize: vertical; min-height: 74px; }
 .text-amber { color: var(--amber); }
 .text-danger { color: var(--danger); }
 
-/* The studio's camera preview. */
-.preview-frame {
-  position: relative;
-  aspect-ratio: 16 / 9;
-  border-radius: var(--radius-video);
-  background: #000;
-  border: 1px solid var(--line);
-  overflow: hidden;
-  margin-bottom: 14px;
+/* --- the press e-card ---------------------------------------------------- */
+
+/* Card proportions (ID-1, roughly 1.586:1), one surface step up, no blur. */
+.press-card {
+  width: 100%;
+  max-width: 440px;
+  padding: 20px 22px;
+  border-radius: var(--radius-panel);
+  background: var(--midnight);
+  border: 1px solid var(--line-strong);
+  box-shadow: var(--shadow-overlay);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  color: var(--text);
 }
-.preview-empty {
-  position: absolute;
-  inset: 0;
+.press-card-expired { opacity: 0.7; }
+.press-card-head { display: flex; align-items: center; justify-content: space-between; }
+.press-card-body { display: flex; gap: 16px; align-items: center; }
+.press-card-photo {
+  width: 84px;
+  height: 84px;
+  border-radius: var(--radius-control);
+  object-fit: cover;
+  border: 1px solid var(--line-strong);
+  flex-shrink: 0;
+}
+.press-card-initial {
   display: grid;
   place-items: center;
-  color: var(--faint);
-  font-size: 13px;
+  background: var(--obsidian);
+  font-size: 30px;
+  font-weight: 800;
+}
+.press-card-who { min-width: 0; }
+.press-card-name { font-size: 18px; font-weight: 800; letter-spacing: -0.01em; }
+.press-card-line { font-size: 12.5px; color: var(--muted); }
+.press-card-outlet { font-size: 13px; font-weight: 700; margin-top: 4px; }
+.press-card-foot { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 12px; font-size: 12.5px; }
+.press-card-id { font-weight: 800; letter-spacing: 0.04em; }
+.press-card-strip { display: flex; align-items: stretch; height: 34px; color: var(--text); gap: 0; }
+.press-card-strip span { display: block; height: 100%; }
+.press-card-note { font-size: 10.5px; color: var(--faint); line-height: 1.4; }
+
+@media print {
+  .sidebar, .page-head, .actions { display: none !important; }
+  .shell { display: block; }
+  .main { padding: 0; }
+  body { background: #fff; color: #000; }
+  .press-card { box-shadow: none; border-color: #000; background: #fff; color: #000; }
+  .press-card .stat-label, .press-card-line, .press-card-note, .press-card .mono { color: #333; }
 }
 
 /* --- login --------------------------------------------------------------- */

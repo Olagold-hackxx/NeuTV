@@ -22,6 +22,9 @@
     "portal": "npm run dev --prefix portal",
     "portal:build": "npm run build --prefix portal",
     "portal:start": "npm start --prefix portal",
+    "press": "npm run dev --prefix press",
+    "press:build": "npm run build --prefix press",
+    "press:start": "npm start --prefix press",
     "admin:create": "npm run admin:create --prefix backend --"
   }
 }

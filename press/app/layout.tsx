@@ -12,22 +12,29 @@ const jakarta = Plus_Jakarta_Sans({
 });
 
 export const metadata: Metadata = {
-  title: 'NEU Network — Creators',
-  description: 'Tasks, publishing, channels and earnings for NEU Network creators.',
+  title: 'NEU Network — Press',
+  description: 'Accreditation, the NEU PRESS e-card, and event access for journalists and outlets.',
 };
 
-// Nothing here may be cached: briefs, live state and earnings all change from
-// outside this app.
+// Nothing here may be cached: an application's status and what is on air
+// both change from outside this app.
 export const dynamic = 'force-dynamic';
 
-const LINKS = [
-  { href: '/', label: 'Dashboard' },
-  { href: '/tasks', label: 'Tasks' },
-  { href: '/publish', label: 'Publish' },
-  { href: '/channel', label: 'My channel' },
-];
+// One desk, two states. An applicant sees where their application stands; a
+// verified card holder sees the card and the events it opens.
+const LINKS = {
+  applicant: [
+    { href: '/accreditation', label: 'Accreditation' },
+  ],
+  press: [
+    { href: '/', label: 'Desk' },
+    { href: '/accreditation', label: 'Accreditation' },
+    { href: '/card', label: 'Press card' },
+    { href: '/events', label: 'Events' },
+  ],
+};
 
-const roleLabel: Record<Role, string> = { viewer: 'Passport holder', creator: 'Creator', press: 'Press', admin: 'Admin' };
+const roleLabel: Record<Role, string> = { viewer: 'Applicant', creator: 'Applicant', press: 'Press', admin: 'Admin' };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const user = await getSession();
@@ -40,6 +47,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     );
   }
 
+  const links = user.role === 'press' || user.role === 'admin' ? LINKS.press : LINKS.applicant;
+
   return (
     <html lang="en" className={jakarta.variable}>
       <body>
@@ -48,19 +57,15 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             <div>
               <div className="brand">
                 <span className="brand-neu gradient-text">NEU</span>
-                <span className="brand-tv">CREATORS</span>
+                <span className="brand-tv">PRESS</span>
               </div>
-              <div className="brand-sub">Creators Portal</div>
+              <div className="brand-sub">Press Portal</div>
             </div>
 
             <nav className="nav">
-              {LINKS.map((link) => (
+              {links.map((link) => (
                 <NavLink key={link.href} href={link.href}>{link.label}</NavLink>
               ))}
-              {/* The creator community lives on WorldSpace, not here. */}
-              <a href="https://www.tsionark.com" target="_blank" rel="noreferrer">
-                Community <span className="mono">WorldSpace ↗</span>
-              </a>
             </nav>
 
             <div className="sidebar-foot">

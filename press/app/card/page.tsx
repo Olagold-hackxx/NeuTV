@@ -19,7 +19,7 @@ export default async function PressCardPage() {
         </div>
         <div className="panel">
           <div className="empty">
-            No card on this account yet. <Link href="/press">Apply for accreditation</Link> to get one.
+            No card on this account yet. <Link href="/accreditation">Apply for accreditation</Link> to get one.
           </div>
         </div>
       </>

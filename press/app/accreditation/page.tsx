@@ -42,8 +42,8 @@ export default async function PressPage() {
               </div>
             </div>
             <div className="actions">
-              <Link href="/press/card" className="btn btn-primary">Open the e-card</Link>
-              <Link href="/press/events" className="btn">Events</Link>
+              <Link href="/card" className="btn btn-primary">Open the e-card</Link>
+              <Link href="/events" className="btn">Events</Link>
             </div>
           </div>
         </div>

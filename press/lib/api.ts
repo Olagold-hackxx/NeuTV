@@ -1,19 +1,16 @@
-// Server-side client for the creators portal. Same architecture as the
-// admin's: the session token lives in an httpOnly cookie, every read is a
-// server component, every write a server action, and the API base never
-// reaches the browser.
+// Server-side client for the press portal. Same architecture as the admin and
+// the creators portal: the session token lives in an httpOnly cookie, every
+// read is a server component, every write a server action, and the API base
+// never reaches the browser.
 
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import type {
-  CreatorTask, CreatorVideo, LedgerEntry, LiveSession, MyChannel,
-  SessionUser, SubscriptionStatus, ViewersChoice,
-} from './types';
+import type { PressEvent, PressStatus, SessionUser, ViewersChoice } from './types';
 
 export const API_BASE = process.env.NEUTV_API_BASE ?? 'http://localhost:4173';
-// Distinct from the admin's cookie so the two apps never clobber each other
-// on a shared domain.
-export const SESSION_COOKIE = 'neutv_creator_session';
+// Distinct from the admin's and the creators portal's cookies so the three
+// apps never clobber each other on a shared domain.
+export const SESSION_COOKIE = 'neutv_press_session';
 
 export class ApiError extends Error {
   status: number;
@@ -67,7 +64,7 @@ export async function call<T>(path: string, options: CallOptions = {}): Promise<
   }
 
   if (!res.ok) {
-    if ((res.status === 401 || res.status === 403) && !anonymous) redirect('/login');
+    if (res.status === 401 && !anonymous) redirect('/login');
     throw new ApiError(
       res.status,
       parsed?.error?.message ?? `Request failed (${res.status})`,
@@ -91,14 +88,7 @@ export const getSession = async (): Promise<SessionUser | null> => {
 
 // --- reads ----------------------------------------------------------------
 
-export const getMyVideos = () => call<{ videos: CreatorVideo[]; total: number }>('/creator/videos');
-export const getMyLive = () => call<{ events: LiveSession[] }>('/creator/live');
-export const getMyTasks = () => call<{ tasks: CreatorTask[] }>('/creator/tasks');
-export const getBalance = () => call<{ balance: number }>('/wallet');
-export const getLedger = (limit = 20) => call<{ balance: number; entries: LedgerEntry[] }>(`/wallet/ledger?limit=${limit}`);
-export const getSubscriptions = () => call<SubscriptionStatus>('/subscriptions/me');
+export const getPress = () => call<PressStatus>('/press/me');
+export const getPressEvents = () => call<{ events: PressEvent[] }>('/press/events');
 export const getProducts = () => call<{ products: { id: string; name: string }[] }>('/catalog/products', { anonymous: true });
-
-// Decoder channels and the viewers choice.
-export const getMyChannel = () => call<MyChannel>('/creator/channel');
-export const getViewersChoice = () => call<ViewersChoice>('/creators/leaderboard');
+export const getViewersChoice = () => call<ViewersChoice>('/creators/leaderboard', { anonymous: true });

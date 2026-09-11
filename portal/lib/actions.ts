@@ -177,27 +177,6 @@ export async function stopLiveSession(eventId: string): Promise<ActionResult> {
   }
 }
 
-// --- the press desk ----------------------------------------------------------
-
-export async function applyPress(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {
-  const body: Record<string, unknown> = {
-    outlet: String(form.get('outlet') ?? '').trim(),
-    title: String(form.get('title') ?? '').trim(),
-    beat: String(form.get('beat') ?? '').trim(),
-    note: String(form.get('note') ?? '').trim(),
-  };
-  const website = String(form.get('website') ?? '').trim();
-  if (website) body.website = website;
-  if (!body.outlet || !body.title) return { ok: false, error: 'Your outlet and your title are both required.' };
-  try {
-    await call('/press/apply', { method: 'POST', body });
-    revalidatePath('/', 'layout');
-    return { ok: true };
-  } catch (err) {
-    return fail(err);
-  }
-}
-
 // --- decoder channels ----------------------------------------------------------
 
 export async function buyChannel(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {
