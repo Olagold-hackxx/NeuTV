@@ -79,10 +79,34 @@ type StageProps = {
 const isHls = (url: string | null | undefined) => Boolean(url && url.includes('.m3u8'));
 
 // hls.js loads lazily, once, only when a live event actually streams HLS.
-function attachHls(el: HTMLVideoElement, url: string, onError: (msg: string) => void) {
+function attachHls(el: HTMLVideoElement, url: string, onError: (msg: string | null) => void) {
+  // Both branches below follow one rule: keep trying for as long as this
+  // player is mounted. A viewer who opens the stage before the broadcaster
+  // connects, or during the transcoder's three-second spin-up, gets 404s
+  // that are not failures - the stream simply is not there yet. The first
+  // real run showed the player giving up six seconds before abr/ appeared.
+  // The event ending unmounts this player over SSE, so the lifecycle bounds
+  // the loop; a counter only ever bounded it too early.
+  const WAITING = 'Waiting for the broadcast signal…';
   if (el.canPlayType('application/vnd.apple.mpegurl')) {
-    el.src = url;
-    return () => {};
+    let destroyed = false;
+    let attempts = 0;
+    const load = () => { if (!destroyed) { el.src = url; el.load(); } };
+    const onErr = () => {
+      if (destroyed) return;
+      attempts += 1;
+      if (attempts >= 3) onError(WAITING);
+      setTimeout(load, Math.min(1000 * attempts, 3000));
+    };
+    const onOk = () => { attempts = 0; onError(null); };
+    el.addEventListener('error', onErr);
+    el.addEventListener('loadedmetadata', onOk);
+    load();
+    return () => {
+      destroyed = true;
+      el.removeEventListener('error', onErr);
+      el.removeEventListener('loadedmetadata', onOk);
+    };
   }
   let destroyed = false;
   let hls: any = null;
@@ -90,25 +114,19 @@ function attachHls(el: HTMLVideoElement, url: string, onError: (msg: string) => 
   const start = () => {
     if (destroyed || !window.Hls) return;
     hls = new window.Hls({ lowLatencyMode: true });
+    hls.on(window.Hls.Events.MANIFEST_PARSED, () => { attempts = 0; onError(null); });
     hls.on(window.Hls.Events.ERROR, (_e: unknown, data: { fatal?: boolean }) => {
       if (!data?.fatal || destroyed) return;
-      // A live origin has moments of legitimate failure: the HLS muxer dies
-      // when lossy ingest corrupts too many frames, and every request until
-      // its recreation is a 500. Giving up on the first one turned a two-
-      // second gap into a permanently black stage. Retry with backoff; hand
-      // over to the native player only once that has genuinely failed.
+      // Fatal here means "nothing to play right now": a 404 before the
+      // stream exists, or a 500 while the origin's muxer is being recreated.
+      // Both resolve on their own. The old native-player fallback is gone -
+      // Safari never reaches this branch, and Chrome cannot play the manifest
+      // natively, so it was a silent black screen wearing a fallback's name.
       hls?.destroy?.();
       hls = null;
       attempts += 1;
-      if (attempts <= 5) {
-        setTimeout(start, Math.min(1000 * attempts, 3000));
-      } else if (el.canPlayType('application/vnd.apple.mpegurl')) {
-        // Safari can take the manifest natively; Chrome cannot, and handing
-        // it the URL anyway was a silent dead end - black, with no error.
-        el.src = url;
-      } else {
-        onError('The broadcast signal dropped. It reconnects on its own.');
-      }
+      if (attempts >= 3) onError(WAITING);
+      setTimeout(start, Math.min(1000 * attempts, 3000));
     });
     hls.loadSource(url);
     hls.attachMedia(el);
