@@ -480,16 +480,28 @@ set bereq.http.host = "api.example.com";
 
 ```vcl
 unset beresp.http.Set-Cookie;
-if (req.url.ext == "m3u8") {
-  # The playlist is the only thing that changes. One second keeps every
-  # viewer within a segment of the edge while collapsing their requests
-  # into one origin fetch.
+
+# The cache lifetime for /hls is decided here, not inherited from MediaMTX.
+# MediaMTX stamps every manifest with `cache-control: public, max-age=30`,
+# and a live LL-HLS playlist is rewritten every second - so a browser that
+# honours that header freezes on a 30-second-stale manifest and playback
+# stalls a few seconds after it starts.
+if (beresp.status >= 400) {
+  # An error is never cached and never remembered. A 404 during the
+  # transcoder's three-second spin-up must not outlive the moment abr/ appears.
+  set beresp.ttl = 0s;
+  set beresp.http.Cache-Control = "no-store";
+} else if (req.url.ext == "m3u8") {
+  # Fastly holds the playlist one second, collapsing concurrent viewers into a
+  # single origin fetch; the browser revalidates every time, so the live edge
+  # keeps advancing instead of sticking on a cached copy.
   set beresp.ttl = 1s;
   set beresp.stale_while_revalidate = 2s;
+  set beresp.http.Cache-Control = "no-cache";
 } else {
-  # Segments and parts are immutable: a given URL only ever holds one
-  # thing, and after the live window nobody asks again.
+  # Segments and parts are immutable: a given URL only ever holds one thing.
   set beresp.ttl = 1h;
+  set beresp.http.Cache-Control = "public, max-age=3600";
 }
 ```
 
