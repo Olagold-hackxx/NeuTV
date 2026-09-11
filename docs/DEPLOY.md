@@ -349,6 +349,38 @@ NEUTV_HLS_CDN_SECRET=<that secret>
 | Origin host | `api.example.com`, port 443, TLS on |
 | SNI / cert hostname | `api.example.com` |
 | **Override host** | `api.example.com` — without this the origin sees the CDN hostname and Caddy has no site for it |
+| **TLS CA certificate** | the contents of `deploy/origin-ca.pem` |
+
+**Origin TLS.** Caddy issues the API's certificate from Let's Encrypt and serves
+a cross-signed chain:
+
+```
+leaf api.example.com  <-  Let's Encrypt YE2  <-  ISRG Root YE  <-  ISRG Root X2  <-  ISRG Root X1
+```
+
+The CDN has to verify that, so paste `deploy/origin-ca.pem` — both ISRG roots —
+into the backend's TLS CA field. Either root validates the origin on its own
+today; both are there so a future change to the chain Caddy serves cannot break
+verification. The CA is pinned, not the leaf, so Caddy's 90-day renewals are
+invisible to the CDN. Check the pasted anchor against the live origin before
+trusting it:
+
+```bash
+echo | openssl s_client -connect api.example.com:443 -servername api.example.com \
+  -CAfile deploy/origin-ca.pem -no-CApath 2>/dev/null | grep "Verify return code"
+```
+
+**SNI is not optional here.** The certificate carries one name, and Caddy
+refuses the handshake outright for any other — not a name mismatch you could
+ignore, but `tlsv1 alert internal error` and no certificate at all:
+
+```
+$ openssl s_client -connect api.example.com:443 -servername cdn.example.com
+tlsv1 alert internal error ... no peer certificate available
+```
+
+So the CDN must send SNI *and* Host as `api.example.com`. Sending the CDN's own
+hostname to the origin does not degrade the connection, it removes it.
 
 **3. VCL snippets.** Four of them. As before: set **Placement** to the phase
 named — never "none" — and paste the *body only*, no `sub vcl_... { }` wrapper.
