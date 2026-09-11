@@ -382,8 +382,17 @@ tlsv1 alert internal error ... no peer certificate available
 So the CDN must send SNI *and* Host as `api.example.com`. Sending the CDN's own
 hostname to the origin does not degrade the connection, it removes it.
 
-**3. VCL snippets.** Four of them. As before: set **Placement** to the phase
-named — never "none" — and paste the *body only*, no `sub vcl_... { }` wrapper.
+**3. VCL snippets.** Four of them — `recv`, `miss`, `pass`, `fetch`. Set
+**Placement** to the phase named — never "none" — and paste the *body only*, no
+`sub vcl_... { }` wrapper.
+
+**Delete the service's existing snippets first.** Fastly runs *every* snippet in
+a phase, so an old one is not replaced by a new one — both run, in sequence. The
+segmented-caching VCL this service carried for video-on-demand existed only
+because a 50 MB MP4 exceeded Fastly's 20 MB object limit. A live segment is
+roughly 200 KB, two orders of magnitude under that, so the range machinery buys
+nothing and complicates a manifest that changes every second. It also aims at an
+origin this service no longer has.
 
 `recv`:
 
@@ -399,8 +408,15 @@ unset req.http.Cookie;
 unset req.http.Authorization;
 ```
 
-`miss` — and the same single line again as a `pass` snippet, because a request
-that skips the cache still has to introduce itself:
+`miss`:
+
+```vcl
+set bereq.http.Authorization = "Bearer <that secret>";
+```
+
+`pass` — the identical line a second time. A request that skips the cache still
+has to introduce itself to the origin, and a snippet placed in `miss` does not
+run on that path:
 
 ```vcl
 set bereq.http.Authorization = "Bearer <that secret>";
