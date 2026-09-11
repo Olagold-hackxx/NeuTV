@@ -110,6 +110,48 @@ test('subscribing beyond your balance is refused with the shortfall', async () =
   );
 });
 
+test('a channel purchase charges once per reference and lands on the treasury', async () => {
+  const wallet = await build();
+  await wallet.credit('user-alex', { amount: 1500 });
+  const first = await wallet.charge('user-alex', 1000, 'channel-user-alex', 'Decoder channel 101');
+  assert.equal(first.charged, 1000);
+  const retry = await wallet.charge('user-alex', 1000, 'channel-user-alex', 'Decoder channel 101');
+  assert.equal(retry.replayed, true);
+  assert.equal((await wallet.balance('user-alex')).balance, 500, 'charged once');
+  await assert.rejects(() => wallet.charge('user-alex', 1000, 'channel-again'), (e) => e.status === 402, 'never overdrawn');
+  assert.equal(await wallet.ledgerIsBalanced(), true);
+});
+
+test('quarter revenue is subscriptions, purchases, network gifts and the creator gift remainder', async () => {
+  const runtime = fakeRuntime();
+  const wallet = createWalletService({
+    runtime, store: await testStore(openWalletStore),
+    identity: { userIdByHandle: async (h) => (h === 'alex' || h === '@alex' ? 'user-alex' : null) },
+  });
+  const from = runtime.now();
+  await wallet.credit('v1', { amount: 5000 });
+  await wallet.subscribe('v1', { plan: 'creator' });                                            // 250 to treasury
+  await wallet.charge('v1', 1000, 'channel-v1', 'Decoder channel');                              // 1000 to treasury
+  await wallet.tip('v1', { giftId: 'crown', target: { type: 'stream', id: 'main' } });           // 500 on the network stream
+  await wallet.tip('v1', { giftId: 'crown', target: { type: 'creator', id: '@alex' } });         // 500, of which 350 paid out
+  const to = runtime.now() + 1;
+
+  const revenue = await wallet.revenueBetween(from, to);
+  assert.deepEqual(
+    { subscriptions: revenue.subscriptions, purchases: revenue.purchases, networkGifts: revenue.networkGifts, creatorGiftShare: revenue.creatorGiftShare },
+    { subscriptions: 250, purchases: 1000, networkGifts: 500, creatorGiftShare: 150 },
+  );
+  assert.equal(revenue.total, 1900);
+  assert.equal((await wallet.revenueBetween(to, to + 1)).total, 0, 'outside the window, nothing');
+
+  const prize = await wallet.payPrize('user-alex', 380, 'prize-2026-Q3', 'Viewers choice');
+  assert.equal(prize.credited, 380);
+  assert.equal((await wallet.payPrize('user-alex', 380, 'prize-2026-Q3')).replayed, true);
+  assert.equal((await wallet.balance('user-alex')).balance, 350 + 380);
+  assert.equal(await wallet.ledgerIsBalanced(), true);
+  assert.equal((await wallet.revenueByQuarter({ quarters: 2 })).quarters.length, 2);
+});
+
 test('a task bounty is idempotent by reference', async () => {
   const wallet = await build();
   await wallet.payBounty('user-alex', 400, 'task-t1', 'Bounty: Cover the keynote');

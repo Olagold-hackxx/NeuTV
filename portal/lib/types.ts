@@ -1,8 +1,10 @@
+export type Role = 'viewer' | 'creator' | 'press' | 'admin';
+
 export type SessionUser = {
   id: string;
   name: string;
   handle: string;
-  role: 'viewer' | 'creator' | 'admin';
+  role: Role;
   avatar?: string;
   badge?: string;
   productId?: string;
@@ -67,4 +69,88 @@ export type LedgerEntry = {
 export type SubscriptionStatus = {
   plans: Record<'viewer' | 'creator', { active: boolean; expiresAt: number | null; cost: number }>;
   at: number;
+};
+
+// --- the press desk ----------------------------------------------------------
+
+export type PressApplication = {
+  userId: string;
+  outlet: string;
+  title: string;
+  beat: string;
+  website: string | null;
+  note: string;
+  status: 'pending' | 'verified' | 'rejected' | 'revoked';
+  card: { id: string; issuedAt: number; expiresAt: number } | null;
+  reviewedAt: number | null;
+  createdAt: number;
+  updatedAt: number;
+  name?: string;
+  handle?: string;
+  avatar?: string;
+  role?: Role;
+};
+
+export type PressStatus = {
+  application: PressApplication | null;
+  press: boolean;
+  cardValid?: boolean;
+  at: number;
+};
+
+export type PressEvent = {
+  id: string;
+  title: string;
+  description: string;
+  productId: string;
+  status: 'scheduled' | 'live';
+  scheduledFor: number | null;
+  startedAt: number | null;
+  posterUrl: string | null;
+  isLive: boolean;
+  access: 'press';
+};
+
+// --- decoder channels and the viewers choice --------------------------------
+
+export type DecoderChannel = {
+  number: number;
+  ownerId: string;
+  name: string;
+  tagline: string;
+  price: number;
+  createdAt: number;
+  updatedAt: number;
+};
+
+export type MyChannel = {
+  channel: DecoderChannel | null;
+  price: number;
+  floor: number;
+  ceiling: number;
+  nextFree: number | null;
+  taken: number[];
+};
+
+export type Standing = {
+  rank: number;
+  userId: string;
+  name: string;
+  handle: string;
+  avatar?: string;
+  votes: number;
+  channelNumber: number | null;
+};
+
+export type ViewersChoice = {
+  quarter: string;
+  startsAt: number;
+  endsAt: number;
+  sharePct: number;
+  revenue: number;
+  prize: number;
+  totalVotes: number;
+  standings: Standing[];
+  myVote: string | null;
+  lastAward: { quarter: string; winner: { name: string; handle: string } | null; votes: number; prize: number } | null;
 };

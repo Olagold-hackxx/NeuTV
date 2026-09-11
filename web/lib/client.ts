@@ -201,6 +201,19 @@ export class NeuTVClient {
   creatorSpotlights() {
     return this.get<{ spotlights: import('./types').Spotlight[] }>('/creators/spotlights', false);
   }
+  /** The channels area: Vision on 1, then every creator decoder number. */
+  channels() {
+    return this.get<{ channels: import('./types').Channel[]; price: number }>('/channels', false);
+  }
+  /** Viewers choice: richer when signed in, because it carries your vote. */
+  viewersChoice() {
+    return this.get<import('./types').Leaderboard>('/creators/leaderboard');
+  }
+  vote(handle: string) {
+    return this.post<{ quarter: string; vote: { creatorId: string; handle: string }; moved: boolean }>(
+      `/creators/${encodeURIComponent(handle.replace(/^@/, ''))}/vote`,
+    );
+  }
   takeStage(videoId: string, durationMs?: number) {
     return this.post('/live/stage', { videoId, viewerId: this.viewerId(), scope: 'viewer', durationMs });
   }

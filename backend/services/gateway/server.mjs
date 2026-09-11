@@ -160,12 +160,16 @@ export async function createGateway(options = {}) {
     const auth = await app.services.identity.authenticate(token);
 
     const level = route.auth;
-    if ((level === 'required' || level === 'admin' || level === 'creator') && !auth) throw unauthorized();
+    if ((level === 'required' || level === 'admin' || level === 'creator' || level === 'press') && !auth) throw unauthorized();
     // The role gates live here, once, rather than in the handlers. Admins pass
-    // the creator gate too: the back office can act on a channel's behalf.
+    // the creator and press gates too: the back office can act on a channel's
+    // behalf, and can see what a press card admits its holder to.
     if (level === 'admin' && auth.role !== 'admin') throw forbidden('That is back-office only.');
     if (level === 'creator' && auth.role !== 'creator' && auth.role !== 'admin') {
       throw forbidden('That needs creator standing. Apply from the portal.');
+    }
+    if (level === 'press' && auth.role !== 'press' && auth.role !== 'admin') {
+      throw forbidden('That needs a verified press card. Apply from the portal.');
     }
 
     // --- rate limit ------------------------------------------------------

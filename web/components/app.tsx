@@ -11,6 +11,8 @@ import type { AppData, Gift, LiveComment, LiveEvent, Post, SessionUser, Spotligh
 import { NeuTVClient, sync } from '@/lib/client';
 import { Rail, type MainTab } from './rail';
 import { Magazine } from './magazine';
+import { Channels } from './channels';
+import { ViewersChoice } from './viewers-choice';
 import { TopBar } from './top-bar';
 import { Stage } from './stage';
 import { Reel } from './reel';
@@ -292,10 +294,10 @@ export function App({ data }: { data: AppData }) {
 
     const stopStream = client.subscribe({
       'creator-live': (payload: { status: string; event?: { title?: string } }) => {
-        // A creator going on or off air redraws their spotlight card - and
-        // nothing else. The main stage is not involved by design.
+        // A creator going on or off air redraws their Creators Network card -
+        // and nothing else. The main stage is not involved by design.
         if (payload.status === 'started' && payload.event?.title) {
-          showToast(`🔴 ${payload.event.title} is live in the spotlight`);
+          showToast(`🔴 ${payload.event.title} is live on the Creators Network`);
         }
         void sync(async () => {
           const res = await client.creatorSpotlights();
@@ -538,7 +540,7 @@ export function App({ data }: { data: AppData }) {
     setSelectedVideo({
       id: cr.id,
       title: cr.title,
-      description: `${cr.name} (${cr.handle ?? ''}) — ${cr.tag ?? 'Creator Spotlight'}`,
+      description: `${cr.name} (${cr.handle ?? ''}) — ${cr.tag ?? 'Creators Network'}`,
       youtubeId: cr.videoMp4 ? null : (cr.videoUrl ?? null),
       videoUrl: cr.videoMp4 ?? null,
       thumbnail: cr.thumbnail ?? null,
@@ -646,9 +648,31 @@ export function App({ data }: { data: AppData }) {
           <Reel spotlights={[...creatorSpots, ...(bootstrap.CREATOR_SPOTLIGHTS ?? [])]} onSelect={openSpotlight} />
         ) : null}
 
+        {activeTab === 'channels' ? (
+          <Channels
+            client={client}
+            onWatchVision={() => {
+              revertStage(false);
+              selectTab('tv');
+            }}
+            onSelectCreator={openSpotlight}
+          />
+        ) : null}
+
+        {/* The board is public: it sits with the network's own stage and with
+            the channels, the two places a viewer meets the creators. */}
+        {activeTab === 'tv' || activeTab === 'channels' ? (
+          <ViewersChoice
+            client={client}
+            signedIn={Boolean(user)}
+            onRequireSignIn={() => setGateOpen(true)}
+            showToast={showToast}
+          />
+        ) : null}
+
         {activeTab === 'magazine' ? <Magazine client={client} /> : null}
 
-        {activeTab === 'magazine' ? null : <Feed
+        {activeTab === 'magazine' || activeTab === 'channels' ? null : <Feed
           posts={[...libraryPosts, ...(bootstrap.INITIAL_POSTS ?? [])]}
           products={bootstrap.PRODUCTS ?? []}
           activeProduct={activeProduct}

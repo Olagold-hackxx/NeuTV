@@ -24,9 +24,9 @@ export default async function PublishPage() {
         <div>
           <h1>Publish</h1>
           <p className="page-sub">
-            Everything here lands on your spotlight channel: your videos, your
-            live sessions. The main broadcast belongs to the network and is
-            never touched from this page.
+            Everything here lands on your Creators Network channel: your
+            videos, your live sessions. The main broadcast belongs to the
+            network and is never touched from this page.
           </p>
         </div>
       </div>

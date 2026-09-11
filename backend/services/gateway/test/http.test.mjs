@@ -22,7 +22,7 @@ before(async () => {
     runtime: fakeRuntime(), memory: true, passwordCost: TEST_COST,
     // Each test that needs an admin signs up its own account, so every one of
     // those emails has to be in the admin list.
-    adminEmails: ['boss@neu.tv', 'boss2@neu.tv', 'boss3@neu.tv'], uploadsRoot: uploads,
+    adminEmails: ['boss@neu.tv', 'boss2@neu.tv', 'boss3@neu.tv', 'desk@neu.tv'], uploadsRoot: uploads,
   });
   await new Promise((r) => gateway.server.listen(0, r));
   base = `http://127.0.0.1:${gateway.server.address().port}`;
@@ -51,7 +51,7 @@ test('health reports the contract and what is wired', async () => {
   const { status, body } = await call('/health');
   assert.equal(status, 200);
   assert.equal(body.ok, true);
-  assert.equal(body.contractVersion, '2.1.0');
+  assert.equal(body.contractVersion, '2.2.0');
   assert.ok(body.services.includes('admin'));
   assert.ok(!body.services.includes('llm'), 'the LLM service was removed in 2.0.0');
 });
@@ -90,6 +90,27 @@ test('an admin reaches the back office', async () => {
   const admin = await signIn('boss@neu.tv');
   assert.equal((await call('/api/v1/admin/videos', auth(admin))).status, 200);
   assert.equal((await call('/api/v1/identity/me', auth(admin))).body.role, 'admin');
+});
+
+test('the press gate opens only once the desk has verified the card', async () => {
+  const admin = await signIn('desk@neu.tv');
+  const reporter = await signIn('reporter@wire.news');
+  assert.equal((await call('/api/v1/press/events')).status, 401, 'a guest gets nothing');
+  assert.equal((await call('/api/v1/press/events', auth(reporter))).status, 403, 'a passport alone is not a card');
+
+  const applied = await call('/api/v1/press/apply', json(reporter, { outlet: 'The Wire', title: 'Correspondent' }));
+  assert.equal(applied.status, 201);
+  const userId = applied.body.application.userId;
+  const verified = await call(`/api/v1/admin/press/${userId}`, { ...json(admin, { decision: 'verify' }), method: 'PUT' });
+  assert.equal(verified.status, 200);
+  assert.equal(verified.body.application.card.id, 'NEU-PRESS-000001');
+
+  const events = await call('/api/v1/press/events', auth(reporter));
+  assert.equal(events.status, 200, 'the same session is admitted once the role is granted');
+  assert.equal((await call('/api/v1/press/events', auth(admin))).status, 200, 'and admins pass the press gate');
+  // The channels area and the leaderboard are public reads.
+  assert.equal((await call('/api/v1/channels')).body.channels[0].number, 1);
+  assert.equal((await call('/api/v1/creators/leaderboard')).status, 200);
 });
 
 test('a video uploads as a raw stream and then plays with range support', async () => {

@@ -10,7 +10,7 @@ const MIGRATIONS = {
       txn_id     TEXT NOT NULL,
       account    TEXT NOT NULL,      -- 'user:<id>' | 'creator:<handle>' | 'stream:<id>' | 'system:treasury'
       amount     INTEGER NOT NULL,   -- positive credit, negative debit, whole coins
-      kind       TEXT NOT NULL,      -- 'tip' | 'topup' | 'reward' | 'payout' | 'subscription'
+      kind       TEXT NOT NULL,      -- 'tip' | 'topup' | 'reward' | 'payout' | 'subscription' | 'purchase' | 'prize'
       memo       TEXT NOT NULL,
       created_at INTEGER NOT NULL
     );

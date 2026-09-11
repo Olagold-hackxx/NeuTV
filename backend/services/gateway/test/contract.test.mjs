@@ -50,6 +50,9 @@ test('auth levels in the router match the contract exactly', async () => {
     } else if (declared.auth === 'creator') {
       assert.ok(['creator', 'required'].includes(found.auth),
         `${declared.path} is creator-only in the contract but "${found.auth}" in the router`);
+    } else if (declared.auth === 'press') {
+      assert.ok(['press', 'required'].includes(found.auth),
+        `${declared.path} is press-only in the contract but "${found.auth}" in the router`);
     } else {
       assert.equal(found.auth, declared.auth, `auth level drift on ${declared.method} ${declared.path}`);
     }

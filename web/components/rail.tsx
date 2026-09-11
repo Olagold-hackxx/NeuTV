@@ -3,10 +3,10 @@
 // The left sidebar: brand header, KashCoin wallet badge, primary navigation
 // and the communities directory — the CDN app's layout, faithfully.
 
-import { BookOpen, Bookmark, Coins, Flame, LogIn, LogOut, PanelLeftClose, PanelLeftOpen, Tv, Users } from 'lucide-react';
+import { BookOpen, Bookmark, Coins, Flame, LayoutGrid, LogIn, LogOut, PanelLeftClose, PanelLeftOpen, Tv, Users } from 'lucide-react';
 import type { Product, SessionUser } from '@/lib/types';
 
-export type MainTab = 'tv' | 'foryou' | 'following' | 'saved' | 'magazine';
+export type MainTab = 'tv' | 'channels' | 'foryou' | 'following' | 'saved' | 'magazine';
 
 type RailProps = {
   products: Product[];
@@ -25,6 +25,7 @@ type RailProps = {
 
 const NAV: { tab: MainTab; label: string }[] = [
   { tab: 'tv', label: 'NEU Network Live' },
+  { tab: 'channels', label: 'Channels' },
   { tab: 'foryou', label: 'For You' },
   { tab: 'following', label: 'Following' },
   { tab: 'saved', label: 'Saved Videos' },
@@ -35,6 +36,8 @@ function navIcon(tab: MainTab) {
   switch (tab) {
     case 'tv':
       return <Tv className="w-4.5 h-4.5 text-white" />;
+    case 'channels':
+      return <LayoutGrid className="w-4.5 h-4.5 text-white" />;
     case 'foryou':
       return <Flame className="w-4.5 h-4.5 fill-red-500 text-red-500 stroke-red-500" />;
     case 'following':

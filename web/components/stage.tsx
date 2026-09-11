@@ -174,7 +174,9 @@ export function Stage(props: StageProps) {
   const frameRef = useRef<HTMLElement>(null);
   const [comment, setComment] = useState('');
   const [audioLanguage, setAudioLanguage] = useState('English (Original)');
-  const [subtitleLang, setSubtitleLang] = useState('English CC');
+  // Off by default. There is no caption track on the broadcast, and the stage
+  // does not print one it invented.
+  const [subtitleLang, setSubtitleLang] = useState('Off');
   const [audioOpen, setAudioOpen] = useState(false);
   const [subtitleOpen, setSubtitleOpen] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
@@ -464,13 +466,6 @@ export function Stage(props: StageProps) {
       <div className="relative w-full aspect-video bg-black flex items-center justify-center overflow-hidden">
         {player}
 
-        {subtitleLang !== 'Off' && !isTakeover ? (
-          <div className="absolute bottom-28 left-1/2 -translate-x-1/2 z-30 px-4 py-1.5 rounded-lg bg-black/85 backdrop-blur-md text-white font-sans text-xs md:text-sm font-semibold tracking-wide text-center max-w-lg border border-white/15 pointer-events-none shadow-2xl animate-fadeIn">
-            <span className="text-white/60 text-[10px] font-mono mr-1.5 uppercase">[{subtitleLang}]</span>
-            &quot;The New Economy provides verified sovereign liquidity across WorldStreet, mARKet and KashPlus.&quot;
-          </div>
-        ) : null}
-
         {!isTakeover && isLiveEvent ? (
           <div className="absolute top-3 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/85 backdrop-blur-md border border-red-500/50 shadow-xl max-w-[92%]">
             <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-live flex-shrink-0" aria-hidden />
@@ -524,19 +519,25 @@ export function Stage(props: StageProps) {
           </span>
         ))}
 
+        {/* Comments on the TV. Each one is a letter - the author's initial -
+            and what they said. No name caption: the letter is the byline,
+            and the full name is a hover away. Shown on every screen size;
+            the video is the subject, so they ride low on the left. */}
         {ticker.length > 0 ? (
-          <div className="absolute left-6 bottom-24 z-30 flex-col gap-2 max-w-sm pointer-events-none hidden md:flex" aria-live="polite">
+          <div className="absolute left-3 md:left-6 bottom-36 md:bottom-24 z-30 flex flex-col gap-2 max-w-[70%] md:max-w-sm pointer-events-none" aria-live="polite">
             {ticker.map((c) => (
               <div
                 key={String(c.id)}
-                className="live-comment-bubble px-3.5 py-1.5 rounded-full flex items-center gap-2 text-xs backdrop-blur-md border border-white/20"
+                title={c.author}
+                className="live-comment-bubble pl-1.5 pr-3.5 py-1.5 rounded-full flex items-center gap-2 text-xs backdrop-blur-md border border-white/20"
               >
-                {c.avatar ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={c.avatar} alt="" className="w-5 h-5 rounded-full object-cover border border-white/30" />
-                ) : null}
-                <span className="font-semibold text-white/90">{c.author}</span>
-                <span className="text-white/80 truncate">{c.text}</span>
+                <span
+                  aria-label={c.author}
+                  className="w-6 h-6 rounded-full bg-white text-black flex items-center justify-center text-[11px] font-black flex-shrink-0"
+                >
+                  {(c.author || '?').replace(/^[@$]/, '').slice(0, 1).toUpperCase()}
+                </span>
+                <span className="text-white/90 truncate">{c.text}</span>
               </div>
             ))}
           </div>

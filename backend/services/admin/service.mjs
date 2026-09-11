@@ -17,6 +17,8 @@ import { createLiveEvents } from './live-events.mjs';
 import { createLiveSegments } from './live-segments.mjs';
 import { createCreatorSurface } from './creators.mjs';
 import { createMagazine } from './magazine.mjs';
+import { createNetwork } from './network.mjs';
+import { publicEvent } from './live-events.mjs';
 
 const STATUSES = ['draft', 'ready', 'published', 'archived'];
 
@@ -93,8 +95,47 @@ export function createAdminService({
   const knownProduct = (productId) =>
     catalog.products().products.some((p) => p.id === productId);
 
+  // The main broadcast. Null only before an admin has ever set one, in which
+  // case the live service falls back to the seeded Central TV programme.
+  const currentProgramme = async () => {
+    const row = await store.get('SELECT * FROM programme WHERE id = 1');
+    if (!row) return { programme: null, video: null, source: 'unset' };
+    const video = await store.get('SELECT * FROM videos WHERE id = ?', row.video_id);
+    if (!video) return { programme: null, video: null, source: 'unset' };
+    return {
+      programme: { videoId: row.video_id, setBy: row.set_by, setAt: row.set_at, note: row.note },
+      video: publicVideo(video, mediaBase, mediaTransform),
+      source: 'admin',
+    };
+  };
+
+  const network = createNetwork({
+    runtime, store, creators,
+    // Vision shows what the main stage shows: the live event if one is on,
+    // else the programme.
+    mainStage: async () => ({ event: (await liveEvents.current()).event, programme: await currentProgramme() }),
+    wallet: ports.wallet ?? {},
+    identity: ports.identity ?? {},
+  });
+
   return {
     magazine,
+    network,
+
+    // Press access. The gateway admits only a verified card (or an admin);
+    // the events themselves are the network's, in their public shape - a
+    // press card admits its holder to the room, not to the stream key.
+    async pressEvents({ limit = 50 } = {}) {
+      const rows = await store.all(
+        `SELECT * FROM live_events WHERE scope = 'network' AND status IN ('scheduled', 'live')
+         ORDER BY CASE WHEN status = 'live' THEN 0 ELSE 1 END, COALESCE(scheduled_for, created_at) ASC LIMIT ?`,
+        Math.min(limit, 200),
+      );
+      return {
+        events: rows.map((row) => ({ ...publicEvent(row), scheduledFor: row.scheduled_for, access: 'press' })),
+        at: runtime.now(),
+      };
+    },
     // The back office manages the NETWORK library. Creator channels live in
     // the same table, scoped by owner_id, and are managed from the portal.
     async listVideos({ status = null, productId = null, limit = 50 } = {}) {
@@ -360,28 +401,16 @@ export function createAdminService({
         }
       });
 
-      const programme = await this.currentProgramme();
+      const programme = await currentProgramme();
       events.emit('programme', programme);
       return programme;
     },
 
-    // The main broadcast. Null only before an admin has ever set one, in which
-    // case the live service falls back to the seeded Central TV programme.
-    async currentProgramme() {
-      const row = await store.get('SELECT * FROM programme WHERE id = 1');
-      if (!row) return { programme: null, video: null, source: 'unset' };
-      const video = await store.get('SELECT * FROM videos WHERE id = ?', row.video_id);
-      if (!video) return { programme: null, video: null, source: 'unset' };
-      return {
-        programme: { videoId: row.video_id, setBy: row.set_by, setAt: row.set_at, note: row.note },
-        video: publicVideo(video, mediaBase, mediaTransform),
-        source: 'admin',
-      };
-    },
+    currentProgramme,
 
     async programmeWithHistory(limit = 20) {
       return {
-        ...(await this.currentProgramme()),
+        ...(await currentProgramme()),
         history: await store.all(
           'SELECT id, video_id AS "videoId", set_by AS "setBy", set_at AS "setAt", note FROM programme_history ORDER BY set_at DESC LIMIT ?',
           Math.min(limit, 100),
@@ -416,7 +445,7 @@ export function createAdminService({
           drafts: videos.drafts ?? 0, archived: videos.archived ?? 0,
           storedBytes: videos.storedBytes,
         },
-        programme: await this.currentProgramme(),
+        programme: await currentProgramme(),
         viewers, spend, moderation, engagement,
       };
     },

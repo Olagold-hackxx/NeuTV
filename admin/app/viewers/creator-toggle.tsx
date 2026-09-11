@@ -7,8 +7,10 @@ export function CreatorToggle({ userId, role }: { userId: string; role: string }
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
-  // Admin accounts are deployment config; there is nothing to toggle.
+  // Admin accounts are deployment config; there is nothing to toggle. Press
+  // standing is granted and withdrawn from the press desk, with the card.
   if (role === 'admin') return null;
+  if (role === 'press') return <span className="mono">managed on the press desk</span>;
 
   const isCreator = role === 'creator';
   return (

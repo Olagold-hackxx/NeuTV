@@ -69,7 +69,7 @@ export function NewVideoForm({ products }: { products: { id: string; name: strin
       {phase.step === 'error' ? <div className="alert alert-error">{phase.message}</div> : null}
       {phase.step === 'done' ? (
         <div className="alert alert-ok">
-          {phase.published ? 'Published. Your spotlight card is live.' : 'Saved to your channel.'}
+          {phase.published ? 'Published. Your Creators Network card is live.' : 'Saved to your channel.'}
         </div>
       ) : null}
 
@@ -135,7 +135,7 @@ export function NewVideoForm({ products }: { products: { id: string; name: strin
           disabled={busy}
           style={{ width: 'auto' }}
         />
-        <span className="hint" style={{ marginTop: 0 }}>Publish to the spotlight as soon as it lands</span>
+        <span className="hint" style={{ marginTop: 0 }}>Publish to the Creators Network as soon as it lands</span>
       </label>
 
       <button type="submit" className="btn btn-primary btn-block" disabled={busy}>

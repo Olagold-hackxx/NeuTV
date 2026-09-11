@@ -19,12 +19,13 @@ export default async function LoginPage() {
             <span className="brand-neu gradient-text">NEU</span>
             <span className="brand-tv">CREATORS</span>
           </div>
-          <div className="brand-sub" style={{ paddingLeft: 0 }}>Creators Portal</div>
+          <div className="brand-sub" style={{ paddingLeft: 0 }}>Creators &amp; Press Portal</div>
         </div>
         <LoginForm products={products} />
         <p className="hint" style={{ marginTop: 18 }}>
           Sign in with your NEU Passport. Creator standing is granted by the
-          network; the dashboard explains where you are in that process.
+          network, and press accreditation is applied for here; the dashboard
+          explains where you are in either process.
         </p>
       </div>
     </div>

@@ -24,7 +24,7 @@ export default async function TasksPage() {
           <h1>Tasks</h1>
           <p className="page-sub">
             Commissioned briefs for creators. Approving a delivery publishes it
-            to the spotlight and pays the bounty from the treasury, exactly once.
+            to the Creators Network and pays the bounty from the treasury, exactly once.
           </p>
         </div>
         <div className="mono num">{delivered} awaiting review</div>

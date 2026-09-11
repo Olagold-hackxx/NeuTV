@@ -24,8 +24,8 @@ export function LiveForm({ products }: { products: { id: string; name: string }[
         {pending ? 'Creating' : 'Create live session'}
       </button>
       <p className="hint">
-        Goes live on your spotlight channel only. The network broadcast is
-        never interrupted by a creator session.
+        Goes live on your Creators Network channel only. The network
+        broadcast is never interrupted by a creator session.
       </p>
     </form>
   );

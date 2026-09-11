@@ -17,5 +17,13 @@ export function createIdentityRouter(deps) {
   // Creators are approved from the back office, never self-appointed.
   r.put('/admin/creators/:userId', async (req) => ok(await service.setRole(req.params.userId, req.body?.role)), { auth: 'admin' });
 
+  // The press desk: apply with a passport, get verified by the network.
+  r.post('/press/apply',          async (req) => created(await service.applyPress(req.auth, req.body)), { auth: 'required', limit: AUTH_LIMIT });
+  r.get('/press/me',              async (req) => ok(await service.pressStatus(req.auth)), { auth: 'required' });
+  r.get('/admin/press',           async (req) => ok(await service.adminListPress({
+    status: req.query.status || null, limit: Number(req.query.limit) || 50,
+  })), { auth: 'admin' });
+  r.put('/admin/press/:userId',   async (req) => ok(await service.adminReviewPress(req.auth.userId, req.params.userId, req.body)), { auth: 'admin' });
+
   return Object.assign(r, { service });
 }

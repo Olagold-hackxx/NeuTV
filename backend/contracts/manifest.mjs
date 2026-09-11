@@ -36,6 +36,14 @@ export const ROUTES = [
   { service: 'identity', method: 'GET',  path: '/identity/me',                   auth: 'required', summary: 'Current viewer, badge and granted scopes.' },
   { service: 'identity', method: 'GET',  path: '/identity/session',              auth: 'optional', summary: 'Session probe. Never 401s; reports guest state.' },
   { service: 'identity', method: 'PUT',  path: '/admin/creators/:userId',        auth: 'admin',    summary: 'Grant or revoke creator standing. Admins stay config-only.' },
+  // --- the press desk: accredited media on the same passport ---------------
+  // Anyone with a passport may apply; the network verifies. A verified account
+  // holds the 'press' role and an e-card with an id, and that is what admits
+  // it to the network's real events.
+  { service: 'identity', method: 'POST', path: '/press/apply',                   auth: 'required', summary: 'Apply for press accreditation: outlet, title, beat.' },
+  { service: 'identity', method: 'GET',  path: '/press/me',                      auth: 'required', summary: 'This account press standing and its e-card, if verified.' },
+  { service: 'identity', method: 'GET',  path: '/admin/press',                   auth: 'admin',    summary: 'Press applications, filterable by status.' },
+  { service: 'identity', method: 'PUT',  path: '/admin/press/:userId',           auth: 'admin',    summary: 'Verify, reject or revoke a press accreditation.' },
 
   // --- wallet: KashCoin balance, ledger, gifting ---------------------------
   { service: 'wallet', method: 'GET',  path: '/wallet',        auth: 'required', summary: 'Balance. Opens at 0, no sign-in bonus.' },
@@ -45,6 +53,7 @@ export const ROUTES = [
   { service: 'wallet', method: 'POST', path: '/wallet/credit', auth: 'required', summary: 'Credit coins (topup/reward). Idempotent by reference.' },
   { service: 'wallet', method: 'POST', path: '/subscriptions',    auth: 'required', summary: 'Buy or renew a viewer/creator plan with KashCoin.' },
   { service: 'wallet', method: 'GET',  path: '/subscriptions/me', auth: 'required', summary: 'This viewer subscription windows and plan prices.' },
+  { service: 'wallet', method: 'GET',  path: '/wallet/revenue',   auth: 'admin',    summary: 'Network revenue by quarter: subscriptions, channel sales, gift share.' },
 
   // --- social: the official announcements feed -----------------------------
   { service: 'social', method: 'GET',  path: '/social/posts',                auth: 'optional', summary: 'Feed, filterable by product, cursor paginated.' },
@@ -153,9 +162,30 @@ export const ROUTES = [
   { service: 'admin', method: 'POST',   path: '/admin/tasks',                               auth: 'admin',   summary: 'Post a brief with a KashCoin bounty.' },
   { service: 'admin', method: 'POST',   path: '/admin/tasks/:taskId/approve',               auth: 'admin',   summary: 'Approve a delivery: publishes it and pays the bounty.' },
   { service: 'admin', method: 'POST',   path: '/admin/tasks/:taskId/reject',                auth: 'admin',   summary: 'Reject a delivery. The creator keeps the video.' },
-  // Public: the spotlight rail and the creator videos its cards promote.
+  // Public: the Creators Network rail and the creator videos its cards promote.
   { service: 'admin', method: 'GET',    path: '/creators/spotlights',                       auth: 'none',    summary: 'Live creator channels and their latest published work.' },
   { service: 'admin', method: 'GET',    path: '/creators/videos/:videoId',                  auth: 'none',    summary: 'A published creator video, for stage takeovers.' },
+
+  // --- the channels area: decoder numbers ----------------------------------
+  // Channel 1 is the network's own Vision channel - the main stage. Every
+  // other number is sold to a creator, once, for KashCoin, and lists their
+  // channel in the viewer's channels area under that number.
+  { service: 'admin', method: 'GET',    path: '/channels',                                  auth: 'none',    summary: 'The channels area: Vision on 1, then every creator decoder number.' },
+  { service: 'admin', method: 'GET',    path: '/creator/channel',                           auth: 'creator', summary: 'This creator decoder channel, the price, and free numbers.' },
+  { service: 'admin', method: 'POST',   path: '/creator/channel',                           auth: 'creator', summary: 'Buy a decoder number with KashCoin. One per creator.' },
+  { service: 'admin', method: 'PUT',    path: '/creator/channel',                           auth: 'creator', summary: 'Rename the owned channel or change its tagline.' },
+
+  // --- viewers choice: the quarterly leaderboard ----------------------------
+  // Every viewer gets one vote a quarter, movable until the quarter closes.
+  // The board is public. The winner takes a fixed share of the quarter's
+  // network revenue, paid from the treasury when the network settles it.
+  { service: 'admin', method: 'GET',    path: '/creators/leaderboard',                      auth: 'optional', summary: 'Viewers choice standings this quarter, the prize pool, and your vote.' },
+  { service: 'admin', method: 'POST',   path: '/creators/:handle/vote',                     auth: 'required', summary: 'Cast or move this quarter vote to a creator.' },
+  { service: 'admin', method: 'GET',    path: '/admin/leaderboard',                         auth: 'admin',    summary: 'Past quarters: winners, revenue and what was paid.' },
+  { service: 'admin', method: 'POST',   path: '/admin/leaderboard/settle',                  auth: 'admin',    summary: 'Close a finished quarter and pay the winner their share, once.' },
+
+  // --- press access to real events ----------------------------------------
+  { service: 'admin', method: 'GET',    path: '/press/events',                              auth: 'press',   summary: 'Network events a verified press card admits its holder to.' },
 
   // --- moderation: the gate every piece of user text passes through --------
   { service: 'moderation', method: 'POST', path: '/moderation/check',  auth: 'optional', summary: 'Classify user text against the deterministic ruleset.' },
@@ -163,7 +193,7 @@ export const ROUTES = [
 
 ];
 
-export const AUTH_LEVELS = ['none', 'optional', 'required', 'creator', 'admin'];
+export const AUTH_LEVELS = ['none', 'optional', 'required', 'creator', 'press', 'admin'];
 
 export const SERVICES = [...new Set(ROUTES.map((r) => r.service))];
 

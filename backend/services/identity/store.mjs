@@ -30,8 +30,30 @@ const MIGRATIONS = {
   // Contract 1.1.0: the admin/CRM service needs a role claim on the session.
   // Additive and defaulted, so existing rows and sessions stay valid.
   '002_roles': `
-    ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'viewer';  -- 'viewer' | 'creator' | 'admin'
+    ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'viewer';  -- 'viewer' | 'creator' | 'press' | 'admin'
     CREATE INDEX idx_users_role ON users(role);
+  `,
+  // The press desk. One application per account; verification mints the
+  // e-card (card_id, issued_at, expires_at) and grants the 'press' role. The
+  // application row outlives a revocation so the history is kept.
+  '003_press': `
+    CREATE TABLE press_applications (
+      user_id     TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      outlet      TEXT NOT NULL,
+      title       TEXT NOT NULL,            -- the applicant's job title
+      beat        TEXT NOT NULL DEFAULT '',
+      website     TEXT,
+      note        TEXT NOT NULL DEFAULT '',
+      status      TEXT NOT NULL,            -- 'pending' | 'verified' | 'rejected' | 'revoked'
+      card_id     TEXT UNIQUE,              -- 'NEU-PRESS-000001', minted on verification
+      issued_at   INTEGER,
+      expires_at  INTEGER,
+      reviewed_by TEXT,
+      reviewed_at INTEGER,
+      created_at  INTEGER NOT NULL,
+      updated_at  INTEGER NOT NULL
+    );
+    CREATE INDEX idx_press_status ON press_applications(status, created_at DESC);
   `,
 };
 

@@ -5,7 +5,10 @@
 
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import type { CreatorTask, CreatorVideo, LedgerEntry, LiveSession, SessionUser, SubscriptionStatus } from './types';
+import type {
+  CreatorTask, CreatorVideo, LedgerEntry, LiveSession, MyChannel, PressEvent, PressStatus,
+  SessionUser, SubscriptionStatus, ViewersChoice,
+} from './types';
 
 export const API_BASE = process.env.NEUTV_API_BASE ?? 'http://localhost:4173';
 // Distinct from the admin's cookie so the two apps never clobber each other
@@ -95,3 +98,11 @@ export const getBalance = () => call<{ balance: number }>('/wallet');
 export const getLedger = (limit = 20) => call<{ balance: number; entries: LedgerEntry[] }>(`/wallet/ledger?limit=${limit}`);
 export const getSubscriptions = () => call<SubscriptionStatus>('/subscriptions/me');
 export const getProducts = () => call<{ products: { id: string; name: string }[] }>('/catalog/products', { anonymous: true });
+
+// The press desk.
+export const getPress = () => call<PressStatus>('/press/me');
+export const getPressEvents = () => call<{ events: PressEvent[] }>('/press/events');
+
+// Decoder channels and the viewers choice.
+export const getMyChannel = () => call<MyChannel>('/creator/channel');
+export const getViewersChoice = () => call<ViewersChoice>('/creators/leaderboard');

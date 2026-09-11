@@ -73,7 +73,7 @@ export function VideoModal({ video, onClose, onPromote }: VideoModalProps) {
             <span>
               {video.creator ? (
                 <>
-                  Creator Spotlight: <strong className="text-white font-extrabold">{video.creator}</strong>
+                  Creators Network: <strong className="text-white font-extrabold">{video.creator}</strong>
                 </>
               ) : (
                 'NEU Network Official'

@@ -77,7 +77,7 @@ export interface Viewer {
   handle: string;
   badge: string;
   productId: string;
-  role: 'viewer' | 'creator' | 'admin';
+  role: 'viewer' | 'creator' | 'press' | 'admin';
   authMethod: 'sso' | 'password';
   verified: boolean;
   createdAt: number;
@@ -111,7 +111,7 @@ export interface SessionUser {
   avatar: string;
   badge: string;
   productId: string;
-  role: 'viewer' | 'creator' | 'admin';
+  role: 'viewer' | 'creator' | 'press' | 'admin';
   authMethod: 'sso' | 'password';
   verified: boolean;
 }

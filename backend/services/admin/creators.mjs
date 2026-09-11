@@ -250,12 +250,54 @@ export function createCreatorSurface({
       return liveSegments.append(eventId, raw);
     },
 
-    // --- the spotlight ----------------------------------------------------
+    // --- the Creators Network rail ----------------------------------------
 
     /**
-     * Public. One card per creator with something to show: their live session
-     * when one is on, otherwise their latest published video. Merged by the
-     * viewer app after the seeded editorial spotlights - the rail lights up
+     * One creator's card: their live session when one is on, otherwise their
+     * latest published video. Null when there is nothing to show, or when
+     * the owner no longer resolves to an account.
+     */
+    async cardFor(ownerId, known = null) {
+      const live = known?.live ?? await store.get(
+        "SELECT * FROM live_events WHERE scope = 'creator' AND status = 'live' AND owner_id = ? ORDER BY started_at DESC LIMIT 1",
+        ownerId,
+      ) ?? null;
+      const video = known?.video ?? await store.get(
+        "SELECT * FROM videos WHERE owner_id = ? AND status = 'published' ORDER BY created_at DESC LIMIT 1",
+        ownerId,
+      ) ?? null;
+      if (!live && !video) return null;
+      const profile = (await identity.profile?.(ownerId)) ?? null;
+      if (!profile) return null; // an orphaned row is not a card
+      const productId = live?.product_id ?? video?.product_id ?? profile.productId;
+      const product = catalog.products().products.find((p) => p.id === productId);
+      const played = video ? serializeVideo(video) : null;
+      return {
+        // A live channel promotes by its video (takeover) or plays the live
+        // session directly; the id is what the viewer sends to /live/stage.
+        id: video?.id ?? `live-${live.id}`,
+        name: profile.name,
+        handle: profile.handle?.startsWith('@') ? profile.handle : `@${profile.handle}`,
+        avatar: profile.avatar,
+        product: product?.name ?? productId,
+        productId,
+        tag: 'Creator',
+        title: live?.title ?? video?.title ?? '',
+        thumbnail: live?.poster_url ?? video?.poster_url ?? null,
+        videoMp4: played?.youtubeId ? null : (played?.playbackUrl ?? null),
+        videoUrl: played?.youtubeId ?? null,   // seed convention: a bare YouTube id
+        duration: null,
+        isLive: Boolean(live),
+        liveEventId: live?.id ?? null,
+        liveTransport: live?.transport ?? null,
+        livePlaybackUrl: live?.playback_url ?? null,
+        creator: true,
+      };
+    },
+
+    /**
+     * Public. One card per creator with something to show. Merged by the
+     * viewer app ahead of the seeded editorial cards - the rail lights up
      * with real creators without the catalog changing shape.
      */
     async spotlights({ limit = 24 } = {}) {
@@ -277,34 +319,10 @@ export function createCreatorSurface({
       }
 
       const cards = [];
-      for (const [ownerId, { live, video }] of byOwner) {
+      for (const [ownerId, known] of byOwner) {
         if (cards.length >= Math.min(limit, 50)) break;
-        const profile = (await identity.profile?.(ownerId)) ?? null;
-        if (!profile) continue; // an orphaned row is not a card
-        const productId = live?.product_id ?? video?.product_id ?? profile.productId;
-        const product = catalog.products().products.find((p) => p.id === productId);
-        const played = video ? serializeVideo(video) : null;
-        cards.push({
-          // A live channel promotes by its video (takeover) or plays the live
-          // session directly; the id is what the viewer sends to /live/stage.
-          id: video?.id ?? `live-${live.id}`,
-          name: profile.name,
-          handle: profile.handle?.startsWith('@') ? profile.handle : `@${profile.handle}`,
-          avatar: profile.avatar,
-          product: product?.name ?? productId,
-          productId,
-          tag: 'Creator',
-          title: live?.title ?? video?.title ?? '',
-          thumbnail: live?.poster_url ?? video?.poster_url ?? null,
-          videoMp4: played?.youtubeId ? null : (played?.playbackUrl ?? null),
-          videoUrl: played?.youtubeId ?? null,   // seed convention: a bare YouTube id
-          duration: null,
-          isLive: Boolean(live),
-          liveEventId: live?.id ?? null,
-          liveTransport: live?.transport ?? null,
-          livePlaybackUrl: live?.playback_url ?? null,
-          creator: true,
-        });
+        const card = await this.cardFor(ownerId, known);
+        if (card) cards.push(card);
       }
       return { spotlights: cards };
     },

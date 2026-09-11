@@ -9,6 +9,26 @@ import { scopesFor, scopeIdsFor } from './scopes.mjs';
 const DEFAULT_AVATAR = 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80';
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
+// A press card is good for a year from verification. Renewal is a fresh
+// verification, so a lapsed outlet does not keep event access by inertia.
+export const PRESS_CARD_TTL_MS = 365 * 24 * 60 * 60 * 1000;
+export const PRESS_STATUSES = ['pending', 'verified', 'rejected', 'revoked'];
+
+const publicPress = (row, user) => ({
+  userId: row.user_id,
+  outlet: row.outlet,
+  title: row.title,
+  beat: row.beat,
+  website: row.website,
+  note: row.note,
+  status: row.status,
+  card: row.card_id ? { id: row.card_id, issuedAt: row.issued_at, expiresAt: row.expires_at } : null,
+  reviewedAt: row.reviewed_at,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+  ...(user ? { name: user.name, handle: user.handle, avatar: user.avatar, role: user.role } : {}),
+});
+
 const publicUser = (row) => ({
   id: row.id,
   role: row.role ?? 'viewer',
@@ -286,7 +306,7 @@ export function createIdentityService({
     // so a compromised back-office session cannot escalate anyone.
     async setRole(userId, role) {
       const { role: next } = validate({ role }, {
-        role: { type: 'string', required: true, enum: ['viewer', 'creator'] },
+        role: { type: 'string', required: true, enum: ['viewer', 'creator', 'press'] },
       });
       const user = await store.get('SELECT * FROM users WHERE id = ?', String(userId || ''));
       if (!user) throw notFound('No such account.');
@@ -308,14 +328,146 @@ export function createIdentityService({
       return row?.id ?? null;
     },
 
-    // Port for the creator spotlight: the public face of one account, nothing
-    // more. Null rather than a throw - an orphaned content row is the caller's
-    // condition to handle, not an error.
+    // Port for the Creators Network rail: the public face of one account,
+    // nothing more. Null rather than a throw - an orphaned content row is the
+    // caller's condition to handle, not an error.
     async profileById(userId) {
       const row = await store.get('SELECT * FROM users WHERE id = ?', String(userId || ''));
       if (!row) return null;
       const user = publicUser(row);
       return { id: user.id, name: user.name, handle: user.handle, avatar: user.avatar, productId: user.productId };
+    },
+
+    // Port for the viewers choice vote: a handle names a creator, and only a
+    // creator can be voted for. The role rides along so the caller can refuse
+    // a vote for a plain viewer without a second lookup.
+    async accountByHandle(handle) {
+      const normalized = String(handle || '').trim().toLowerCase().replace(/^@/, '');
+      if (!normalized) return null;
+      const row = await store.get('SELECT * FROM users WHERE handle = ?', normalized);
+      if (!row) return null;
+      const user = publicUser(row);
+      return { id: user.id, name: user.name, handle: user.handle, avatar: user.avatar, productId: user.productId, role: user.role };
+    },
+
+    // --- the press desk ---------------------------------------------------
+
+    /**
+     * Apply, or re-apply after a rejection. A verified or pending application
+     * is not overwritten: the desk decides, and an applicant editing their
+     * outlet after verification would be editing the card.
+     */
+    async applyPress(auth, input) {
+      if (!auth) throw unauthorized();
+      const v = validate(input, {
+        outlet: { type: 'string', required: true, min: 2, max: 120 },
+        title: { type: 'string', required: true, min: 2, max: 80 },
+        beat: { type: 'string', required: false, default: '', max: 120 },
+        website: { type: 'string', required: false, max: 300 },
+        note: { type: 'string', required: false, default: '', max: 1_000 },
+      });
+      if ((auth.role ?? 'viewer') === 'admin') throw badRequest('Admin accounts do not need a press card.');
+      const existing = await store.get('SELECT * FROM press_applications WHERE user_id = ?', auth.userId);
+      if (existing && existing.status === 'verified') throw conflict('This account already holds a press card.');
+      if (existing && existing.status === 'pending') throw conflict('Your application is with the desk. It will be reviewed as it stands.');
+      const now = runtime.now();
+      if (existing) {
+        await store.run(
+          `UPDATE press_applications SET outlet=?, title=?, beat=?, website=?, note=?, status='pending',
+                  reviewed_by=NULL, reviewed_at=NULL, updated_at=? WHERE user_id=?`,
+          v.outlet, v.title, v.beat, v.website ?? null, v.note, now, auth.userId,
+        );
+      } else {
+        await store.run(
+          `INSERT INTO press_applications (user_id, outlet, title, beat, website, note, status, created_at, updated_at)
+           VALUES (?,?,?,?,?,?,'pending',?,?)`,
+          auth.userId, v.outlet, v.title, v.beat, v.website ?? null, v.note, now, now,
+        );
+      }
+      return this.pressStatus(auth);
+    },
+
+    async pressStatus(auth) {
+      if (!auth) throw unauthorized();
+      const row = await store.get('SELECT * FROM press_applications WHERE user_id = ?', auth.userId);
+      const now = runtime.now();
+      if (!row) return { application: null, press: false, at: now };
+      const application = publicPress(row, auth.user);
+      // Standing is the role; the card is the proof. Both have to hold.
+      const press = row.status === 'verified' && (auth.role === 'press' || auth.role === 'admin');
+      return { application, press, cardValid: press && (row.expires_at ?? 0) > now, at: now };
+    },
+
+    async adminListPress({ status = null, limit = 50 } = {}) {
+      const rows = status
+        ? await store.all('SELECT * FROM press_applications WHERE status = ? ORDER BY created_at DESC LIMIT ?', status, Math.min(limit, 200))
+        : await store.all('SELECT * FROM press_applications ORDER BY created_at DESC LIMIT ?', Math.min(limit, 200));
+      const out = [];
+      for (const row of rows) {
+        const user = await store.get('SELECT * FROM users WHERE id = ?', row.user_id);
+        out.push(publicPress(row, user ? publicUser(user) : null));
+      }
+      return { applications: out };
+    },
+
+    /**
+     * The desk's decision. Verifying grants the role and mints the card;
+     * revoking takes both back; rejecting closes a pending application. The
+     * role and the card move together so neither can be held without the
+     * other.
+     */
+    async adminReviewPress(reviewerId, userId, input) {
+      const { decision } = validate(input, {
+        decision: { type: 'string', required: true, enum: ['verify', 'reject', 'revoke'] },
+      });
+      const row = await store.get('SELECT * FROM press_applications WHERE user_id = ?', String(userId || ''));
+      if (!row) throw notFound('No press application for that account.');
+      const user = await store.get('SELECT * FROM users WHERE id = ?', row.user_id);
+      if (!user) throw notFound('No such account.');
+      if ((user.role ?? 'viewer') === 'admin') throw badRequest('Admin accounts are managed by deployment config, not by role changes.');
+      const now = runtime.now();
+
+      if (decision === 'verify') {
+        if (row.status === 'verified') throw conflict('That account already holds a press card.');
+        // The card number is stable across re-verification: a returning
+        // outlet keeps the id on its old card rather than being issued a new
+        // identity every year.
+        const cardId = row.card_id ?? await this.nextPressCardId();
+        await store.tx(async (t) => {
+          await t.run(
+            `UPDATE press_applications SET status='verified', card_id=?, issued_at=?, expires_at=?,
+                    reviewed_by=?, reviewed_at=?, updated_at=? WHERE user_id=?`,
+            cardId, now, now + PRESS_CARD_TTL_MS, reviewerId, now, now, row.user_id,
+          );
+          await t.run("UPDATE users SET role = 'press', verified = 1 WHERE id = ?", row.user_id);
+        });
+      } else if (decision === 'reject') {
+        if (row.status !== 'pending') throw conflict(`Only a pending application can be rejected; this one is "${row.status}".`);
+        await store.run(
+          "UPDATE press_applications SET status='rejected', reviewed_by=?, reviewed_at=?, updated_at=? WHERE user_id=?",
+          reviewerId, now, now, row.user_id,
+        );
+      } else {
+        if (row.status !== 'verified') throw conflict('Only a verified press card can be revoked.');
+        await store.tx(async (t) => {
+          await t.run(
+            "UPDATE press_applications SET status='revoked', expires_at=?, reviewed_by=?, reviewed_at=?, updated_at=? WHERE user_id=?",
+            now, reviewerId, now, now, row.user_id,
+          );
+          // Only the press standing is withdrawn. An account that was a
+          // creator before it was press is not a creator again by accident.
+          await t.run("UPDATE users SET role = 'viewer' WHERE id = ? AND role = 'press'", row.user_id);
+        });
+      }
+      const after = await store.get('SELECT * FROM press_applications WHERE user_id = ?', row.user_id);
+      const account = await store.get('SELECT * FROM users WHERE id = ?', row.user_id);
+      return { application: publicPress(after, publicUser(account)) };
+    },
+
+    // Sequential, zero-padded, so a card reads like an id and not a token.
+    async nextPressCardId() {
+      const { n } = await store.get('SELECT COUNT(*) AS n FROM press_applications WHERE card_id IS NOT NULL');
+      return `NEU-PRESS-${String(n + 1).padStart(6, '0')}`;
     },
 
     // --- read ports for the admin CRM (see services/admin/ports.mjs) ------

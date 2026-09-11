@@ -111,9 +111,26 @@ export function createAdminRouter(deps) {
   r.post('/admin/tasks/:taskId/approve', async (req) => ok(await service.creators.adminApproveTask(req.params.taskId)), { auth: 'admin' });
   r.post('/admin/tasks/:taskId/reject',  async (req) => ok(await service.creators.adminRejectTask(req.params.taskId)), { auth: 'admin' });
 
-  // Public: the creator spotlight rail, and the videos its cards promote.
+  // Public: the Creators Network rail, and the videos its cards promote.
   r.get('/creators/spotlights', async (req) => ok(await service.creators.spotlights({ limit: Number(req.query.limit) || 24 })), { auth: 'none' });
   r.get('/creators/videos/:videoId', async (req) => ok(await service.creators.publishedOwn(req.params.videoId)), { auth: 'none' });
+
+  // --- the channels area: decoder numbers ----------------------------------
+  r.get('/channels',          async ()    => ok(await service.network.channelsArea()), { auth: 'none' });
+  r.get('/creator/channel',   async (req) => ok(await service.network.myChannel(req.auth)), { auth: 'creator' });
+  r.post('/creator/channel',  async (req) => created(await service.network.buyChannel(req.auth, req.body)), { auth: 'creator', limit: { tokens: 10, windowMs: 60_000 } });
+  r.put('/creator/channel',   async (req) => ok(await service.network.updateChannel(req.auth, req.body)), { auth: 'creator' });
+
+  // --- viewers choice --------------------------------------------------------
+  // Declared before the parameterised vote route so "leaderboard" cannot be
+  // read as a handle.
+  r.get('/creators/leaderboard',      async (req) => ok(await service.network.leaderboard(req.auth)), { auth: 'optional' });
+  r.post('/creators/:handle/vote',    async (req) => ok(await service.network.vote(req.auth, req.params.handle)), { auth: 'required', limit: { tokens: 20, windowMs: 60_000 } });
+  r.get('/admin/leaderboard',         async ()    => ok(await service.network.adminAwards()), { auth: 'admin' });
+  r.post('/admin/leaderboard/settle', async (req) => ok(await service.network.adminSettle(req.auth.userId, req.body)), { auth: 'admin' });
+
+  // --- press access ----------------------------------------------------------
+  r.get('/press/events', async (req) => ok(await service.pressEvents({ limit: Number(req.query.limit) || 50 })), { auth: 'press' });
 
   // Public: what the stage reverts to, and how the stage resolves a takeover.
   r.get('/programme/current', async () => ok(await service.currentProgramme()), { auth: 'none' });

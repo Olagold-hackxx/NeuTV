@@ -28,6 +28,8 @@ const LINKS = [
   { href: '/viewers', label: 'Viewers' },
   { href: '/moderation', label: 'Moderation' },
   { href: '/tasks', label: 'Tasks' },
+  { href: '/press', label: 'Press desk' },
+  { href: '/leaderboard', label: "Viewers' choice" },
   { href: '/magazine', label: 'E-Magazine' },
 ];
 

@@ -16,5 +16,9 @@ export function createWalletRouter(deps) {
   r.post('/subscriptions',   async (req) => created(await service.subscribe(req.auth.userId, req.body)), { auth: 'required', limit: { tokens: 10, windowMs: 60_000 } });
   r.get('/subscriptions/me', async (req) => ok(await service.subscriptionStatus(req.auth.userId)),       { auth: 'required' });
 
+  // Network revenue by quarter. Back office only: it is the number the
+  // viewers choice prize is a share of.
+  r.get('/wallet/revenue',   async (req) => ok(await service.revenueByQuarter({ quarters: Number(req.query.quarters) || 4 })), { auth: 'admin' });
+
   return Object.assign(r, { service });
 }

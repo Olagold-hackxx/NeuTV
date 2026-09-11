@@ -132,8 +132,16 @@ export async function compose({
       wallet: {
         subscriptionActive: (userId, plan) => wallet.subscriptionActive(userId, plan),
         payBounty: (userId, amount, reference, memo) => wallet.payBounty(userId, amount, reference, memo),
+        // Decoder channels are sold through the ledger, and the viewers
+        // choice prize is a share of what the ledger says came in.
+        charge: (userId, amount, reference, memo) => wallet.charge(userId, amount, reference, memo),
+        payPrize: (userId, amount, reference, memo) => wallet.payPrize(userId, amount, reference, memo),
+        revenueBetween: (from, to) => wallet.revenueBetween(from, to),
       },
-      identity: { profile: (userId) => identity.profileById(userId) },
+      identity: {
+        profile: (userId) => identity.profileById(userId),
+        accountByHandle: (handle) => identity.accountByHandle(handle),
+      },
     },
     // A live event going on or off air reaches viewers over SSE, so the stage
     // switches without anyone reloading.

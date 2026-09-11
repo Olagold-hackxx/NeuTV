@@ -242,6 +242,33 @@ export async function setCreatorRole(userId: string, role: 'creator' | 'viewer')
   }
 }
 
+// --- the press desk ---------------------------------------------------------
+
+export async function reviewPress(userId: string, decision: 'verify' | 'reject' | 'revoke'): Promise<ActionResult> {
+  try {
+    await call(`/admin/press/${encodeURIComponent(userId)}`, { method: 'PUT', body: { decision } });
+    revalidatePath('/press');
+    revalidatePath('/viewers');
+    return { ok: true };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+// --- the viewers choice -----------------------------------------------------
+
+export async function settleQuarter(quarter: string): Promise<ActionResult> {
+  try {
+    const res = await call<{ award: { prize: number; winner: { name: string } | null }; replayed: boolean }>(
+      '/admin/leaderboard/settle', { method: 'POST', body: { quarter } },
+    );
+    revalidatePath('/leaderboard');
+    return { ok: true, details: res };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
 export async function createTask(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {
   const bounty = Number(form.get('bounty'));
   try {

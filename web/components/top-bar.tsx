@@ -3,7 +3,7 @@
 // The main column's header: tab strip, search, quality selector.
 
 import { useState } from 'react';
-import { Bookmark, Flame, Search, Tv, Users } from 'lucide-react';
+import { Bookmark, Flame, LayoutGrid, Search, Tv, Users } from 'lucide-react';
 import type { MainTab } from './rail';
 
 type TopBarProps = {
@@ -15,6 +15,7 @@ type TopBarProps = {
 
 const TABS: { tab: MainTab; label: string }[] = [
   { tab: 'tv', label: 'NEU Network Live' },
+  { tab: 'channels', label: 'Channels' },
   { tab: 'foryou', label: 'For You Feed' },
   { tab: 'following', label: 'Following' },
   { tab: 'saved', label: 'Saved' },
@@ -24,6 +25,8 @@ function tabIcon(tab: MainTab) {
   switch (tab) {
     case 'tv':
       return <Tv className="w-4 h-4" />;
+    case 'channels':
+      return <LayoutGrid className="w-4 h-4" />;
     case 'foryou':
       return <Flame className="w-4 h-4 text-red-500 fill-red-500 stroke-red-500" />;
     case 'following':

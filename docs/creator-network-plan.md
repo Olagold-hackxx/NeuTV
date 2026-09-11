@@ -14,7 +14,7 @@ as-is: `role` is already a stored column; `creator` becomes a third value
 beside `viewer` and `admin`.
 
 - **Viewers** watch, chat, gift, and subscribe.
-- **Creators** publish videos and go live *into the Creator Spotlight only*.
+- **Creators** publish videos and go live *into the Creators Network only* (the rail was called the Creator Spotlight until 2026-09-11).
 
 ## 2. The spotlight is the creators' stage — the main view is untouched
 
@@ -104,3 +104,40 @@ And the subscriptions themselves:
 
 Phase 1 needs no new product surface — it is scoping what exists. The portal
 is the first genuinely new build.
+
+## 7. What shipped on 2026-09-11 (contract 2.2.0)
+
+The rail is now called the **Creators Network** everywhere a viewer, creator
+or editor reads it. The routes and identifiers (`/creators/spotlights`,
+`CREATOR_SPOTLIGHTS`) keep their names; only the copy changed.
+
+- **Comments on the TV.** Live comments ride on the stage on every screen
+  size, as a letter — the author's initial — and the message. No name
+  caption; the letter is the byline and the name is a hover away. The
+  invented subtitle caption is gone and captions default to off.
+- **The channels area.** A Channels tab in the viewer. **Channel 1 is NEU
+  Vision**, the network's own channel, showing whatever the main stage is
+  showing. Every other number is a **decoder number** a creator bought
+  (`POST /creator/channel`, one per creator, one creator per number, 1000
+  KashCoin to the treasury, from 100 up). A channel plays the way the
+  creator's Creators Network card plays.
+- **The press desk.** Anyone with a passport applies (`POST /press/apply`:
+  outlet, title, beat); the back office verifies from the Press desk page.
+  Verification grants the `press` role and mints a **NEU PRESS e-card**
+  (`NEU-PRESS-000001`, valid a year); the card page in the portal is the ID,
+  printable. A verified card admits its holder to the network's real events
+  (`GET /press/events`, auth level `press`). Revoking takes role and card
+  back together.
+- **The incentive, made explicit on the creator dashboard:** the audience
+  (every publish is a card on the network's rail), a decoder number of their
+  own, and the **viewers' choice**: a public quarterly leaderboard
+  (`GET /creators/leaderboard`), one vote per viewer per quarter, movable
+  until the quarter closes. The winner takes **20% of the quarter's network
+  revenue** — subscriptions, channel sales, gifts on the network's streams
+  and the network's 30% of gifts on creator content, read from the ledger —
+  paid from the treasury when the back office settles the quarter
+  (`POST /admin/leaderboard/settle`, once per quarter, payout keyed by
+  quarter).
+
+Still open from §6: the watch-time spotlight pool, E-News assembly (the
+E-magazine shelf exists; the pipeline does not), and WorldSpace links.

@@ -6,6 +6,7 @@
 
 import { validate } from '../../platform/validate.mjs';
 import { notFound, paymentRequired, badRequest } from '../../platform/errors.mjs';
+import { quarterOf, quarterWindow, previousQuarter } from '../../platform/quarters.mjs';
 import { giftCatalog, giftById } from './gifts.mjs';
 
 const TREASURY = 'system:treasury';
@@ -284,6 +285,100 @@ export function createWalletService({
         ],
         response: () => ({ credited: amount, balance: opening + amount }),
       });
+    },
+
+    /**
+     * Port for a one-off purchase - a decoder channel number. The coins move
+     * to the treasury as network revenue, keyed by reference so a retried
+     * buy cannot charge twice. Refused, not overdrawn, on a short balance.
+     */
+    async charge(userId, amount, reference, memo) {
+      if (!userId) throw badRequest('Nobody to charge.');
+      if (!Number.isInteger(amount) || amount <= 0) throw badRequest('A charge is a positive whole number of coins.');
+      const account = userAccount(userId);
+      if (reference) {
+        const prior = await store.get('SELECT payload FROM transactions WHERE reference = ?', reference);
+        if (prior) return { ...JSON.parse(prior.payload), replayed: true };
+      }
+      const balance = await balanceOf(account);
+      if (balance < amount) {
+        throw paymentRequired(`Insufficient balance. That costs ${amount} Coins.`, {
+          balance, required: amount, shortfall: amount - balance,
+        });
+      }
+      return post({
+        kind: 'purchase',
+        reference,
+        actor: userId,
+        memo: memo ?? 'Purchase',
+        legs: [
+          { account, amount: -amount },
+          { account: TREASURY, amount },
+        ],
+        response: () => ({ charged: amount, balance: balance - amount }),
+      });
+    },
+
+    /** Port for the viewers choice prize: paid from the treasury, once per reference. */
+    async payPrize(userId, amount, reference, memo) {
+      if (!userId) throw badRequest('That prize has nobody to pay.');
+      if (!Number.isInteger(amount) || amount <= 0) throw badRequest('A prize is a positive whole number of coins.');
+      const account = userAccount(userId);
+      const opening = await balanceOf(account);
+      return post({
+        kind: 'prize',
+        reference,
+        actor: 'system:leaderboard',
+        memo: memo ?? 'Viewers choice prize',
+        legs: [
+          { account, amount },
+          { account: TREASURY, amount: -amount },
+        ],
+        response: () => ({ credited: amount, balance: opening + amount }),
+      });
+    },
+
+    /**
+     * What the network earned in a window, in coins, from the ledger alone:
+     *
+     *   - subscriptions and purchases, which land on the treasury;
+     *   - gifts on the network's own streams and posts;
+     *   - the network's share of gifts on creator content - the tip credit on
+     *     the creator's tally account net of the payout that passed the
+     *     creator their share.
+     *
+     * Prizes and bounties are spend, not revenue, and are not subtracted
+     * here: the share paid to a winner is a share of what came in.
+     */
+    async revenueBetween(from, to) {
+      const row = await store.get(
+        `SELECT
+           COALESCE(SUM(CASE WHEN account = 'system:treasury' AND kind = 'subscription' AND amount > 0 THEN amount ELSE 0 END), 0) AS subscriptions,
+           COALESCE(SUM(CASE WHEN account = 'system:treasury' AND kind = 'purchase' AND amount > 0 THEN amount ELSE 0 END), 0) AS purchases,
+           COALESCE(SUM(CASE WHEN (account LIKE 'stream:%' OR account LIKE 'post:%') AND kind = 'tip' AND amount > 0 THEN amount ELSE 0 END), 0) AS "networkGifts",
+           COALESCE(SUM(CASE WHEN account LIKE 'creator:%' AND kind IN ('tip', 'payout') THEN amount ELSE 0 END), 0) AS "creatorGiftShare"
+         FROM entries WHERE created_at >= ? AND created_at < ?`,
+        from, to,
+      );
+      const parts = {
+        subscriptions: Number(row.subscriptions),
+        purchases: Number(row.purchases),
+        networkGifts: Number(row.networkGifts),
+        creatorGiftShare: Number(row.creatorGiftShare),
+      };
+      return { ...parts, total: parts.subscriptions + parts.purchases + parts.networkGifts + parts.creatorGiftShare, from, to };
+    },
+
+    /** The back office read: this quarter and the ones before it. */
+    async revenueByQuarter({ quarters = 4 } = {}) {
+      const out = [];
+      let id = quarterOf(runtime.now());
+      for (let i = 0; i < Math.min(quarters, 12) && id; i++) {
+        const window = quarterWindow(id);
+        out.push({ quarter: id, startsAt: window.startsAt, endsAt: window.endsAt, ...(await this.revenueBetween(window.startsAt, window.endsAt)) });
+        id = previousQuarter(id);
+      }
+      return { quarters: out, at: runtime.now() };
     },
 
     async credit(userId, input) {

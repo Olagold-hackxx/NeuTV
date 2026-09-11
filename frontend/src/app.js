@@ -2193,7 +2193,7 @@
 
         // ═══════════════════════════════════════════════════════════
         // ═══════════════════════════════════════════════════════════
-        // CREATOR SPOTLIGHT: VIDEO COLLAGE SLIDESHOW (PURE CSS GPU MARQUEE — SHOWN ON 'tv' & 'foryou')
+        // CREATORS NETWORK: VIDEO COLLAGE SLIDESHOW (PURE CSS GPU MARQUEE — SHOWN ON 'tv' & 'foryou')
         // ═══════════════════════════════════════════════════════════
         (activeMainTab === 'tv' || activeMainTab === 'foryou') && h('section', { className: 'w-full space-y-3 pt-2' },
           
@@ -2202,7 +2202,7 @@
             h('div', { className: 'flex items-center gap-2' },
               h('span', { className: 'w-2 h-2 rounded-full bg-white/70 animate-pulse' }),
               h('h2', { className: 'text-base font-black text-white tracking-tight' },
-                'Creator Spotlights'
+                'Creators Network'
               )
             ),
 
@@ -2251,7 +2251,7 @@
                       videoUrl: cr.videoMp4 || `https://www.youtube-nocookie.com/embed/${cr.videoUrl}?autoplay=1&mute=0&controls=1`,
                       views: cr.views,
                       duration: cr.duration,
-                      description: `${cr.title} — Spotlight breakdown by ${cr.name} (${cr.handle}) on ${cr.product}.`
+                      description: `${cr.title} — On the Creators Network by ${cr.name} (${cr.handle}) on ${cr.product}.`
                     });
                   },
                   className: 'w-56 md:w-60 flex-shrink-0 relative aspect-[4/5] rounded-3xl overflow-hidden border border-white/15 bg-neutral-950 group cursor-pointer shadow-xl transition-all duration-500 hover:border-white/40 hover:shadow-[0_10px_30px_rgba(0,0,0,0.6)] hover:-translate-y-1.5'
@@ -2877,7 +2877,7 @@
             h('h2', { className: 'text-lg md:text-xl font-black text-white leading-snug' }, selectedVideo.title),
             selectedVideo.description && h('p', { className: 'text-xs text-white/70 leading-relaxed' }, selectedVideo.description),
             h('div', { className: 'text-xs text-white/70 flex items-center justify-between pt-3 border-t border-white/10' },
-              h('span', null, 'Creator Spotlight: ', h('strong', { className: 'text-white font-extrabold' }, selectedVideo.influencer)),
+              h('span', null, 'Creators Network: ', h('strong', { className: 'text-white font-extrabold' }, selectedVideo.influencer)),
               h('button', {
                 onClick: () => {
                   // Same path as a feed video, so the server records the

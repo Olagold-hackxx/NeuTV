@@ -177,6 +177,62 @@ export async function stopLiveSession(eventId: string): Promise<ActionResult> {
   }
 }
 
+// --- the press desk ----------------------------------------------------------
+
+export async function applyPress(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {
+  const body: Record<string, unknown> = {
+    outlet: String(form.get('outlet') ?? '').trim(),
+    title: String(form.get('title') ?? '').trim(),
+    beat: String(form.get('beat') ?? '').trim(),
+    note: String(form.get('note') ?? '').trim(),
+  };
+  const website = String(form.get('website') ?? '').trim();
+  if (website) body.website = website;
+  if (!body.outlet || !body.title) return { ok: false, error: 'Your outlet and your title are both required.' };
+  try {
+    await call('/press/apply', { method: 'POST', body });
+    revalidatePath('/', 'layout');
+    return { ok: true };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+// --- decoder channels ----------------------------------------------------------
+
+export async function buyChannel(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {
+  const body: Record<string, unknown> = {};
+  const number = Number(form.get('number'));
+  if (Number.isInteger(number) && number > 0) body.number = number;
+  const name = String(form.get('name') ?? '').trim();
+  const tagline = String(form.get('tagline') ?? '').trim();
+  if (name) body.name = name;
+  if (tagline) body.tagline = tagline;
+  try {
+    await call('/creator/channel', { method: 'POST', body });
+    revalidatePath('/', 'layout');
+    return { ok: true };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+export async function updateChannel(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {
+  try {
+    await call('/creator/channel', {
+      method: 'PUT',
+      body: {
+        name: String(form.get('name') ?? '').trim(),
+        tagline: String(form.get('tagline') ?? '').trim(),
+      },
+    });
+    revalidatePath('/channel');
+    return { ok: true };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
 export async function acceptTask(taskId: string): Promise<ActionResult> {
   try {
     await call(`/creator/tasks/${encodeURIComponent(taskId)}/accept`, { method: 'POST', body: {} });

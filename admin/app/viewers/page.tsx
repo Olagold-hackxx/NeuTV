@@ -50,7 +50,9 @@ export default async function ViewersPage() {
                       ? <span className="pill pill-admin">admin</span>
                       : v.role === 'creator'
                         ? <span className="pill pill-published">creator</span>
-                        : <span className="pill">{v.role}</span>}
+                        : v.role === 'press'
+                          ? <span className="pill pill-ready">press</span>
+                          : <span className="pill">{v.role}</span>}
                   </td>
                   <td>
                     <span className="pill">{v.authMethod}</span>

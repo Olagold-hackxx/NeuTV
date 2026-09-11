@@ -183,6 +183,50 @@ export type SessionUser = {
   badge?: string;
 };
 
+// The channels area, served by /channels. Number 1 is the network's Vision
+// channel; every other number is a creator's decoder number, and its card
+// (when it has one) is the same shape the Creators Network rail plays.
+export type Channel = {
+  number: number;
+  id?: string;
+  name: string;
+  tagline?: string;
+  network: boolean;
+  isLive: boolean;
+  title?: string | null;
+  thumbnail?: string | null;
+  ownerId?: string;
+  card?: Spotlight | null;
+};
+
+export type LeaderboardStanding = {
+  rank: number;
+  userId: string;
+  name: string;
+  handle: string;
+  avatar?: string;
+  votes: number;
+  channelNumber: number | null;
+};
+
+export type Leaderboard = {
+  quarter: string;
+  startsAt: number;
+  endsAt: number;
+  sharePct: number;
+  revenue: number;
+  prize: number;
+  totalVotes: number;
+  standings: LeaderboardStanding[];
+  myVote: string | null;
+  lastAward: {
+    quarter: string;
+    winner: { name: string; handle: string; avatar?: string } | null;
+    votes: number;
+    prize: number;
+  } | null;
+};
+
 export type LeaderboardRow = {
   name?: string;
   sender?: string;

@@ -122,6 +122,64 @@ export type { Viewer };
 
 export const getTasks = () => call<{ tasks: AdminTask[] }>('/admin/tasks');
 
+// The press desk, and the viewers choice.
+export const getPressApplications = (status?: string) =>
+  call<{ applications: PressApplication[] }>(`/admin/press${status ? `?status=${encodeURIComponent(status)}` : ''}`);
+export const getLeaderboardAdmin = () => call<LeaderboardAdmin>('/admin/leaderboard');
+export const getRevenue = () => call<{ quarters: RevenueQuarter[] }>('/wallet/revenue');
+
+export type PressApplication = {
+  userId: string;
+  outlet: string;
+  title: string;
+  beat: string;
+  website: string | null;
+  note: string;
+  status: 'pending' | 'verified' | 'rejected' | 'revoked';
+  card: { id: string; issuedAt: number; expiresAt: number } | null;
+  reviewedAt: number | null;
+  createdAt: number;
+  name?: string;
+  handle?: string;
+  role?: string;
+};
+
+export type Standing = { rank: number; userId: string; name: string; handle: string; votes: number; channelNumber: number | null };
+
+export type QuarterView = {
+  quarter: string;
+  startsAt: number;
+  endsAt: number;
+  revenue: { total: number; subscriptions: number; purchases: number; networkGifts: number; creatorGiftShare: number };
+  prize: number;
+  standings: Standing[];
+};
+
+export type LeaderboardAdmin = {
+  awards: Array<{
+    quarter: string;
+    winnerId: string | null;
+    winner: { name: string; handle: string } | null;
+    votes: number;
+    revenue: number;
+    sharePct: number;
+    prize: number;
+    settledAt: number;
+  }>;
+  open: QuarterView;
+  settleable: QuarterView | null;
+  sharePct: number;
+};
+
+export type RevenueQuarter = {
+  quarter: string;
+  total: number;
+  subscriptions: number;
+  purchases: number;
+  networkGifts: number;
+  creatorGiftShare: number;
+};
+
 export type AdminTask = {
   id: string;
   title: string;

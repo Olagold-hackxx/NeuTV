@@ -1,7 +1,7 @@
 'use client';
 
-// Creator spotlights: the continuously panning marquee of autoplaying creator
-// cards, each themed to its ecosystem product.
+// The Creators Network rail: the continuously panning marquee of autoplaying
+// creator cards, each themed to its ecosystem product.
 
 import { useRef } from 'react';
 import { ChevronLeft, ChevronRight, Eye, Play } from 'lucide-react';
@@ -23,11 +23,11 @@ export function Reel({ spotlights, onSelect }: ReelProps) {
   };
 
   return (
-    <section className="w-full space-y-3 pt-2" aria-label="Creator spotlights">
+    <section className="w-full space-y-3 pt-2" aria-label="Creators Network">
       <div className="flex items-center justify-between px-1">
         <div className="flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-white/70 animate-pulse" aria-hidden />
-          <h2 className="text-base font-black text-white tracking-tight">Creator Spotlights</h2>
+          <h2 className="text-base font-black text-white tracking-tight">Creators Network</h2>
         </div>
         <div className="flex items-center gap-2">
           <button

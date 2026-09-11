@@ -168,6 +168,48 @@ const MIGRATIONS = {
     );
     CREATE INDEX idx_magazine_status ON magazine_issues(status, published_at DESC);
   `,
+  // Decoder channels. A creator buys one number, once; the number is the
+  // primary key so two creators cannot hold the same one, and owner_id is
+  // unique so one creator cannot hold two. Number 1 is never a row: it is
+  // the network's Vision channel, synthesised from the main stage.
+  '011_channels': `
+    CREATE TABLE channels (
+      number     INTEGER PRIMARY KEY,
+      owner_id   TEXT NOT NULL UNIQUE,
+      name       TEXT NOT NULL,
+      tagline    TEXT NOT NULL DEFAULT '',
+      price      INTEGER NOT NULL,
+      txn_id     TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+  `,
+  // Viewers choice. One vote per viewer per quarter - the primary key says
+  // so - movable until the quarter closes. An award row is the quarter's
+  // settlement: written once, and the prize payout is keyed by the quarter
+  // so a re-run replays instead of paying again.
+  '012_viewers_choice': `
+    CREATE TABLE creator_votes (
+      quarter    TEXT NOT NULL,        -- '2026-Q3'
+      voter_id   TEXT NOT NULL,
+      creator_id TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY (quarter, voter_id)
+    );
+    CREATE INDEX idx_votes_quarter_creator ON creator_votes(quarter, creator_id);
+
+    CREATE TABLE leaderboard_awards (
+      quarter    TEXT PRIMARY KEY,
+      winner_id  TEXT,
+      votes      INTEGER NOT NULL DEFAULT 0,
+      revenue    INTEGER NOT NULL DEFAULT 0,
+      share_pct  INTEGER NOT NULL,
+      prize      INTEGER NOT NULL DEFAULT 0,
+      settled_by TEXT NOT NULL,
+      settled_at INTEGER NOT NULL
+    );
+  `,
 };
 
 export const openAdminStore = (target, options) => openStore(target, MIGRATIONS, options);
