@@ -34,7 +34,7 @@ hlsPartDuration: 500ms
 # 500. Always remuxing shrinks that window to nothing a retrying player will
 # notice - and removes the first-viewer wake-up delay besides.
 hlsAlwaysRemux: yes
-hlsAllowOrigin: "*"
+hlsAllowOrigins: ["*"]
 
 # Everything else off. Each enabled protocol is another listener to reason
 # about, and nothing here consumes them.
@@ -61,7 +61,7 @@ webrtc: yes
 webrtcAddress: :8889
 # Caddy terminates TLS in front, so MediaMTX speaks plain HTTP on the loopback.
 webrtcEncryption: no
-webrtcAllowOrigin: "*"
+webrtcAllowOrigins: ["*"]
 webrtcTrustedProxies: [127.0.0.1/8, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16]
 
 # ICE needs a candidate the browser can actually reach. The UDP port is the fast

@@ -88,7 +88,6 @@ services:
     image: bluenviron/mediamtx:latest-ffmpeg
     restart: unless-stopped
     environment:
-      MTX_PROTOCOLS: tcp
       # The public host to advertise in ICE candidates. MediaMTX has no
       # variable substitution inside its config file, so anything host-specific
       # is passed as MTX_<NAME> instead.
