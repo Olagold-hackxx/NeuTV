@@ -276,6 +276,35 @@ docker compose logs mediamtx | grep -E "abr/|ffmpeg"
 curl -sI https://<cdn-host>/hls/abr/<stream-key>/index.m3u8   # 200 while on air
 ```
 
+A healthy run, from the first one that worked, reads like this:
+
+```
+[path live-xxx]      runOnAvailable command started
+[path live-xxx]      stream is available and online, 2 tracks (H264, Opus)
+[path abr/live-xxx]  stream is available and online, 2 tracks (H264, MPEG-4 Audio)
+[HLS] [session …] created by 172.20.0.1:… (CDN)
+```
+
+Three things to know when reading it:
+
+- **Two paths, three seconds apart.** ffmpeg has to spawn, connect over RTSP and
+  wait for a keyframe before `abr/` exists. Viewers pointed at `abr/` during
+  that gap get a 404 — which is why the player must keep retrying, not why the
+  transcoder is broken.
+- **Warnings on the raw muxer are expected.** `segment duration changed` and
+  `part duration changed` tagged `[muxer live-xxx]` are the publisher's encoder
+  drifting under packet loss, and nobody watches that muxer. The number that
+  matters is how many of those warnings carry `[muxer abr/live-xxx]` — on the
+  first real run, zero. That is the transcoder doing its job.
+- **`(CDN)` on an HLS session is the secret working.** MediaMTX tags a request
+  that arrived with the right bearer. A CDN fetch without that tag is the 302
+  cookie-probe row in the verification table above.
+
+ffmpeg's own stderr lands in the same log. `More than 1000 frames duplicated`
+is `-r 30` holding the output framerate constant while the input drops frames —
+desired, that is what keeps the GOP deterministic. `RTP packets are too big …
+remuxing` is MediaMTX re-fragmenting ffmpeg's output once; harmless.
+
 If `abr/<path>` never appears, playback 404s. Unset the prefix to fall straight
 back to the raw path — six seconds behind, but playing — and debug from there.
 Then check, in this order:
