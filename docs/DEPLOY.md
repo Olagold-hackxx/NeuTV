@@ -348,7 +348,7 @@ NEUTV_HLS_CDN_SECRET=<that secret>
 | Domain | `live.example.com` |
 | Origin host | `api.example.com`, port 443, TLS on |
 | SNI / cert hostname | `api.example.com` |
-| **Override host** | `api.example.com` — without this the origin sees the CDN hostname and Caddy has no site for it |
+| **Override host** | `api.example.com` — and set again as `bereq.http.host` in the `miss`/`pass` snippets, so a missed or unactivated console value cannot silently break the origin |
 | **TLS CA certificate** | the contents of `deploy/origin-ca.pem` |
 
 **Origin TLS.** Caddy issues the API's certificate from Let's Encrypt and serves
@@ -408,18 +408,28 @@ unset req.http.Cookie;
 unset req.http.Authorization;
 ```
 
-`miss`:
+`miss` — two headers on the request to the origin. The bearer token identifies
+the CDN so MediaMTX skips its cookie probe; the Host is what makes Caddy route
+the request at all. Caddy has a site block for the API hostname only, and a
+request arriving under the CDN's own name matches nothing — Caddy answers that
+with a bare empty 200, for every path, indistinguishable from a healthy origin
+with no streams. Fastly copies the viewer's `req.http.*` into `bereq.http`
+immediately before `miss` and `pass` run, so this line is the last word on what
+the origin sees. It holds even when the console's Override host is missing, on
+the wrong backend, or sitting on an unactivated version:
 
 ```vcl
 set bereq.http.Authorization = "Bearer <that secret>";
+set bereq.http.host = "api.example.com";
 ```
 
-`pass` — the identical line a second time. A request that skips the cache still
+`pass` — the identical two lines a second time. A request that skips the cache still
 has to introduce itself to the origin, and a snippet placed in `miss` does not
 run on that path:
 
 ```vcl
 set bereq.http.Authorization = "Bearer <that secret>";
+set bereq.http.host = "api.example.com";
 ```
 
 `fetch`:
@@ -456,7 +466,7 @@ Read that response carefully — three outcomes, only one of them good:
 | --- | --- |
 | `404`, `server: mediamtx` | **Working.** The request reached MediaMTX, which correctly reports no such stream. |
 | `302` with `cookieCheck` | The secret is not reaching the origin: `miss`/`pass` snippets missing, or the secret differs from `.env`. |
-| `200`, `content-length: 0`, `server: Caddy` | **The Host override is not in effect.** Caddy matches site blocks by `Host`; a request carrying the CDN's name matches none, and Caddy's answer to that is a bare empty 200. Every path looks identical because none of them reach MediaMTX. |
+| `200`, `content-length: 0`, `server: Caddy` | **The Host override is not in effect.** Caddy matches site blocks by `Host`; a request carrying the CDN's name matches none, and Caddy's answer to that is a bare empty 200. Every path looks identical because none of them reach MediaMTX. The `bereq.http.host` line in `miss`/`pass` is the fix that does not depend on the console. |
 
 That last one has a nasty second act: the empty 200 gets cached, and any
 `Range` request against a zero-byte object returns `416 Range Not Satisfiable`
