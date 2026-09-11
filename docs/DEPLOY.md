@@ -465,7 +465,7 @@ Read that response carefully — three outcomes, only one of them good:
 | Response | Meaning |
 | --- | --- |
 | `404`, `server: mediamtx` | **Working.** The request reached MediaMTX, which correctly reports no such stream. |
-| `302` with `cookieCheck` | The secret is not reaching the origin: `miss`/`pass` snippets missing, or the secret differs from `.env`. |
+| `302` with `cookieCheck` | Playback still works — the player follows it — but MediaMTX is running its cookie probe on the CDN's requests, so the bearer it receives does not match `hlsCDNSecret`. Costs a round trip on the hottest path in LL-HLS. Split the cause on the VPS: `docker compose exec mediamtx env \| grep MTX_HLSCDNSECRET` shows what MediaMTX actually holds (empty means `.env` lacks it or the container was never recreated); then `curl -sI -H "Authorization: Bearer <that value>" https://api.example.com/hls/abr/nope/index.m3u8` — a `404` proves the origin side, so any remaining `302` at the edge is the Fastly snippets carrying a different value. |
 | `200`, `content-length: 0`, `server: Caddy` | **The Host override is not in effect.** Caddy matches site blocks by `Host`; a request carrying the CDN's name matches none, and Caddy's answer to that is a bare empty 200. Every path looks identical because none of them reach MediaMTX. The `bereq.http.host` line in `miss`/`pass` is the fix that does not depend on the console. |
 
 That last one has a nasty second act: the empty 200 gets cached, and any
