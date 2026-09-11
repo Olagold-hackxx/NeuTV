@@ -240,6 +240,81 @@ Nothing host-specific goes in `deploy/mediamtx.yml` — it has no variable
 substitution. Override with `MTX_<NAME>` environment variables in compose, the
 way `MTX_WEBRTCADDITIONALHOSTS` supplies the public hostname.
 
+### The transcoder, and why segments were six seconds
+
+MediaMTX repackages; it does not re-encode. An HLS segment can only start on a
+keyframe, so segment length is whatever keyframe interval the *publisher's*
+encoder chose — and a browser stretches that interval out on a static scene.
+The 2 September broadcast shows it happening live:
+
+```
+segment duration changed from 1s to 3s
+segment duration changed from 3s to 4s
+segment duration changed from 4s to 6s
+```
+
+No HLS setting fixes this. `deploy/mediamtx.yml` therefore runs ffmpeg on every
+publish (`runOnAvailable`), re-encoding with `-g 30 -keyint_min 30` at a forced
+30fps — one keyframe per second, permanently — and writing the result to
+`abr/<path>`. Viewers read that; the studio still publishes to `<path>`.
+
+Two settings make it work, and both are easy to miss:
+
+```bash
+NEUTV_MEDIAMTX_TRANSCODE_PREFIX=abr     # or empty to send viewers back to the raw path
+```
+
+and the mediamtx service must run the **`latest-ffmpeg`** image — the plain one
+has no ffmpeg for the hook to spawn. RTSP is switched on in the config as the
+transcoder's private back channel, bound to `127.0.0.1` and never published, so
+it is reachable only from inside that container.
+
+After deploying, confirm the transcoder actually ran:
+
+```bash
+docker compose logs mediamtx | grep -E "abr/|ffmpeg"
+curl -sI https://<cdn-host>/hls/abr/<stream-key>/index.m3u8   # 200 while on air
+```
+
+If `abr/<path>` never appears, playback 404s. Unset the prefix to fall straight
+back to the raw path — six seconds behind, but playing — and debug from there.
+Each concurrent stream costs roughly one CPU core at `veryfast`; past a handful
+of simultaneous broadcasts this wants a GPU host and `h264_nvenc`.
+
+### Moving the CDN hostname from video-on-demand to live
+
+VOD gains nothing from a CDN. Cloudinary serves `q_auto,f_auto` responses as
+`cache-control: private` with `vary: User-Agent`, because they are adapted per
+client — so a shared cache is forbidden to store them, and Fastly in front of
+Cloudinary records `x-cache: MISS` on every request it ever sees. It is an extra
+hop and a second invoice buying zero cache hits, in front of an origin that is
+already behind Akamai.
+
+Live HLS is the opposite: segments are immutable, every viewer wants the same
+bytes within the same second, and nothing marks them private. Point the hostname
+there instead — **in this order**, so VOD never breaks mid-swap:
+
+```bash
+# 1. Take VOD off the CDN first and confirm video still plays.
+NEUTV_MEDIA_BASE_URL=https://res.cloudinary.com/<cloud-name>/video/upload
+docker compose up -d --build
+```
+
+```bash
+# 2. Only now repoint the CDN service at the API origin, serving /hls/* only.
+#    Origin: api.example.com:443, TLS on, Host override api.example.com.
+#    Replace the VCL with the four snippets below.
+```
+
+```bash
+# 3. Finally, send live playback through it.
+NEUTV_MEDIAMTX_HLS_BASE=https://cdn.example.com/hls
+docker compose up -d --build
+```
+
+Existing events pick up both changes on restart — playback endpoints are
+re-derived from configuration on every read, never trusted from storage.
+
 ### Fanning live out through Fastly
 
 Direct `/hls` from the VPS is fine for hundreds of viewers. Beyond that, the

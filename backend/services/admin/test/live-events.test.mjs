@@ -370,3 +370,43 @@ test('a MediaMTX event survives a domain migration', async (t) => {
       'the admin chose this URL; no relocation may second-guess it');
   });
 });
+
+test('viewers are sent to the transcoded stream, publishers to the raw one', async (t) => {
+  // The whole point of the transcoder is that the stream the studio publishes
+  // and the stream viewers read are no longer the same stream. Getting this
+  // backwards is silent: ingest works, playback works, and the six-second
+  // drift nobody could explain is simply still there.
+  const provider = (prefix) => createIngestProvider({
+    NEUTV_LIVE_DRIVER: 'mediamtx',
+    NEUTV_MEDIAMTX_RTMP_URL: 'rtmp://api.example.com:1935',
+    NEUTV_MEDIAMTX_HLS_BASE: 'https://cdn.example.com/hls',
+    NEUTV_MEDIAMTX_WHIP_BASE: 'https://api.example.com/whip',
+    ...(prefix === undefined ? {} : { NEUTV_MEDIAMTX_TRANSCODE_PREFIX: prefix }),
+  });
+
+  await t.test('publish to the raw path, play the re-encoded one', async () => {
+    const { streamKey, whipUrl, playbackUrl } = await provider('abr').provision();
+    assert.equal(whipUrl, `https://api.example.com/whip/${streamKey}/whip`);
+    assert.equal(playbackUrl, `https://cdn.example.com/hls/abr/${streamKey}/index.m3u8`);
+  });
+
+  await t.test('no prefix means no transcoder, so playback falls back to the raw path', async () => {
+    // A stream six seconds behind still beats a 404 at a path nothing writes to.
+    const { streamKey, playbackUrl } = await provider(undefined).provision();
+    assert.equal(playbackUrl, `https://cdn.example.com/hls/${streamKey}/index.m3u8`);
+  });
+
+  await t.test('an event scheduled before the transcoder existed is relocated onto it', async () => {
+    const shared = await testStore(openAdminStore);
+    const before = await build({ store: shared, ingest: provider(undefined) });
+    const { event } = await schedule(before.events, { source: 'browser', playbackUrl: undefined });
+    assert.ok(!event.playbackUrl.includes('/abr/'), 'minted before the transcoder');
+
+    const after = await build({ store: shared, runtime: before.runtime, ingest: provider('abr') });
+    const { event: moved } = await after.events.get(event.id);
+    assert.equal(moved.playbackUrl, `https://cdn.example.com/hls/abr/${event.streamKey}/index.m3u8`,
+      'playback follows the transcoder without touching the row');
+    assert.equal(moved.whipUrl, `https://api.example.com/whip/${event.streamKey}/whip`,
+      'the publish endpoint is left exactly where the studio expects it');
+  });
+});

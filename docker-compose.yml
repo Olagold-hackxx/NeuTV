@@ -46,6 +46,10 @@ services:
       # hands a whipUrl to the studio when this is set, so leaving it blank
       # keeps every broadcast on the segment path.
       NEUTV_MEDIAMTX_WHIP_BASE: ${NEUTV_MEDIAMTX_WHIP_BASE:-}
+      # Where the transcoded stream lands. Set it to 'abr' to send viewers to
+      # the re-encoded ladder; leave it empty to hand them the publisher's raw
+      # stream instead, which is the instant rollback if a transcoder misbehaves.
+      NEUTV_MEDIAMTX_TRANSCODE_PREFIX: ${NEUTV_MEDIAMTX_TRANSCODE_PREFIX:-}
     volumes:
       # Live broadcast segments. The only state that is not in Postgres or
       # Cloudinary, and it has to outlive the container.
@@ -79,7 +83,9 @@ services:
       - "5432"
 
   mediamtx:
-    image: bluenviron/mediamtx:latest
+    # The -ffmpeg variant, because the transcode hook in deploy/mediamtx.yml
+    # spawns ffmpeg and the plain image does not contain it.
+    image: bluenviron/mediamtx:latest-ffmpeg
     restart: unless-stopped
     environment:
       MTX_PROTOCOLS: tcp

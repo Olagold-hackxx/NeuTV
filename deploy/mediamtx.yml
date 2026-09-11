@@ -38,7 +38,16 @@ hlsAllowOrigin: "*"
 
 # Everything else off. Each enabled protocol is another listener to reason
 # about, and nothing here consumes them.
-rtsp: no
+# RTSP is the transcoder's private back channel and nothing else's.
+#
+# ffmpeg has to read the published stream from somewhere and write the
+# re-encoded one back, and RTSP is the only protocol MediaMTX speaks that does
+# both. It is bound to loopback and never published by compose, so it is
+# reachable only from inside this container - which is exactly where the
+# transcoder runs.
+rtsp: yes
+rtspAddress: 127.0.0.1:8554
+rtspTransports: [tcp]
 srt: no
 
 # WebRTC, for publishing straight from a browser.
@@ -74,6 +83,37 @@ webrtcLocalTCPAddress: :8189
 webrtcAdditionalHosts: []
 
 paths:
-  # Any path, created on publish. The keys are minted by the API, not chosen
-  # here, so there is nothing to enumerate in this file.
+  # Re-encode every published stream, because HLS segment length is not ours
+  # to choose otherwise.
+  #
+  # MediaMTX repackages rather than transcodes, and a segment can only begin on
+  # a keyframe - so segment duration is whatever keyframe interval the
+  # publisher's encoder happens to use. A browser encoder stretches that
+  # interval out on a static scene to save bitrate, and the 2 September
+  # broadcast shows it happening: segments grew 1s -> 3s -> 4s -> 6s while the
+  # live edge drifted the same distance away from the viewer. No HLS setting
+  # fixes that, because the setting that matters is on the publisher's side.
+  #
+  # So ffmpeg reads the raw stream and writes it back with -g 30 -keyint_min 30
+  # at a forced 30fps: a keyframe every second, every second, regardless of what
+  # the camera is pointed at. Segment duration becomes deterministic and the
+  # rest of the chain finally has something stable to cut against.
+  #
+  # Viewers are handed 'abr/<path>', never '<path>'. The regex is anchored, so
+  # the transcoded output does not match it and cannot trigger a second
+  # transcode of itself.
+  '~^live-':
+    runOnAvailable: >-
+      ffmpeg -nostdin -loglevel warning
+      -rtsp_transport tcp -i rtsp://127.0.0.1:$RTSP_PORT/$MTX_PATH
+      -vf scale=-2:720 -r 30
+      -c:v libx264 -preset veryfast -tune zerolatency
+      -b:v 1500k -maxrate 1500k -bufsize 3000k
+      -g 30 -keyint_min 30 -sc_threshold 0
+      -c:a aac -b:a 128k -ar 48000 -ac 2
+      -f rtsp -rtsp_transport tcp rtsp://127.0.0.1:$RTSP_PORT/abr/$MTX_PATH
+    # A transcoder that dies takes the broadcast with it, so it comes back.
+    runOnAvailableRestart: yes
+
+  # Any other path, created on publish - including the transcoder's own output.
   all_others:

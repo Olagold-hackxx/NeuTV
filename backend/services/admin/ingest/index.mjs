@@ -121,16 +121,28 @@ function cloudflareProvider({ accountId, apiToken, fetchImpl = globalThis.fetch 
  * deciding the path name, and the stream key IS that name. Which means the key
  * has to be unguessable: anyone who can publish to a path owns the broadcast.
  */
-function mediamtxProvider({ rtmpUrl, hlsBase, whipBase }) {
+function mediamtxProvider({ rtmpUrl, hlsBase, whipBase, transcodePrefix = '' }) {
   // One place builds every URL, and it is called at read time, not just at
   // creation. These URLs are this deployment's addresses for a path, nothing
   // more - but they used to be minted once and stored, which meant a domain
   // migration left every existing event pointing at the old hostname. The
   // path is the identity; the endpoints are wherever the path lives today.
+  // Publish to the raw path; play the transcoded one.
+  //
+  // The studio pushes WebRTC to '<path>', and the transcoder re-encodes that
+  // into '<prefix>/<path>' with a keyframe every second. Viewers have to be
+  // sent to the second and never the first: the raw stream is the one whose
+  // segments drift out to six seconds, because its keyframe interval belongs
+  // to the publisher's encoder rather than to us.
+  //
+  // An empty prefix points playback back at the raw path. That is the rollback
+  // when no transcoder is running - a stream six seconds behind still beats a
+  // 404 at a path nothing is writing to.
+  const prefix = String(transcodePrefix || '').replace(/^\/|\/$/g, '');
   const endpoints = (path) => ({
     ingestUrl: rtmpUrl.replace(/\/$/, ''),
     whipUrl: whipBase ? `${whipBase.replace(/\/$/, '')}/${path}/whip` : null,
-    playbackUrl: `${hlsBase.replace(/\/$/, '')}/${path}/index.m3u8`,
+    playbackUrl: `${hlsBase.replace(/\/$/, '')}/${prefix ? `${prefix}/` : ''}${path}/index.m3u8`,
   });
   return {
     driver: 'mediamtx',
@@ -167,6 +179,7 @@ export function createIngestProvider(env = process.env) {
       rtmpUrl: env.NEUTV_MEDIAMTX_RTMP_URL,
       hlsBase: env.NEUTV_MEDIAMTX_HLS_BASE,
       whipBase: env.NEUTV_MEDIAMTX_WHIP_BASE,
+      transcodePrefix: env.NEUTV_MEDIAMTX_TRANSCODE_PREFIX,
     });
   }
 
