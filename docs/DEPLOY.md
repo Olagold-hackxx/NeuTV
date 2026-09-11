@@ -278,6 +278,21 @@ curl -sI https://<cdn-host>/hls/abr/<stream-key>/index.m3u8   # 200 while on air
 
 If `abr/<path>` never appears, playback 404s. Unset the prefix to fall straight
 back to the raw path — six seconds behind, but playing — and debug from there.
+Then check, in this order:
+
+```bash
+docker compose exec mediamtx which ffmpeg      # no output = the plain image
+docker compose logs mediamtx | grep -iE "ffmpeg|abr/|runOnAvailable"
+```
+
+The first line is the usual culprit. **`docker compose restart` re-reads the
+mounted config but never changes the image** — so a restart after the
+transcoder commit shows RTSP starting and the new hooks loading, and still runs
+the ffmpeg-less image underneath, where `runOnAvailable` fails to exec and
+nothing says so. Only `docker compose up -d --build` (or `pull`) moves the
+container onto `latest-ffmpeg`. If ffmpeg *is* present, the log grep shows why
+it died; the common ones are a codec MediaMTX refused and the RTSP back channel
+not being on loopback.
 Each concurrent stream costs roughly one CPU core at `veryfast`; past a handful
 of simultaneous broadcasts this wants a GPU host and `h264_nvenc`.
 
