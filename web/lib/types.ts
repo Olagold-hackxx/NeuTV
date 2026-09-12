@@ -136,6 +136,8 @@ export type Video = {
   durationSeconds?: number;
   posterUrl?: string;
   transport?: 'segments' | 'whip' | null;
+  /** False until the stream behind playbackUrl answers; viewers never see false. */
+  isReady?: boolean;
   playbackUrl?: string | null;
   youtubeId?: string | null;
   createdAt?: number;
@@ -148,6 +150,8 @@ export type LiveEvent = {
   productId?: string;
   posterUrl?: string;
   transport?: 'segments' | 'whip' | null;
+  /** False until the stream behind playbackUrl answers; viewers never see false. */
+  isReady?: boolean;
   playbackUrl?: string | null;
   youtubeId?: string | null;
   source?: 'browser' | 'external' | string;

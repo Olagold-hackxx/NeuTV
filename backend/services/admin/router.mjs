@@ -150,5 +150,15 @@ export function createAdminRouter(deps) {
   r.put('/admin/magazine/:issueId',   async (req) => ok(await service.magazine.update(req.params.issueId, req.body)), { auth: 'admin' });
   r.del('/admin/magazine/:issueId',   async (req) => ok(await service.magazine.remove(req.params.issueId)), { auth: 'admin' });
 
+  // MediaMTX reports a path coming online or going away. No session - it
+  // proves itself with a shared secret in a header. The path rides in the
+  // query so the hook command needs no quoting, which keeps it correct whether
+  // MediaMTX runs it through a shell or not.
+  r.post('/internal/mediamtx/:event', async (req) => ok(await service.liveEvents.hook({
+    event: req.params.event,
+    path: req.query.path ?? null,
+    secret: req.headers?.['x-hook-secret'] ?? null,
+  })), { auth: 'none' });
+
   return Object.assign(r, { service });
 }

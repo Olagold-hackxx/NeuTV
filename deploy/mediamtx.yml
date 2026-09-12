@@ -115,5 +115,23 @@ paths:
     # A transcoder that dies takes the broadcast with it, so it comes back.
     runOnAvailableRestart: yes
 
-  # Any other path, created on publish - including the transcoder's own output.
+  # Any other path, created on publish - including the transcoder's output,
+  # which is what viewers read. Its arrival and departure are what the API
+  # needs to know: an event is announced to viewers only once abr/<key> answers,
+  # and hidden again the moment it stops.
+  #
+  # The hook is one command with no quotes and no spaces inside any argument,
+  # so it runs identically whether MediaMTX hands it to a shell or execs it
+  # directly. The path rides in the query for the same reason. busybox wget is
+  # what the -ffmpeg image has; there is no curl in it.
   all_others:
+    runOnAvailable: >-
+      wget -q -O /dev/null
+      --header=X-Hook-Secret:$NEUTV_MEDIAMTX_HOOK_SECRET
+      --post-data={}
+      http://api:4173/api/v1/internal/mediamtx/available?path=$MTX_PATH
+    runOnUnavailable: >-
+      wget -q -O /dev/null
+      --header=X-Hook-Secret:$NEUTV_MEDIAMTX_HOOK_SECRET
+      --post-data={}
+      http://api:4173/api/v1/internal/mediamtx/unavailable?path=$MTX_PATH

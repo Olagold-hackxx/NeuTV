@@ -342,7 +342,7 @@ test('a MediaMTX event survives a domain migration', async (t) => {
   // The server is redeployed under the new domain; the rows are untouched.
   // (The runtime is shared: a fresh fakeRuntime would restart its
   // deterministic uuid sequence and collide with the ids already stored.)
-  const onNew = await build({ store: sharedStore, runtime: onOld.runtime, ingest: domain('api.tsionneu.xyz') });
+  const onNew = await build({ store: sharedStore, runtime: onOld.runtime, ingest: domain('api.tsionneu.xyz'), hookSecret: 'k' });
 
   await t.test('every stored URL now answers from the new domain', async () => {
     const { event } = await onNew.events.get(created.id);
@@ -353,6 +353,8 @@ test('a MediaMTX event survives a domain migration', async (t) => {
 
   await t.test('viewers see the new domain too', async () => {
     await onNew.events.start(created.id, { transport: 'whip' });
+    // No transcoder prefix on this provider, so the viewer path is the raw key.
+    await onNew.events.hook({ event: 'available', path: created.streamKey, secret: 'k' });
     const { event } = await onNew.events.current();
     assert.match(event.playbackUrl, /^https:\/\/api\.tsionneu\.xyz\//);
     await onNew.events.stop(created.id);
@@ -408,5 +410,126 @@ test('viewers are sent to the transcoded stream, publishers to the raw one', asy
       'playback follows the transcoder without touching the row');
     assert.equal(moved.whipUrl, `https://api.example.com/whip/${event.streamKey}/whip`,
       'the publish endpoint is left exactly where the studio expects it');
+  });
+});
+
+
+test('viewers are told about a stream only once it exists', async (t) => {
+  // On a linear network every viewer is already on the page when the admin
+  // goes live. The transcoder needs ~3s to publish abr/<key>; announcing the
+  // event before then switched every stage to a manifest that 404'd. Now the
+  // event is invisible to viewers until MediaMTX says the path is up.
+  const SECRET = 'hook-s3cret';
+  const mtx = () => createIngestProvider({
+    NEUTV_LIVE_DRIVER: 'mediamtx',
+    NEUTV_MEDIAMTX_RTMP_URL: 'rtmp://api.example.com:1935',
+    NEUTV_MEDIAMTX_HLS_BASE: 'https://cdn.example.com/hls',
+    NEUTV_MEDIAMTX_WHIP_BASE: 'https://api.example.com/whip',
+    NEUTV_MEDIAMTX_TRANSCODE_PREFIX: 'abr',
+  });
+  const started = (emitted) => emitted.filter(([t, p]) => t === 'live-event' && p.status === 'started').length;
+  const withStatus = (emitted, st) => emitted.filter(([t, p]) => t === 'live-event' && p.status === st).length;
+
+  await t.test('on air is not yet visible; the hook makes it so, exactly once', async () => {
+    const { events, emitted } = await build({ ingest: mtx(), hookSecret: SECRET });
+    const { event } = await schedule(events, { source: 'browser', playbackUrl: undefined });
+    await events.start(event.id, { transport: 'whip' });
+
+    assert.equal((await events.current()).event, null, 'viewers see nothing yet');
+    assert.equal(started(emitted), 0, 'nothing announced yet');
+    assert.equal((await events.get(event.id)).event.isReady, false, 'the admin can see why');
+
+    await events.hook({ event: 'available', path: `abr/${event.streamKey}`, secret: SECRET });
+    assert.equal((await events.current()).event?.id, event.id, 'now viewers are pointed at a path that answers');
+    assert.equal(started(emitted), 1);
+
+    await events.hook({ event: 'available', path: `abr/${event.streamKey}`, secret: SECRET });
+    assert.equal(started(emitted), 1, 'a repeated hook announces nothing');
+  });
+
+  await t.test('the raw path coming up is not readiness when a transcoder is in front', async () => {
+    const { events } = await build({ ingest: mtx(), hookSecret: SECRET });
+    const { event } = await schedule(events, { source: 'browser', playbackUrl: undefined });
+    await events.start(event.id, { transport: 'whip' });
+    const r = await events.hook({ event: 'available', path: event.streamKey, secret: SECRET });
+    assert.equal(r.matched, false, 'the publisher\'s own path is nobody\'s viewer path');
+    assert.equal((await events.current()).event, null);
+  });
+
+  await t.test('losing the stream hides the event and says so; it comes back when the stream does', async () => {
+    const { events, emitted } = await build({ ingest: mtx(), hookSecret: SECRET });
+    const { event } = await schedule(events, { source: 'browser', playbackUrl: undefined });
+    await events.start(event.id, { transport: 'whip' });
+    const path = `abr/${event.streamKey}`;
+    await events.hook({ event: 'available', path, secret: SECRET });
+
+    await events.hook({ event: 'unavailable', path, secret: SECRET });
+    assert.equal((await events.current()).event, null, 'viewers fall back to the programme');
+    assert.equal(withStatus(emitted, 'interrupted'), 1, 'and are told it is an interruption, not an ending');
+    assert.equal((await events.get(event.id)).event.status, 'live', 'the event itself is not over');
+
+    await events.hook({ event: 'available', path, secret: SECRET });
+    assert.equal((await events.current()).event?.id, event.id);
+    assert.equal(started(emitted), 2, 'the return is announced like a start');
+  });
+
+  await t.test('a stream that never returns ends its event, judged when next asked', async () => {
+    const { events, emitted, runtime } = await build({ ingest: mtx(), hookSecret: SECRET });
+    const { event } = await schedule(events, { source: 'browser', playbackUrl: undefined });
+    await events.start(event.id, { transport: 'whip' });
+    const path = `abr/${event.streamKey}`;
+    await events.hook({ event: 'available', path, secret: SECRET });
+    await events.hook({ event: 'unavailable', path, secret: SECRET });
+
+    runtime.advance(30_000);
+    await events.current();
+    assert.equal((await events.get(event.id)).event.status, 'live', 'inside the grace it is only interrupted');
+
+    runtime.advance(31_000);
+    assert.equal((await events.current()).event, null);
+    assert.equal((await events.get(event.id)).event.status, 'ended', 'past the grace it is over');
+    assert.equal(withStatus(emitted, 'ended'), 1, 'and viewers hear that too');
+  });
+
+  await t.test('a publisher who connects before the operator presses start is not lost', async () => {
+    const { events, emitted } = await build({ ingest: mtx(), hookSecret: SECRET });
+    const { event } = await schedule(events, { source: 'browser', playbackUrl: undefined });
+    // The stream arrives while the event is still scheduled.
+    const r = await events.hook({ event: 'available', path: `abr/${event.streamKey}`, secret: SECRET });
+    assert.equal(r.matched, true);
+    assert.equal(started(emitted), 0, 'nothing to announce: not on air');
+    await events.start(event.id, { transport: 'whip' });
+    assert.equal((await events.current()).event?.id, event.id, 'start sees the stream is already there');
+    assert.equal(started(emitted), 1);
+  });
+
+  await t.test('an external provider needs no word from anyone', async () => {
+    const { events, emitted } = await build({ hookSecret: SECRET });   // manual driver, HLS URL
+    const { event } = await schedule(events);
+    await events.start(event.id);
+    assert.equal((await events.current()).event?.id, event.id, 'their URL is theirs to keep up');
+    assert.equal(started(emitted), 1);
+  });
+
+  await t.test('the segment path is served by this API, so it is ready at start', async () => {
+    const { events } = await build({ ingest: mtx(), hookSecret: SECRET });
+    const { event } = await schedule(events, { source: 'browser', playbackUrl: undefined });
+    await events.start(event.id, { transport: 'segments' });
+    assert.equal((await events.current()).event?.id, event.id);
+  });
+
+  await t.test('the hook proves itself or is refused', async () => {
+    const { events } = await build({ ingest: mtx(), hookSecret: SECRET });
+    await assert.rejects(() => events.hook({ event: 'available', path: 'abr/x', secret: 'wrong' }),
+      (e) => e.status === 401);
+    await assert.rejects(() => events.hook({ event: 'available', path: 'abr/x', secret: null }),
+      (e) => e.status === 401);
+    const none = await build({ ingest: mtx() });   // no secret configured at all
+    await assert.rejects(() => none.events.hook({ event: 'available', path: 'abr/x', secret: 'anything' }),
+      (e) => e.status === 401, 'an unconfigured hook accepts nobody');
+    await assert.rejects(() => events.hook({ event: 'exploded', path: 'abr/x', secret: SECRET }),
+      (e) => e.status === 400);
+    const r = await events.hook({ event: 'available', path: 'abr/not-an-event', secret: SECRET });
+    assert.deepEqual(r, { matched: false, changed: false }, 'an unknown path is ignored, not an error');
   });
 });

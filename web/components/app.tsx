@@ -316,6 +316,16 @@ export function App({ data }: { data: AppData }) {
         if (payload.status === 'started' && payload.event) {
           applyLiveEvent(payload.event);
           showToast(`🔴 ${payload.event.title} is live`);
+        } else if (payload.status === 'interrupted') {
+          // The stream behind the event dropped - a transcoder restarting, an
+          // uplink gone - and may be back in seconds. The stage returns to the
+          // programme; a 'started' brings it back. Not "ended": that is a
+          // different fact, and it arrives separately if the stream never
+          // returns.
+          setLiveEvent(null);
+          setLiveError(null);
+          setOverride(null);
+          showToast('Live signal interrupted — back shortly');
         } else if (payload.status === 'ended') {
           setLiveEvent(null);
           setLiveError(null);

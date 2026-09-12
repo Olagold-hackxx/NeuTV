@@ -11,7 +11,7 @@
 // viewer app and the live service see, and it has no key in it at all.
 
 import { validate } from '../../platform/validate.mjs';
-import { notFound, conflict, badRequest } from '../../platform/errors.mjs';
+import { notFound, conflict, badRequest, unauthorized } from '../../platform/errors.mjs';
 import { mintStreamKey, validatePlayback } from './ingest/index.mjs';
 
 export const STATUSES = ['scheduled', 'live', 'ended', 'cancelled'];
@@ -37,6 +37,9 @@ export const adminEvent = (row) => ({
   startedAt: row.started_at,
   endedAt: row.ended_at,
   transport: row.transport ?? null,
+  isReady: Boolean(row.ready_at),
+  readyAt: row.ready_at,
+  unavailableAt: row.unavailable_at,
   peakViewers: row.peak_viewers,
   createdBy: row.created_by,
   createdAt: row.created_at,
@@ -59,6 +62,9 @@ export const publicEvent = (row) => ({
   scope: row.scope ?? 'network',
   // Which player the viewer should open. Reported, never guessed.
   transport: row.transport ?? null,
+  // False means the URL below does not answer yet. Viewers are never told
+  // about an event while this is false.
+  isReady: Boolean(row.ready_at),
   playbackUrl: row.playback_url,
   youtubeId: row.youtube_id,
   posterUrl: row.poster_url,
@@ -66,7 +72,53 @@ export const publicEvent = (row) => ({
   isLive: row.status === 'live',
 });
 
-export function createLiveEvents({ runtime, store, catalog, ingest, events }) {
+/** How long a stream may be gone before the event it fed is over. */
+export const UNAVAILABLE_GRACE_MS = 60_000;
+
+export function createLiveEvents({ runtime, store, catalog, ingest, events, hookSecret = null }) {
+  const channel = (scope) => ((scope ?? 'network') === 'network' ? 'live-event' : 'creator-live');
+
+  // Does going on air have to wait for MediaMTX's word? Only when the URL
+  // viewers get is one MediaMTX serves. An external provider's URL is theirs
+  // to keep up; the segment path is served by this API from the first chunk.
+  const needsReadiness = (row) => row.driver === 'mediamtx' && row.transport !== 'segments';
+
+  // The MediaMTX path viewers read for this event - the same computation the
+  // provider uses to mint the playback URL, so the two cannot disagree.
+  const viewerPath = (row) => {
+    const key = row.provider_ref ?? row.stream_key;
+    if (!key) return null;
+    return typeof ingest.playbackPath === 'function' ? ingest.playbackPath(key) : key;
+  };
+
+  const findByViewerPath = async (path) => {
+    const rows = await store.all(
+      "SELECT * FROM live_events WHERE driver = 'mediamtx' AND status IN ('scheduled', 'live')",
+    );
+    return rows.find((r) => viewerPath(r) === path) ?? null;
+  };
+
+  // A stream that went away and never came back ends its event - decided when
+  // somebody next asks, not by a timer. A transcoder restart is well inside
+  // the grace and viewers simply get the programme back for a few seconds.
+  const expireStale = async () => {
+    const now = runtime.now();
+    const stale = await store.all(
+      `SELECT * FROM live_events WHERE status = 'live' AND ready_at IS NULL
+         AND unavailable_at IS NOT NULL AND unavailable_at < ?`,
+      now - UNAVAILABLE_GRACE_MS,
+    );
+    for (const row of stale) {
+      const r = await store.run(
+        "UPDATE live_events SET status = 'ended', ended_at = ?, updated_at = ? WHERE id = ? AND status = 'live'",
+        now, now, row.id,
+      );
+      if (r.changes) {
+        events.emit(channel(row.scope), { status: 'ended', event: publicEvent(located(await getRow(row.id))) });
+      }
+    }
+  };
+
   /**
    * Re-derive a MediaMTX event's endpoints from where the server is NOW.
    *
@@ -132,10 +184,54 @@ export function createLiveEvents({ runtime, store, catalog, ingest, events }) {
      * spotlight, and the main view is decided by the network alone.
      */
     async current() {
+      await expireStale();
+      // Only an event whose URL answers. An on-air event still waiting for its
+      // transcoder is not here, so the stage keeps the programme and no viewer
+      // is ever sent to a manifest that does not exist yet.
       const row = await store.get(
-        "SELECT * FROM live_events WHERE status = 'live' AND scope = 'network' ORDER BY started_at DESC LIMIT 1",
+        `SELECT * FROM live_events WHERE status = 'live' AND scope = 'network' AND ready_at IS NOT NULL
+         ORDER BY started_at DESC LIMIT 1`,
       );
       return { event: row ? publicEvent(located(row)) : null };
+    },
+
+    /**
+     * MediaMTX's word on a path. 'available' makes the event visible to
+     * viewers (and announces it); 'unavailable' hides it again (and says so).
+     * Idempotent, and indifferent to paths that are not an event's viewer path
+     * - the raw stream behind a transcoder, a creator's channel, anything else.
+     */
+    async hook({ event, path, secret }) {
+      if (!hookSecret || secret !== hookSecret) throw unauthorized('Bad hook secret.');
+      if (!['available', 'unavailable'].includes(event)) throw badRequest(`Unknown hook event "${event}".`);
+      if (!path) throw badRequest('path is required.');
+      const row = await findByViewerPath(path);
+      if (!row) return { matched: false, changed: false };
+      const now = runtime.now();
+
+      if (event === 'available') {
+        if (row.ready_at && row.status === 'live') return { matched: true, changed: false };
+        await store.run(
+          'UPDATE live_events SET ready_at = ?, unavailable_at = NULL, updated_at = ? WHERE id = ?',
+          now, now, row.id,
+        );
+        // A scheduled event whose stream arrived early is simply recorded;
+        // start() announces it. A live one is announced now.
+        if (row.status === 'live') {
+          events.emit(channel(row.scope), { status: 'started', event: publicEvent(located(await getRow(row.id))) });
+        }
+        return { matched: true, changed: true };
+      }
+
+      if (row.status !== 'live' || !row.ready_at) return { matched: true, changed: false };
+      await store.run(
+        'UPDATE live_events SET ready_at = NULL, unavailable_at = ?, updated_at = ? WHERE id = ?',
+        now, now, row.id,
+      );
+      // Not 'ended': the transcoder may be back in seconds. Viewers get the
+      // programme meanwhile, and the truth about why.
+      events.emit(channel(row.scope), { status: 'interrupted', event: publicEvent(located(await getRow(row.id))) });
+      return { matched: true, changed: true };
     },
 
     /**
@@ -270,19 +366,25 @@ export function createLiveEvents({ runtime, store, catalog, ingest, events }) {
       });
 
       const now = runtime.now();
+      // Viewers are told only when the URL they will be handed answers. For an
+      // external provider that is now. For a MediaMTX-served stream it is when
+      // MediaMTX says so - unless its hook already fired for a publisher that
+      // connected before the operator pressed start, in which case it is now.
+      // Judge readiness against the transport being set, not the one on the
+      // row - which is still null for an event that has never been live.
+      const transport = v.transport ?? row.transport ?? null;
+      const readyAt = needsReadiness({ ...row, transport }) ? (row.ready_at ?? null) : now;
       await store.run(
-        "UPDATE live_events SET status = 'live', started_at = ?, updated_at = ?, transport = ? WHERE id = ?",
-        // Null means "nobody has said yet", which the viewer infers from the
-        // playback URL. Guessing 'segments' here for a browser event would be
-        // wrong for exactly the case this whole column exists to fix: an event
-        // started from the panel and then broadcast over WHIP.
-        now, now, v.transport ?? null, eventId,
+        `UPDATE live_events SET status = 'live', started_at = ?, updated_at = ?, transport = ?,
+                                ready_at = ?, unavailable_at = NULL WHERE id = ?`,
+        // Null transport means "nobody has said yet", which the viewer infers
+        // from the playback URL.
+        now, now, transport, readyAt, eventId,
       );
-      const event = publicEvent(await getRow(eventId));
-      // Viewers switch without reloading - but only a NETWORK event may move
-      // every stage. A creator going live announces itself on its own channel
-      // so the spotlight rail can light up, and nothing else changes.
-      events.emit(scope === 'network' ? 'live-event' : 'creator-live', { status: 'started', event });
+      const event = publicEvent(located(await getRow(eventId)));
+      // Only a NETWORK event may move every stage; a creator announces on its
+      // own channel. Either way, not before the stream is there.
+      if (readyAt) events.emit(channel(scope), { status: 'started', event });
       return { event: adminEvent(await getRow(eventId)) };
     },
 
@@ -292,7 +394,7 @@ export function createLiveEvents({ runtime, store, catalog, ingest, events }) {
 
       const now = runtime.now();
       await store.run(
-        "UPDATE live_events SET status = 'ended', ended_at = ?, updated_at = ?, peak_viewers = ? WHERE id = ?",
+        "UPDATE live_events SET status = 'ended', ended_at = ?, updated_at = ?, peak_viewers = ?, ready_at = NULL WHERE id = ?",
         now, now, Math.max(peakViewers, row.peak_viewers), eventId,
       );
       // Release whatever the provider allocated. A failure here must not stop

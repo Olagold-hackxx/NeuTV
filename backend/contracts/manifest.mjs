@@ -131,6 +131,7 @@ export const ROUTES = [
   { service: 'admin', method: 'PUT',    path: '/admin/magazine/:issueId',   auth: 'admin', summary: 'Edit an issue; publishing needs a file URL.' },
   { service: 'admin', method: 'DELETE', path: '/admin/magazine/:issueId',   auth: 'admin', summary: 'Delete a draft or archived issue.' },
 
+  { service: 'admin', method: 'POST',   path: '/internal/mediamtx/:event',           auth: 'none',  summary: 'MediaMTX reports a stream path available/unavailable. Secret header, not a session.' },
   { service: 'admin', method: 'GET',    path: '/live-event/current',                 auth: 'none',  summary: 'The live event on air right now, if any.' },
 
   { service: 'admin', method: 'GET',    path: '/programme/current',          auth: 'none',  summary: 'The main broadcast the stage returns to.' },

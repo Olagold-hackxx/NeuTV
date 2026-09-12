@@ -325,6 +325,68 @@ not being on loopback.
 Each concurrent stream costs roughly one CPU core at `veryfast`; past a handful
 of simultaneous broadcasts this wants a GPU host and `h264_nvenc`.
 
+### Viewers only ever see a stream that exists
+
+On a linear network every viewer is already on the page when an admin goes
+live. The transcoder needs about three seconds to publish `abr/<key>` after
+the publisher connects — and announcing the event at "start" switched every
+one of those viewers to a manifest that did not exist yet. Retrying through
+the gap hid the symptom; this removes the cause.
+
+**An event becomes visible to viewers when MediaMTX says its path is up, not
+when the operator presses start.** MediaMTX reports it through a hook that
+`deploy/mediamtx.yml` runs on the transcoder's output path:
+
+```
+POST /internal/mediamtx/available?path=abr/<key>      # -> event announced
+POST /internal/mediamtx/unavailable?path=abr/<key>    # -> event hidden, "interrupted"
+```
+
+It authenticates with a shared secret in `X-Hook-Secret`, set once in `.env`
+and delivered to **both** containers:
+
+```bash
+NEUTV_MEDIAMTX_HOOK_SECRET=$(openssl rand -hex 24)
+```
+
+What each side sees:
+
+| Moment | Operator (admin) | Viewers |
+| --- | --- | --- |
+| Start pressed, stream publishing | on air, `isReady: false` | programme, unchanged |
+| `abr/<key>` comes up (~3s later) | `isReady: true` | switched to a manifest that answers |
+| stream drops (transcoder restart, uplink) | still live, `isReady: false` | programme, *"Live signal interrupted — back shortly"* |
+| stream returns | `isReady: true` | switched back |
+| stream gone 60s | ended — decided when next asked, not by a timer | *"The live broadcast has ended"* |
+
+That last row is also the answer to a broadcaster who closes the tab: the
+event is no longer stuck on air forever.
+
+An external provider (a pasted HLS URL, Mux, Cloudflare) is announced at start
+— its URL is theirs to keep up. The segment path is served by this API and is
+ready from the first chunk. Only a MediaMTX-served stream waits for the hook.
+
+Verify after deploying. The hook needs busybox `wget`, which the `-ffmpeg`
+image has; confirm rather than assume:
+
+```bash
+docker compose exec mediamtx wget --help 2>&1 | head -1          # busybox wget
+docker compose exec api env | grep NEUTV_MEDIAMTX_HOOK_SECRET      # set on api
+docker compose exec mediamtx env | grep NEUTV_MEDIAMTX_HOOK_SECRET # and on mediamtx
+```
+
+Then go live and watch two things together:
+
+```bash
+docker compose logs -f mediamtx | grep -E "abr/|runOn"
+curl -s https://api.example.com/api/v1/live-event/current
+```
+
+`current` is `{"event":null}` until the log shows `[path abr/<key>] stream is
+available and online`, and carries the event immediately after. If it stays
+null with the path up, the hook is not reaching the API: an empty or mismatched
+secret on either container, or `wget` missing from the image.
+
 ### Moving the CDN hostname from video-on-demand to live
 
 VOD gains nothing from a CDN. Cloudinary serves `q_auto,f_auto` responses as

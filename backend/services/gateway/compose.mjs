@@ -112,6 +112,7 @@ export async function compose({
   const uploads = uploadsRoot || `${dataDir}/admin/data/uploads`;
   const admin = createAdminService({
     runtime, catalog, mediaBase, mediaTransform,
+    hookSecret: process.env.NEUTV_MEDIAMTX_HOOK_SECRET || null,
     store: await open(openAdminStore, 'admin'),
     // Local disk unless NEUTV_MEDIA_DRIVER says otherwise; the service only
     // ever sees "something with save() on it".

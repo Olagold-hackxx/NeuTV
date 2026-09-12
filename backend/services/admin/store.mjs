@@ -210,6 +210,19 @@ const MIGRATIONS = {
       settled_at INTEGER NOT NULL
     );
   `,
+  // When the stream viewers are handed actually exists.
+  //
+  // status='live' means the broadcaster is on air. It never meant the URL
+  // viewers are sent to will answer: with a transcoder in the path, abr/<key>
+  // appears about three seconds after the publisher connects, and every
+  // viewer already on the page - which on a linear network is every viewer -
+  // was switched to it in that window and got a 404. ready_at is MediaMTX's
+  // word that the path is up; unavailable_at is its word that it went away,
+  // from which a stream that never comes back is expired at read time.
+  '013_event_readiness': `
+    ALTER TABLE live_events ADD COLUMN ready_at INTEGER;
+    ALTER TABLE live_events ADD COLUMN unavailable_at INTEGER;
+  `,
 };
 
 export const openAdminStore = (target, options) => openStore(target, MIGRATIONS, options);

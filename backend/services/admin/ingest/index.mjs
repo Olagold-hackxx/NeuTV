@@ -139,14 +139,19 @@ function mediamtxProvider({ rtmpUrl, hlsBase, whipBase, transcodePrefix = '' }) 
   // when no transcoder is running - a stream six seconds behind still beats a
   // 404 at a path nothing is writing to.
   const prefix = String(transcodePrefix || '').replace(/^\/|\/$/g, '');
+  // The MediaMTX path viewers actually read - the transcoder's output when
+  // there is one, the raw path when there is not. Readiness is judged against
+  // exactly this path and no other.
+  const playbackPath = (path) => (prefix ? `${prefix}/${path}` : path);
   const endpoints = (path) => ({
     ingestUrl: rtmpUrl.replace(/\/$/, ''),
     whipUrl: whipBase ? `${whipBase.replace(/\/$/, '')}/${path}/whip` : null,
-    playbackUrl: `${hlsBase.replace(/\/$/, '')}/${prefix ? `${prefix}/` : ''}${path}/index.m3u8`,
+    playbackUrl: `${hlsBase.replace(/\/$/, '')}/${playbackPath(path)}/index.m3u8`,
   });
   return {
     driver: 'mediamtx',
     endpoints,
+    playbackPath,
     async provision() {
       const path = `live-${mintStreamKey().slice(3).toLowerCase()}`;
       return {

@@ -50,6 +50,11 @@ services:
       # the re-encoded ladder; leave it empty to hand them the publisher's raw
       # stream instead, which is the instant rollback if a transcoder misbehaves.
       NEUTV_MEDIAMTX_TRANSCODE_PREFIX: ${NEUTV_MEDIAMTX_TRANSCODE_PREFIX:-}
+      # MediaMTX proves itself with this when it reports a path up or down.
+      # Same value goes to the mediamtx service below. Empty disables the hook,
+      # and with it readiness - every MediaMTX-served event would then wait
+      # forever, so set it whenever NEUTV_LIVE_DRIVER=mediamtx.
+      NEUTV_MEDIAMTX_HOOK_SECRET: ${NEUTV_MEDIAMTX_HOOK_SECRET:-}
     volumes:
       # Live broadcast segments. The only state that is not in Postgres or
       # Cloudinary, and it has to outlive the container.
@@ -97,6 +102,8 @@ services:
       # arrives with "Authorization: Bearer <this secret>" is trusted as the
       # CDN and skips the probe entirely. Empty disables the bypass.
       MTX_HLSCDNSECRET: ${NEUTV_HLS_CDN_SECRET:-}
+      # Read by the readiness hook commands in deploy/mediamtx.yml.
+      NEUTV_MEDIAMTX_HOOK_SECRET: ${NEUTV_MEDIAMTX_HOOK_SECRET:-}
     volumes:
       - ./deploy/mediamtx.yml:/mediamtx.yml:ro
     ports:

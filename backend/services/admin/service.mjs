@@ -67,10 +67,11 @@ export function createAdminService({
   events = { emit: () => {} },
   ingest = null,
   segmentsRoot = null,
+  hookSecret = null,          // MediaMTX proves itself with this on /internal/mediamtx
 }) {
   const files = storage || createStorage({ root: uploadsRoot || './services/admin/data/uploads' });
   const liveEvents = createLiveEvents({
-    runtime, store, catalog, events,
+    runtime, store, catalog, events, hookSecret,
     ingest: ingest || createIngestProvider(),
   });
   const liveSegments = createLiveSegments({
