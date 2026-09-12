@@ -558,7 +558,12 @@ if (beresp.status >= 400) {
   # single origin fetch; the browser revalidates every time, so the live edge
   # keeps advancing instead of sticking on a cached copy.
   set beresp.ttl = 1s;
-  set beresp.stale_while_revalidate = 2s;
+  # No stale-while-revalidate. It let Fastly hand out a manifest up to three
+  # seconds old, and a player that starts from a stale window asks for a
+  # segment the origin has already evicted. One second of TTL collapses
+  # concurrent viewers into one origin fetch; anything served past it is a
+  # lie about where the live edge is.
+  set beresp.stale_while_revalidate = 0s;
   set beresp.http.Cache-Control = "no-cache";
 } else {
   # Segments and parts are immutable: a given URL only ever holds one thing.

@@ -23,7 +23,16 @@ hlsAddress: :8888
 hlsVariant: lowLatency
 # Roughly six seconds behind live, which is the trade for HLS working in every
 # browser without a plugin. Sub-second needs WebRTC and a different player.
-hlsSegmentCount: 7
+# Retention is also the playlist window: MediaMTX lists exactly the segments it
+# still holds, and evicts the oldest the instant a new one completes. A player
+# builds its buffer a few segments behind the live edge, from a playlist that
+# reached it through a CDN and may be a second or two old - so with only seven
+# seconds held, the segment it asks for first can already be gone. That was a
+# 404 on a listed segment, hls.js going fatal, and a black stage while every
+# playlist and part fetched green. Twenty seconds is headroom, not latency: in
+# low-latency mode the player sits PART-HOLD-BACK behind the edge whatever the
+# window is. Cost is ~4 MB of RAM per stream.
+hlsSegmentCount: 20
 hlsSegmentDuration: 1s
 # Parts jitter with the publisher's uplink; a roomier floor stops the
 # "part duration changed" churn that upsets iOS clients.
